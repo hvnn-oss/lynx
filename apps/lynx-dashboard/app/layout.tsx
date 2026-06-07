@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
-import DashboardHeader from "@/components/layouts/dashboard/header";
 import "@/styles/globals.css";
 
 const pretendard = localFont({
@@ -20,10 +19,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko-KR" className={`${pretendard.className} h-full antialiased`}>
-      <body className="min-h-full flex flex-col">
-        <DashboardHeader />
-        {children}
-      </body>
+      <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
 }
