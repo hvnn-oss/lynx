@@ -1,0 +1,38 @@
+{
+  "name": "@repo/sdk",
+  "version": "1.0.0",
+  "description": "SDK package with TypeScript and obfuscation",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --clean --dts",
+    "obfuscate": "javascript-obfuscator ./dist/index.js --output ./dist/index.js --config obfuscator.config.json && javascript-obfuscator ./dist/index.cjs --output ./dist/index.cjs --config obfuscator.config.json",
+    "build:prod": "pnpm build && pnpm obfuscate",
+    "check-types": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "^25.9.1",
+    "javascript-obfuscator": "^4.1.1",
+    "tsup": "^8.3.5",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@repo/dto": "workspace:*"
+  }
+}

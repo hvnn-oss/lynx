@@ -1,3 +1,10 @@
+"use client";
+
+import { useEffect } from "react";
+
 export default function Home() {
-  return <main className="h-[300vh]"></main>;
+  useEffect(() => {
+    window.location.href = "/dashboard";
+  }, []);
+  return <></>;
 }
