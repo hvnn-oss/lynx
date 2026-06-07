@@ -1,0 +1,49 @@
+@import "tailwindcss";
+@import "@repo/tailwind-config/base.css";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@theme {
+  /* v4에서는 이 블록 안에서 변수를 정의하여 테일윈드 클래스로 사용합니다 */
+  --animate-marquee: marquee 30s linear infinite;
+
+  @keyframes marquee {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+}
+* {
+  box-sizing: border-box;
+  scroll-behavior: smooth;
+}
+
+*::selection {
+  color: var(--color-primary-foreground);
+  background-color: var(--color-primary);
+}
+
+@layer utilities {
+  /* Chrome, Safari and Opera */
+  .scrollbar-hidden::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* IE, Edge and Firefox */
+  .scrollbar-hidden {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+  }
+}
