@@ -1,0 +1,6 @@
+repos:
+  - repo: https://github.com/gitleaks/gitleaks # Gitleaks 설정 (민감한 정보 유출 방지)
+    rev: v8.24.0
+    hooks:
+      - id: gitleaks-system
+        entry: gitleaks protect --staged --verbose
