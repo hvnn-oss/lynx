@@ -2,6 +2,7 @@
   "name": "lynx",
   "private": true,
   "scripts": {
+    "prepare": "pip install pre-commit && pre-commit install",
     "build": "turbo run build",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
