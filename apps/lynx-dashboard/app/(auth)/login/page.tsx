@@ -1,3 +1,15 @@
+import LoginForm from "@/components/ui/auth/login-form";
+import { useTranslations } from "next-intl";
+
 export default function DashboardPage() {
-  return <main></main>;
+  const t = useTranslations("auth");
+  return (
+    <main>
+      <div className="mb-5">
+        <h1 className="text-lg font-semibold">{t("login.title")}</h1>
+        <p className="text-sm font-light">{t("login.subTitle")}</p>
+      </div>
+      <LoginForm />
+    </main>
+  );
 }

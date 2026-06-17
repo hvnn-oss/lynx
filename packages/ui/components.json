@@ -10,6 +10,7 @@
     "cssVariables": true,
     "prefix": ""
   },
+  "iconLibrary": "lucide",
   "aliases": {
     "components": "@/components",
     "utils": "@/lib/utils",
@@ -17,5 +18,10 @@
     "lib": "@/lib",
     "hooks": "@/hooks"
   },
-  "iconLibrary": "lucide"
+  "registries": {
+    "@abui": "https://abui.io/r/{name}.json",
+    "@react-bits": "https://reactbits.dev/r/{name}.json",
+    "@animate-ui": "https://animate-ui.com/r/{name}.json",
+    "@loading-ui": "https://loading-ui.com/r/{name}.json"
+  }
 }

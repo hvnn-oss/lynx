@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
@@ -30,10 +31,13 @@ import { MailerService } from '../../providers/smtp/mail.service';
 import Redis from 'ioredis';
 import * as bcrypt from 'bcrypt';
 import {
+  AccessTokenPayload,
   BCRYPT_SALT_ROUNDS,
   ERROR_CODES,
   LOGIN_PROVIDERS,
+  RefreshTokenPayload,
 } from '@repo/constants';
+import ms, { StringValue } from 'ms';
 
 @Injectable()
 export class AuthService {
@@ -276,6 +280,39 @@ export class AuthService {
   }
 
   // =====================================================
-  // 로그인
+  // 토큰 관리
   // =====================================================
+  async generateAccessToken(userId: string) {
+    const exp_time = this.configService.get<string>('JWT_ACCESS_EXPIRES_IN');
+    if (!exp_time) throw new InternalServerErrorException();
+    const nowInSeconds = Math.floor(Date.now() / 1000);
+    const expInSeconds =
+      nowInSeconds + Math.floor(ms(exp_time as StringValue) / 1000);
+    const payload: AccessTokenPayload = {
+      sub: userId,
+      iat: nowInSeconds,
+      exp: expInSeconds,
+    };
+    const newToken = await this.jwtService.signAsync(payload);
+    return newToken;
+  }
+
+  async generateRefreshToken(userId: string) {
+    const exp_time = this.configService.get<string>('JWT_REFRESH_EXPIRES_IN');
+    if (!exp_time) throw new InternalServerErrorException();
+    const nowInSeconds = Math.floor(Date.now() / 1000);
+    const expInSeconds =
+      nowInSeconds + Math.floor(ms(exp_time as StringValue) / 1000);
+    const jti = crypto.randomUUID();
+    const payload: RefreshTokenPayload = {
+      sub: userId,
+      jti,
+      exp: expInSeconds,
+    };
+    const newToken = await this.jwtService.signAsync(payload, {
+      expiresIn: exp_time as StringValue,
+    });
+    await this.redis.set(`refresh:${userId}`, jti);
+    return newToken;
+  }
 }
