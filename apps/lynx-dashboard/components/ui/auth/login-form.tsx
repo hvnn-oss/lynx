@@ -57,7 +57,7 @@ export default function LoginForm() {
             {t("login.buttons.sso")}
           </Link>
           <FieldDescription className="text-center">
-            Don&apos;t have an account? <Link href="/register">Sign up</Link>
+            Don&apos;t have an account? <Link href="/signup">Sign up</Link>
           </FieldDescription>
         </Field>
       </FieldGroup>

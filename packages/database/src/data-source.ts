@@ -13,6 +13,7 @@ import { PromptVersionEntity } from "./entities/prompt/prompt-version.entity";
 import { PromptEntity } from "./entities/prompt/prompt.entity";
 import { SessionEntity } from "./entities/session/session.entity";
 import { OrganizationUserEntity } from "./entities/organization/organization-user.entity";
+import { OrganizationDomainEntity } from "./entities/organization/domain.entity";
 
 export const AppDataSource = new DataSource({
   type: "postgres",
@@ -26,6 +27,7 @@ export const AppDataSource = new DataSource({
     EventEntity,
     GuardrailPolicyEntity,
     GuardrailViolationEntity,
+    OrganizationDomainEntity,
     OrganizationUserEntity,
     OrganizationEntity,
     UserEntity,

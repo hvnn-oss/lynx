@@ -80,9 +80,9 @@ export class AuthService {
       where: { domain: emailDomain },
       relations: { organization: true },
     });
-    if (foundDomain && foundDomain.organization.useSso) {
+    if (foundDomain && foundDomain.organization?.forceSSO) {
       throw new ForbiddenException({
-        error_code: ERROR_CODES.ORG_ALREADY_USING_SSO,
+        error_code: ERROR_CODES.ORG_MUST_USE_SSO,
         message: `This organization is currently using sso options. Please sign in with sso.`,
       });
     }
@@ -115,11 +115,18 @@ export class AuthService {
     );
 
     //이메일 전송
-    await this.mailService.sendMail(
-      requestVerifyCodeDto.email,
-      'Verify Your Email',
-      `Verify URL : https://${this.configService.get('FRONTEND_URL')}/signup/verify?token=${token}`,
-    );
+    try {
+      await this.mailService.sendMail(
+        requestVerifyCodeDto.email,
+        'Verify Your Email',
+        `Verify URL : ${this.configService.get('FRONTEND_URL')}/signup/verify?token=${token}`,
+      );
+    } catch (error) {
+      throw new InternalServerErrorException({
+        error_code: ERROR_CODES.COULD_NOT_SEND_EMAIL,
+        message: 'Failed to send email',
+      });
+    }
 
     return {
       success: true,
@@ -212,9 +219,9 @@ export class AuthService {
         organization: true,
       },
     });
-    if (foundDomain && foundDomain?.organization?.useSso) {
+    if (foundDomain && foundDomain?.organization?.forceSSO) {
       throw new ConflictException({
-        error_code: ERROR_CODES.ORG_ALREADY_USING_SSO,
+        error_code: ERROR_CODES.ORG_MUST_USE_SSO,
         message:
           'This organization is currently using sso options. Please sign in with sso.',
       });

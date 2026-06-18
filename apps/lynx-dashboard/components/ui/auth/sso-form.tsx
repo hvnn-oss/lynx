@@ -47,7 +47,7 @@ export default function SSOLoginForm() {
             {t("login.buttons.local")}
           </Link>
           <FieldDescription className="text-center">
-            Don&apos;t have an account? <Link href="/register">Sign up</Link>
+            Don&apos;t have an account? <Link href="/signup">Sign up</Link>
           </FieldDescription>
         </Field>
       </FieldGroup>

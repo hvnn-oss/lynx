@@ -14,6 +14,9 @@ export class OrganizationEntity {
   @Column({ default: false })
   useSso!: boolean;
 
+  @Column({ default: false })
+  forceSSO!: boolean;
+
   @OneToMany(() => OrganizationUserEntity, (user) => user.organization)
   users!: OrganizationUserEntity[];
 

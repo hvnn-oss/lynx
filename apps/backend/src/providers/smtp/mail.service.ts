@@ -11,12 +11,13 @@ export class MailerService {
   private transporter: nodemailer.Transporter;
 
   constructor(private readonly configService: ConfigService) {
+    const isSecure = this.configService.get<string>('SMTP_SECURE') === 'true';
     this.transporter = nodemailer.createTransport({
       host: this.configService.get<string>('SMTP_HOST') || '',
       port: this.configService.get<number>('SMTP_PORT') || 587,
-      secure: this.configService.get<boolean>('SMTP_SECURE') || false,
+      secure: isSecure,
       auth: {
-        user: this.configService.get<string>('SMTP_USER') || '',
+        user: this.configService.get<string>('SMTP_USERNAME') || '',
         pass: this.configService.get<string>('SMTP_PASSWORD') || '',
       },
       tls: {
@@ -38,7 +39,7 @@ export class MailerService {
       return true;
     } catch (error) {
       this.logger.error('Failed to send mail :', error);
-      return false;
+      throw error;
     }
   }
 }
