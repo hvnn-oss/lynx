@@ -1,5 +1,5 @@
 import axios from "axios";
-// import { ERROR_CODES } from "@repo/constants";
+import { ERROR_CODES } from "@repo/constants";
 
 const api = axios.create({
   baseURL: "/api",
@@ -21,27 +21,45 @@ api.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
-// // 액세스 토큰 만료 시 재발급
-// api.interceptors.response.use(
-//   (response) => response,
-//   async (error) => {
-//     const originalReq = error.config;
-//     const errorData = error.response?.data;
-//     if(
-//         error.response?.status == 403 &&
-//         error?.code == ERROR_CODES.TOKEN_EXPIRED &&
-//         !originalReq._retry
-//     ) {
-//         originalReq._retry = true;
-//         try {
-//             const res = await axios.post(`/api/auth/refresh`, {
-//             }, {
-//                 withCredentials: true
-//             });
-//             const newUid = res.dat
-//         }
-//     }
-// },
-// );
+// 액세스 토큰 만료 시 재발급
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalReq = error.config;
+    const errorResponse = error.response;
+    const errCode = errorResponse?.data?.error_code || (errorResponse?.data?.errors && errorResponse?.data?.errors[0]?.error_code);
+    
+    if (
+      errorResponse &&
+      (errorResponse.status === 401 || errorResponse.status === 403) &&
+      errCode === ERROR_CODES.TOKEN_EXPIRED &&
+      !originalReq._retry
+    ) {
+      originalReq._retry = true;
+      try {
+        const res = await axios.post(
+          `/api/auth/refresh`,
+          {},
+          {
+            withCredentials: true,
+          }
+        );
+        if (res.data.success && res.data.accessToken) {
+          localStorage.setItem("_uid", res.data.accessToken);
+          originalReq.headers.Authorization = `Bearer ${res.data.accessToken}`;
+          return api(originalReq);
+        }
+      } catch (refreshError) {
+        // 리프레시 토큰 만료/오류 시 세션 만료 처리 및 로그인 페이지 이동
+        localStorage.removeItem("_uid");
+        if (typeof window !== "undefined") {
+          window.location.href = "/login";
+        }
+        return Promise.reject(refreshError);
+      }
+    }
+    return Promise.reject(error);
+  },
+);
 
 export default api;

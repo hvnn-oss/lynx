@@ -15,6 +15,7 @@ export const ERROR_CODES = {
 
   // 유저 계정 관련
   USER_ALREADY_EXISTS: "USER_ALREADY_EXISTS",
+  INVALID_CREDENTIALS: "INVALID_CREDENTIALS",
 };
 
 export type ErrorCodes = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

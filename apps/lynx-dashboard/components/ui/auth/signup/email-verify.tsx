@@ -11,12 +11,12 @@ import { DashRing } from "@repo/ui/components/ui/dash-ring";
 import Link from "next/link";
 import { useState } from "react";
 import {
-  RequestVerifyCodeDto,
-  ResponseVerifyCodeDto,
-} from "../../../../../../packages/dto/dist";
+  CreateEmailVerificationDto,
+  CreateEmailVerificationResponseDto,
+} from "@repo/dto";
 import api from "@/lib/api";
 import axios from "axios";
-import { ERROR_CODES } from "../../../../../../packages/constants/dist";
+import { ERROR_CODES } from "@repo/constants";
 
 export default function RegisterEmailVerifyForm({
   onSuccess,
@@ -32,12 +32,12 @@ export default function RegisterEmailVerifyForm({
   const onSubmit = async () => {
     setLoading(true);
     setError("");
-    const reqBody: RequestVerifyCodeDto = {
+    const reqBody: CreateEmailVerificationDto = {
       email: email,
     };
     try {
       const res = await api.post("/auth/signup/create-verify", reqBody);
-      const data = res.data as ResponseVerifyCodeDto;
+      const data = res.data as CreateEmailVerificationResponseDto;
       if (!data.success) {
         throw new Error();
       }

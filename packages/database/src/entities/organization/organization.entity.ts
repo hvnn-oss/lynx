@@ -17,6 +17,24 @@ export class OrganizationEntity {
   @Column({ default: false })
   forceSSO!: boolean;
 
+  @Column({ nullable: true })
+  oidcClientId?: string;
+
+  @Column({ nullable: true })
+  oidcClientSecret?: string;
+
+  @Column({ nullable: true })
+  oidcIssuer?: string;
+
+  @Column({ nullable: true })
+  samlEntryPoint?: string;
+
+  @Column({ nullable: true })
+  samlIssuer?: string;
+
+  @Column({ type: "text", nullable: true })
+  samlCert?: string;
+
   @OneToMany(() => OrganizationUserEntity, (user) => user.organization)
   users!: OrganizationUserEntity[];
 

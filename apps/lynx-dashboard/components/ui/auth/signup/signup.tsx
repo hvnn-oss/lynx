@@ -1,7 +1,7 @@
 "use client";
 
 import api from "@/lib/api";
-import { RequestVerifyEmailDto, ResponseVerifyEmailDto } from "@repo/dto";
+import { VerifyEmailTokenDto, VerifyEmailTokenResponseDto } from "@repo/dto";
 import { Button } from "@repo/ui/components/ui/button";
 import { DashRing } from "@repo/ui/components/ui/dash-ring";
 import {
@@ -17,7 +17,7 @@ import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ERROR_CODES } from "../../../../../../packages/constants/dist";
+import { ERROR_CODES } from "@repo/constants";
 
 export default function SignupForm({
   onComplete,
@@ -46,12 +46,12 @@ export default function SignupForm({
         window.location.href = "/signup";
         throw Error("Couldn't find email verify token.");
       }
-      const reqBody: RequestVerifyEmailDto = {
+      const reqBody: VerifyEmailTokenDto = {
         token,
       };
       try {
         const res = await api.post("/auth/signup/verify", reqBody);
-        const data = res.data as ResponseVerifyEmailDto;
+        const data = res.data as VerifyEmailTokenResponseDto;
         if (!data.success) {
           throw new Error();
         }

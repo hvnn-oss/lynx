@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Input } from "@repo/ui/components/ui/input";
 import {
   Field,
@@ -14,8 +15,16 @@ import { useTranslations } from "next-intl";
 
 export default function SSOLoginForm() {
   const t = useTranslations("auth");
+  const [email, setEmail] = useState("");
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) return;
+    window.location.href = `/api/auth/sso/login?email=${encodeURIComponent(email)}`;
+  };
+
   return (
-    <div>
+    <form onSubmit={handleSubmit}>
       <FieldGroup>
         <Field>
           <FieldLabel htmlFor="loginform-email">
@@ -25,6 +34,9 @@ export default function SSOLoginForm() {
             id="loginform-email"
             placeholder={t("login.email.placeholder")}
             type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
           />
         </Field>
         <Field>
@@ -51,6 +63,6 @@ export default function SSOLoginForm() {
           </FieldDescription>
         </Field>
       </FieldGroup>
-    </div>
+    </form>
   );
 }

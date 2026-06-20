@@ -1,6 +1,5 @@
 import {
   IsBoolean,
-  IsEmail,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -9,7 +8,9 @@ import {
   MinLength,
   ValidateNested,
 } from "class-validator";
+import { Type } from "class-transformer";
 
+// 회원가입 시 생성할 조직 정보 DTO
 export class RegisterOrganizationDto {
   @IsNotEmpty()
   @IsString()
@@ -18,7 +19,8 @@ export class RegisterOrganizationDto {
   name!: string;
 }
 
-export class RequestRegisterDto {
+// 회원가입 요청 DTO
+export class SignUpDto {
   @IsNotEmpty()
   @IsUUID()
   token!: string;
@@ -35,10 +37,12 @@ export class RequestRegisterDto {
 
   @IsOptional()
   @ValidateNested()
+  @Type(() => RegisterOrganizationDto)
   organization_info?: RegisterOrganizationDto;
 }
 
-export class ResponseRegisterDto {
+// 회원가입 응답 DTO
+export class SignUpResponseDto {
   @IsNotEmpty()
   @IsBoolean()
   success!: boolean;
