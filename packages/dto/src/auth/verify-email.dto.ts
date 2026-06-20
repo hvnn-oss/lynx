@@ -1,16 +1,23 @@
-import { IsBoolean, IsEmail, IsNotEmpty, IsUUID } from "class-validator";
+import {
+  IsBoolean,
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsUUID,
+} from "class-validator";
 
 export class RequestVerifyCodeDto {
   @IsNotEmpty()
   @IsEmail()
   email!: string;
 
-  @IsNotEmpty()
+  @IsOptional()
   @IsUUID()
   invited_organization_id?: string;
 }
 
 export class ResponseVerifyCodeDto {
+  @IsNotEmpty()
   @IsBoolean()
   success!: boolean;
 }
@@ -22,6 +29,11 @@ export class RequestVerifyEmailDto {
 }
 
 export class ResponseVerifyEmailDto {
+  @IsNotEmpty()
   @IsBoolean()
   success!: boolean;
+
+  @IsNotEmpty()
+  @IsEmail()
+  email!: string;
 }

@@ -170,6 +170,7 @@ export class AuthService {
 
     return {
       success: true,
+      email: signUpInfo.email,
     };
   }
 

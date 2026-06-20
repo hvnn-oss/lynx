@@ -56,6 +56,13 @@ export default function RegisterEmailVerifyForm({
           setLoading(false);
           return;
         }
+        if (
+          error.response?.data.error_code === ERROR_CODES.USER_ALREADY_EXISTS
+        ) {
+          setError("errors.user_already_exists");
+          setLoading(false);
+          return;
+        }
       }
       setError("errors.unknown");
       setLoading(false);
@@ -98,7 +105,7 @@ export default function RegisterEmailVerifyForm({
               disabled={email === "" || !emailRegex.test(email) || isLoading}
               onClick={onSubmit}
             >
-              {!isLoading ? "인증 메일 전송" : <DashRing />}
+              {!isLoading ? t("register.send-verifycode") : <DashRing />}
             </Button>
             <FieldDescription className="text-center">
               Already have an account? <Link href="/login">Login</Link>
