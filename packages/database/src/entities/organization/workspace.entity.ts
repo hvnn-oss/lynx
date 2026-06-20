@@ -9,7 +9,6 @@ import { WORKSPACE_PLANS, type WorkspacePlans } from "@repo/constants";
 import { AgentEntity } from "../agent/agent.entity";
 import { OrganizationEntity } from "./organization.entity";
 import { SessionEntity } from "../session/session.entity";
-import { Session } from "node:inspector";
 import { PromptVersionEntity } from "../prompt/prompt-version.entity";
 import { GuardrailPolicyEntity } from "../guardrail/policy.entity";
 
@@ -39,7 +38,7 @@ export class WorkspaceEntity {
   agents!: AgentEntity[];
 
   @OneToMany(() => SessionEntity, (session) => session.workspace)
-  sessions!: Session[];
+  sessions!: SessionEntity[];
 
   @OneToMany(() => PromptVersionEntity, (prompt) => prompt.workspace)
   prompts!: PromptVersionEntity[];

@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "class-validator": "^0.15.1",
-    "class-transformer": "^0.5.1"
+    "class-transformer": "^0.5.1",
+    "@repo/sdk-types": "workspace:*"
   }
 }

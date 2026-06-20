@@ -12,11 +12,6 @@ const parseNum = (val: string | undefined): number | undefined => {
   return isNaN(num) ? undefined : num;
 };
 
-const parseArray = (val: string | undefined): string[] | undefined => {
-  if (!val) return undefined;
-  return val.split(",").map((item) => item.trim());
-};
-
 export const lynx = new LynxTracer({
   clientId: process.env.LYNX_CLIENT_ID || "local_dev_env",
   lynxCloudUrl: process.env.LYNX_CLOUD_URL || "http://localhost:4000",
@@ -28,4 +23,3 @@ export const lynx = new LynxTracer({
   workspaceId: process.env.LYNX_WORKSPACE_ID,
   agentId: process.env.LYNX_AGENT_ID,
 });
-

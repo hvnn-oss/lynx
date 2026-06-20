@@ -299,9 +299,9 @@ importers:
 
   apps/sdk:
     dependencies:
-      '@repo/dto':
+      '@repo/sdk-types':
         specifier: workspace:*
-        version: link:../../packages/dto
+        version: link:../../packages/sdk-types
     devDependencies:
       '@repo/typescript-config':
         specifier: workspace:*
@@ -356,6 +356,9 @@ importers:
 
   packages/dto:
     dependencies:
+      '@repo/sdk-types':
+        specifier: workspace:*
+        version: link:../sdk-types
       class-transformer:
         specifier: ^0.5.1
         version: 0.5.1
@@ -405,6 +408,15 @@ importers:
       typescript-eslint:
         specifier: ^8.50.0
         version: 8.50.0(eslint@9.39.1(jiti@2.7.0))(typescript@5.9.2)
+
+  packages/sdk-types:
+    devDependencies:
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.2
 
   packages/tailwind-config: {}
 

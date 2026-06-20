@@ -9,6 +9,9 @@ import { PostgresConnectionCredentialsOptions } from 'typeorm/driver/postgres/Po
 import { RedisModule } from './providers/redis/redis.module';
 import { OrganizationModule } from './api/organization/organization.module';
 import { MailerModule } from './providers/smtp/mail.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { EventModule } from './api/event/event.module';
+import { ObserveModule } from './api/observe/observe.module';
 
 @Module({
   imports: [
@@ -49,6 +52,9 @@ import { MailerModule } from './providers/smtp/mail.module';
     RedisModule,
     AuthModule,
     OrganizationModule,
+    ScheduleModule.forRoot(),
+    EventModule,
+    ObserveModule,
   ],
   controllers: [AppController],
   providers: [AppService],
