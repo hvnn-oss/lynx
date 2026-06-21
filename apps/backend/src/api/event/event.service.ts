@@ -162,7 +162,9 @@ export class EventService {
           promptTokens,
           completionTokens,
         );
-        payloadObj.cost = calculatedCost;
+        if (payloadObj.cost === undefined) {
+          payloadObj.cost = calculatedCost;
+        }
       }
 
       const finalCost =
@@ -278,10 +280,17 @@ export class EventService {
       .createQueryBuilder('event')
       .delete()
       .where('event.timestamp < :freeLimit', { freeLimit })
-      .andWhere(
-        'event.sessionId IN (SELECT s.id FROM session s INNER JOIN workspace w ON s.workspaceId = w.id WHERE w.plan = :freePlan)',
-        { freePlan: 'FREE' },
-      )
+      .andWhere((qb) => {
+        const subQuery = qb
+          .subQuery()
+          .select('s.id')
+          .from(SessionEntity, 's')
+          .innerJoin('s.workspace', 'w')
+          .where('w.plan = :freePlan')
+          .getQuery();
+        return 'event.sessionId IN ' + subQuery;
+      })
+      .setParameter('freePlan', 'FREE')
       .execute();
     this.logger.log(
       `Cleaned up ${freeResult.affected ?? 0} expired events for FREE tier.`,
@@ -294,10 +303,17 @@ export class EventService {
       .createQueryBuilder('event')
       .delete()
       .where('event.timestamp < :proLimit', { proLimit })
-      .andWhere(
-        'event.sessionId IN (SELECT s.id FROM session s INNER JOIN workspace w ON s.workspaceId = w.id WHERE w.plan = :proPlan)',
-        { proPlan: 'PRO' },
-      )
+      .andWhere((qb) => {
+        const subQuery = qb
+          .subQuery()
+          .select('s.id')
+          .from(SessionEntity, 's')
+          .innerJoin('s.workspace', 'w')
+          .where('w.plan = :proPlan')
+          .getQuery();
+        return 'event.sessionId IN ' + subQuery;
+      })
+      .setParameter('proPlan', 'PRO')
       .execute();
     this.logger.log(
       `Cleaned up ${proResult.affected ?? 0} expired events for PRO tier.`,
@@ -310,10 +326,17 @@ export class EventService {
       .createQueryBuilder('event')
       .delete()
       .where('event.timestamp < :entLimit', { entLimit })
-      .andWhere(
-        'event.sessionId IN (SELECT s.id FROM session s INNER JOIN workspace w ON s.workspaceId = w.id WHERE w.plan = :entPlan)',
-        { entPlan: 'ENTERPRISE' },
-      )
+      .andWhere((qb) => {
+        const subQuery = qb
+          .subQuery()
+          .select('s.id')
+          .from(SessionEntity, 's')
+          .innerJoin('s.workspace', 'w')
+          .where('w.plan = :entPlan')
+          .getQuery();
+        return 'event.sessionId IN ' + subQuery;
+      })
+      .setParameter('entPlan', 'ENTERPRISE')
       .execute();
     this.logger.log(
       `Cleaned up ${entResult.affected ?? 0} expired events for ENTERPRISE tier.`,

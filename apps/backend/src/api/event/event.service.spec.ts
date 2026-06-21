@@ -43,9 +43,31 @@ describe('EventService', () => {
     save: jest.fn(() => Promise.resolve(mockSession)),
   };
 
+  const mockDeleteQueryBuilder = {
+    delete: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockImplementation((fn: any) => {
+      if (typeof fn === 'function') {
+        const mockSubQueryBuilder = {
+          subQuery: jest.fn().mockReturnThis(),
+          select: jest.fn().mockReturnThis(),
+          from: jest.fn().mockReturnThis(),
+          innerJoin: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getQuery: jest.fn().mockReturnValue('(SELECT id FROM session)'),
+        };
+        fn(mockSubQueryBuilder);
+      }
+      return mockDeleteQueryBuilder;
+    }),
+    setParameter: jest.fn().mockReturnThis(),
+    execute: jest.fn().mockResolvedValue({ affected: 10 }),
+  };
+
   const mockEventRepository = {
     create: jest.fn((data: unknown) => data),
     save: jest.fn((data: unknown) => Promise.resolve(data)),
+    createQueryBuilder: jest.fn(() => mockDeleteQueryBuilder),
   };
 
   const mockDataSource = {
@@ -173,5 +195,158 @@ describe('EventService', () => {
     expect(details[0].success).toBe(true);
     expect(details[1].success).toBe(true); // returns success/failure within details
     expect(details[1].result.success).toBe(false); // second one failed retention check
+  });
+
+  describe('cleanExpiredEvents', () => {
+    it('should successfully run cleanExpiredEvents and execute delete queries for each tier', async () => {
+      mockDeleteQueryBuilder.execute.mockClear();
+      mockConfigService.get.mockImplementation((key: string) => {
+        if (key === 'RETENTION_DAYS_FREE') return 5;
+        if (key === 'RETENTION_DAYS_PRO') return 15;
+        if (key === 'RETENTION_DAYS_ENTERPRISE') return 100;
+        return undefined;
+      });
+
+      await service.cleanExpiredEvents();
+
+      // Should execute delete query for each of the 3 plans (FREE, PRO, ENTERPRISE)
+      expect(mockEventRepository.createQueryBuilder).toHaveBeenCalledTimes(3);
+      expect(mockDeleteQueryBuilder.execute).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  describe('ingestEvent additional scenarios', () => {
+    it('should skip ingestion if no workspace is found', async () => {
+      mockWorkspaceRepository.findOne.mockResolvedValueOnce(null); // By apiKey
+      mockWorkspaceRepository.findOne.mockResolvedValueOnce(null); // By id
+      mockWorkspaceRepository.findOne.mockResolvedValueOnce(null); // By name
+      mockWorkspaceRepository.findOne.mockResolvedValueOnce(null); // Default empty lookup
+
+      const dto: LynxEventDto = {
+        clientId: 'client-1',
+        runId: 'trace-1',
+        agentName: 'TestAgent',
+        eventType: 'LLM_REASONING' as LynxEventType,
+        label: 'gpt-4o',
+        payload: {},
+        timestamp: Date.now(),
+        workspaceId: 'non-existent-ws',
+      };
+
+      const result = await service.ingestEvent(dto);
+      expect(result.success).toBe(false);
+      expect(result.reason).toContain('No workspace found');
+    });
+
+    it('should lookup workspace using API key if provided', async () => {
+      mockWorkspaceRepository.findOne.mockClear();
+      const dto: LynxEventDto = {
+        clientId: 'client-1',
+        runId: 'trace-1',
+        agentName: 'TestAgent',
+        eventType: 'LLM_REASONING' as LynxEventType,
+        label: 'gpt-4o',
+        payload: {},
+        timestamp: Date.now(),
+      };
+
+      await service.ingestEvent(dto, 'test-api-key');
+      expect(mockWorkspaceRepository.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { apiKey: 'test-api-key' } })
+      );
+    });
+
+    it('should estimate LLM cost correctly for different models', async () => {
+      const modelsToTest = [
+        { name: 'gpt-4-turbo', prompt: 1000, completion: 1000, expectedCost: (1000 * 30.0 + 1000 * 60.0) / 1000000 },
+        { name: 'gpt-3.5-turbo', prompt: 1000, completion: 1000, expectedCost: (1000 * 0.5 + 1000 * 1.5) / 1000000 },
+        { name: 'claude-3-5-sonnet', prompt: 1000, completion: 1000, expectedCost: (1000 * 3.0 + 1000 * 15.0) / 1000000 },
+        { name: 'claude-3-opus', prompt: 1000, completion: 1000, expectedCost: (1000 * 15.0 + 1000 * 75.0) / 1000000 },
+        { name: 'gemini-1.5-pro', prompt: 1000, completion: 1000, expectedCost: (1000 * 0.075 + 1000 * 0.3) / 1000000 },
+        { name: 'unknown-model', prompt: 1000, completion: 1000, expectedCost: (1000 * 1.0 + 1000 * 2.0) / 1000000 },
+      ];
+
+      for (const t of modelsToTest) {
+        mockEventRepository.save.mockClear();
+        const dto: LynxEventDto = {
+          clientId: 'client-1',
+          runId: 'trace-1',
+          agentName: 'TestAgent',
+          eventType: 'LLM_REASONING' as LynxEventType,
+          label: 'some-label',
+          payload: {
+            model: t.name,
+            usage: {
+              promptTokens: t.prompt,
+              completionTokens: t.completion,
+            },
+          },
+          timestamp: Date.now(),
+          workspaceId: 'ws-1',
+        };
+
+        const result = await service.ingestEvent(dto);
+        expect(result.success).toBe(true);
+        expect(mockEventRepository.save).toHaveBeenCalledWith(
+          expect.objectContaining({
+            cost: t.expectedCost,
+          })
+        );
+      }
+    });
+
+    it('should use provided cost in payload if it is explicitly set', async () => {
+      mockEventRepository.save.mockClear();
+      const dto: LynxEventDto = {
+        clientId: 'client-1',
+        runId: 'trace-1',
+        agentName: 'TestAgent',
+        eventType: 'LLM_REASONING' as LynxEventType,
+        label: 'gpt-4o',
+        payload: {
+          cost: 9.99,
+          usage: {
+            promptTokens: 1000,
+            completionTokens: 1000,
+          },
+        },
+        timestamp: Date.now(),
+        workspaceId: 'ws-1',
+      };
+
+      const result = await service.ingestEvent(dto);
+      expect(result.success).toBe(true);
+      expect(mockEventRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cost: 9.99,
+        })
+      );
+    });
+
+    it('should create new agent and session if they are not found', async () => {
+      mockAgentRepository.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+      mockSessionRepository.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+
+      mockAgentRepository.create.mockClear();
+      mockSessionRepository.create.mockClear();
+
+      const dto: LynxEventDto = {
+        clientId: 'client-1',
+        runId: 'trace-1',
+        agentName: 'Brand New Agent',
+        eventType: 'LLM_REASONING' as LynxEventType,
+        label: 'gpt-4o',
+        payload: {},
+        timestamp: Date.now(),
+        workspaceId: 'ws-1',
+        agentId: 'new-agent-uuid-11111111111111111111',
+        sessionId: 'new-session-uuid-22222222222222222222',
+      };
+
+      const result = await service.ingestEvent(dto);
+      expect(result.success).toBe(true);
+      expect(mockAgentRepository.create).toHaveBeenCalled();
+      expect(mockSessionRepository.create).toHaveBeenCalled();
+    });
   });
 });

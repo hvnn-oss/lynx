@@ -15,7 +15,8 @@
         "status": "시스템 상태",
         "metrics": "주요 지표",
         "usage": "사용 현황",
-        "cost": "비용 분석"
+        "cost": "비용 분석",
+        "insights": "인사이트"
       },
       "live-monitoring": {
         "title": "실시간 분석",
