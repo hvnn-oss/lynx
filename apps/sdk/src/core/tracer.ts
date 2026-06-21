@@ -78,11 +78,17 @@ export class LynxTracer {
     const url = `${this.config.lynxCloudUrl}/api/v1/events/batch`;
     console.log(`[LynxTracer] flushing ${eventsToFlush.length} events to: ${url}`);
     
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (this.config.apiKey) {
+      headers["x-api-key"] = this.config.apiKey;
+      headers["Authorization"] = `Bearer ${this.config.apiKey}`;
+    }
+
     const promise = fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify(eventsToFlush),
       signal: AbortSignal.timeout(5000),
     })

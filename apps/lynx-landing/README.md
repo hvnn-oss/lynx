@@ -1,36 +1,31 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Next.js Product Landing & Developer Hub
 
-## Getting Started
+Lynx 플랫폼의 **소개 랜딩 페이지 및 개발자 온보딩 포털**입니다. 
 
-First, run the development server:
+잠재 기업 고객사 및 개발자들에게 Lynx 에이전트 모니터링 시스템의 핵심 매력(PII 마스킹, 실시간 비용 차트, W3C 트레이싱)을 어필하고, 회원가입과 데모 대시보드 진입을 안내하는 홍보/안내 레이아웃을 담당합니다.
+
+---
+
+## 🎨 주요 섹션 구조
+
+1. **영웅(Hero) 배너**: 
+   * "DDoS 없는 초고속 에이전트 텔레메트리 스트리밍" 등의 헤드카피와 함께 대시보드 작동 실사 데모 그래픽을 표기합니다.
+2. **SDK 사용 가이드**:
+   * 대시보드 연동을 위한 간단한 코드 스니펫(`lynx.run`, `instrumentLLM`)을 보여주어 연동 난이도가 극히 낮음을 증명합니다.
+3. **요금제 비교 테이블 (Free / Pro / Enterprise)**:
+   * 워크스페이스별 기능 제공 범위와 데이터 저장 만료기한(3일 / 30일 / 365일) 및 보안 필터링 탑재 여부를 도표로 표시해 Pro/Enterprise 요금제 업그레이드를 유도합니다.
+4. **엔터프라이즈 SSO 로그인 진입**:
+   * 각 기업 도메인 맞춤 OIDC / SAML 2.0 기반 SSO 간편 로그인 링크를 제공하여 회원 유입을 지원합니다.
+
+---
+
+## 🚀 로컬 실행
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# 개발 서버 시작
+pnpm --filter lynx-landing dev
+
+# 빌드 검증
+pnpm --filter lynx-landing build
 ```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+* **프론트엔드 스타일링**: Vanilla CSS와 깔끔하고 미니멀한 UI 구조를 채택하여 첫인상의 높은 완성도를 보장합니다.

@@ -22,4 +22,5 @@ export const lynx = new LynxTracer({
   captureMode: (process.env.LYNX_CAPTURE_MODE as any) || "smart",
   workspaceId: process.env.LYNX_WORKSPACE_ID,
   agentId: process.env.LYNX_AGENT_ID,
+  apiKey: process.env.LYNX_API_KEY,
 });

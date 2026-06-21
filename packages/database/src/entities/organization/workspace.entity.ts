@@ -23,6 +23,9 @@ export class WorkspaceEntity {
   @Column({ type: "varchar", default: WORKSPACE_PLANS.FREE })
   plan!: WorkspacePlans;
 
+  @Column({ type: "varchar", nullable: true, unique: true })
+  apiKey?: string;
+
   @ManyToOne(
     () => OrganizationEntity,
     (organization) => organization.workspaces,

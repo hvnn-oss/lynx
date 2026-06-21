@@ -31,6 +31,7 @@ export interface LynxConfig {
   lynxCloudUrl: string;
   workspaceId?: string;
   agentId?: string;
+  apiKey?: string;
 
   /**
    * 텔레메트리 전송 샘플링 비율 (0.0 ~ 1.0).

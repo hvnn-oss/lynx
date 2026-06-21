@@ -20,7 +20,7 @@ export class EventService {
   ) {}
 
   // 수신된 텔레메트리 이벤트를 보존 기간 검사 후 저장합니다.
-  async ingestEvent(dto: LynxEventDto) {
+  async ingestEvent(dto: LynxEventDto, apiKey?: string) {
     const {
       workspaceId,
       agentId,
@@ -38,14 +38,24 @@ export class EventService {
     const eventRepository = this.dataSource.getRepository(EventEntity);
 
     // 1. 워크스페이스 조회
-    let workspace = await workspaceRepository.findOne({
-      where: { id: workspaceId },
-    });
-    if (!workspace && workspaceId) {
+    let workspace: WorkspaceEntity | null = null;
+    if (apiKey) {
       workspace = await workspaceRepository.findOne({
-        where: { name: workspaceId },
+        where: { apiKey },
       });
     }
+
+    if (!workspace && workspaceId) {
+      workspace = await workspaceRepository.findOne({
+        where: { id: workspaceId },
+      });
+      if (!workspace) {
+        workspace = await workspaceRepository.findOne({
+          where: { name: workspaceId },
+        });
+      }
+    }
+
     if (!workspace) {
       workspace = await workspaceRepository.findOne({ where: {} });
     }
@@ -180,11 +190,11 @@ export class EventService {
   }
 
   // 배치로 수신된 텔레메트리 이벤트들을 순차적으로 처리합니다.
-  async ingestEvents(dtos: LynxEventDto[]) {
+  async ingestEvents(dtos: LynxEventDto[], apiKey?: string) {
     const results: any[] = [];
     for (const dto of dtos) {
       try {
-        const res = await this.ingestEvent(dto);
+        const res = await this.ingestEvent(dto, apiKey);
         results.push({
           success: true,
           runId: dto.runId,

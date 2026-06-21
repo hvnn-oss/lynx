@@ -1,11 +1,17 @@
 import { create } from "zustand";
 
-interface PageInfo {
+export interface BreadcrumbItem {
   title: string;
-  setTitle: (title: string) => void;
+  url: string;
+}
+
+interface PageInfo {
+  breadcrumbs: BreadcrumbItem[];
+  setBreadcrumbs: (breadcrumbs: BreadcrumbItem[]) => void;
 }
 
 export const usePageStore = create<PageInfo>((set) => ({
-  title: "",
-  setTitle: (title: string) => set({ title: title }),
+  breadcrumbs: [],
+  setBreadcrumbs: (breadcrumbs) => set({ breadcrumbs }),
 }));
+

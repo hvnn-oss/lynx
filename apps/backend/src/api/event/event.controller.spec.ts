@@ -46,7 +46,7 @@ describe('EventController', () => {
     };
 
     const result = await controller.ingest(dto);
-    expect(service.ingestEvent).toHaveBeenCalledWith(dto);
+    expect(service.ingestEvent).toHaveBeenCalledWith(dto, undefined);
     expect(result).toEqual({ success: true });
   });
 
@@ -64,7 +64,7 @@ describe('EventController', () => {
     ];
 
     const result = await controller.ingestBatch(dtos);
-    expect(service.ingestEvents).toHaveBeenCalledWith(dtos);
+    expect(service.ingestEvents).toHaveBeenCalledWith(dtos, undefined);
     expect(result.success).toBe(true);
     expect(result.count).toBe(1);
   });

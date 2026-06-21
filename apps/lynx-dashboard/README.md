@@ -1,36 +1,38 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Next.js Analytics Dashboard (Developer console)
 
-## Getting Started
+Lynx 모니터링 플랫폼의 **개발자 통계 및 가시성(Observability) 대시보드** 웹 애플리케이션입니다. 
 
-First, run the development server:
+에이전트 실행 및 LLM 내부 추론 흐름의 **지연 시간(Latency) 병목 현상, 토큰 사용 요금의 급격한 이상 징후, 가드레일/PII 노출 위험 로그**를 시각적으로 상세 추적 및 분석할 수 있는 웹 콘솔을 서빙합니다.
+
+---
+
+## 🎨 주요 렌더링 화면 및 기능 범위
+
+### 1. 실시간 메트릭 모니터링 (`/dashboard`)
+* 에이전트 구동 성공률 및 전체 세션 수, 소모된 총 가용 토큰, 실시간 소요 비용을 인터랙티브한 차트 및 카드로 표시합니다.
+* 특정 날짜 필터링을 통해 비용이 폭증한 시점을 직관적으로 진단할 수 있도록 시계열 그래프를 그립니다.
+
+### 2. 에이전트 분석 레이아웃 (`/agents`)
+* 워크스페이스에 등록되어 계측을 전개 중인 에이전트들의 성능 랭킹을 한눈에 식별합니다.
+* LLM 평균 Latency, 에러율, 누적 단가를 추적하여 수정 전후의 프롬프트 성능 개선 정도를 평가합니다.
+
+### 3. 세션 타임라인 트레이싱 (`/session`)
+* 에이전트 내부에서 recursive하게 파생된 여러 Tool Call(예: 브라우저 검색, DB 읽기)과 LLM 추론 지표를 **W3C Span DAG(방향성 비순환 그래프)** 트리 구조로 시각화합니다.
+* 어떤 리스크 패턴(Risk Flags)에 걸려 차단되었는지, 민감정보 가림 필터(PII Masking)가 적용된 최종 데이터 영역은 어디인지 트레이스 상세 패널을 통해 딥 줌인(Deep Zoom-in) 디버깅을 제공합니다.
+
+### 4. 보안 및 통합 모니터 설정 (`/settings`)
+* 테넌트/워크스페이스 기반 멀티테넌시 관리와 SSO 설정 조회를 지원합니다.
+* SDK 연동 키 발급 및 Webhooks 연계, Slack 경보 채널 등의 알림 규칙 설정을 관리합니다.
+
+---
+
+## 🚀 개발 및 빌드
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# 개발 모드 가동 (핫리로딩)
+pnpm --filter lynx-dashboard dev
+
+# 프로덕션 빌드 검사
+pnpm --filter lynx-dashboard build
 ```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+* **Base URL 프록시 설정**: Next.js App Router의 `rewrites()` 기능을 이용해 프론트엔드 포트(`/api`)를 백엔드 컨트롤 플레인 포트(`http://localhost:4000`)로 동적 포워딩하도록 연계되어 있습니다.

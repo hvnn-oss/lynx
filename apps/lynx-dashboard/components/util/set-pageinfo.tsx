@@ -1,10 +1,21 @@
 "use client";
 
-import { usePageStore } from "@/stores/pageStore";
+import { useEffect } from "react";
+import { usePageStore, type BreadcrumbItem } from "@/stores/pageStore";
 
-export function UsePageInfo({ title }: { title?: string }) {
-  const setTitle = usePageStore((state) => state.setTitle);
-
-  setTitle(title || "");
-  return <></>;
+interface UsePageInfoProps {
+  breadcrumbs: BreadcrumbItem[];
 }
+
+export function UsePageInfo({ breadcrumbs }: UsePageInfoProps) {
+  const setBreadcrumbs = usePageStore((state) => state.setBreadcrumbs);
+  
+  const breadcrumbsStr = JSON.stringify(breadcrumbs);
+
+  useEffect(() => {
+    setBreadcrumbs(breadcrumbs);
+  }, [breadcrumbsStr, setBreadcrumbs]);
+
+  return null;
+}
+
