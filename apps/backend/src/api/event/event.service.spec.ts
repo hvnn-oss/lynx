@@ -46,22 +46,21 @@ describe('EventService', () => {
   const mockDeleteQueryBuilder = {
     delete: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
-    andWhere: jest.fn().mockImplementation((fn: any) => {
-      if (typeof fn === 'function') {
-        const mockSubQueryBuilder = {
-          subQuery: jest.fn().mockReturnThis(),
-          select: jest.fn().mockReturnThis(),
-          from: jest.fn().mockReturnThis(),
-          innerJoin: jest.fn().mockReturnThis(),
-          where: jest.fn().mockReturnThis(),
-          getQuery: jest.fn().mockReturnValue('(SELECT id FROM session)'),
-        };
-        fn(mockSubQueryBuilder);
-      }
-      return mockDeleteQueryBuilder;
-    }),
+    andWhere: jest
+      .fn()
+      .mockImplementation((fn: (subQueryBuilder: any) => void) => {
+        if (typeof fn === 'function') {
+          fn(mockDeleteQueryBuilder);
+        }
+        return mockDeleteQueryBuilder;
+      }),
     setParameter: jest.fn().mockReturnThis(),
     execute: jest.fn().mockResolvedValue({ affected: 10 }),
+    subQuery: jest.fn().mockReturnThis(),
+    select: jest.fn().mockReturnThis(),
+    from: jest.fn().mockReturnThis(),
+    innerJoin: jest.fn().mockReturnThis(),
+    getQuery: jest.fn().mockReturnValue('(SELECT id FROM session)'),
   };
 
   const mockEventRepository = {
@@ -79,6 +78,7 @@ describe('EventService', () => {
       if (name === 'EventEntity') return mockEventRepository;
       return null;
     }),
+    createQueryBuilder: jest.fn(() => mockDeleteQueryBuilder),
   };
 
   const mockConfigService = {
@@ -252,18 +252,48 @@ describe('EventService', () => {
 
       await service.ingestEvent(dto, 'test-api-key');
       expect(mockWorkspaceRepository.findOne).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { apiKey: 'test-api-key' } })
+        expect.objectContaining({ where: { apiKey: 'test-api-key' } }),
       );
     });
 
     it('should estimate LLM cost correctly for different models', async () => {
       const modelsToTest = [
-        { name: 'gpt-4-turbo', prompt: 1000, completion: 1000, expectedCost: (1000 * 30.0 + 1000 * 60.0) / 1000000 },
-        { name: 'gpt-3.5-turbo', prompt: 1000, completion: 1000, expectedCost: (1000 * 0.5 + 1000 * 1.5) / 1000000 },
-        { name: 'claude-3-5-sonnet', prompt: 1000, completion: 1000, expectedCost: (1000 * 3.0 + 1000 * 15.0) / 1000000 },
-        { name: 'claude-3-opus', prompt: 1000, completion: 1000, expectedCost: (1000 * 15.0 + 1000 * 75.0) / 1000000 },
-        { name: 'gemini-1.5-pro', prompt: 1000, completion: 1000, expectedCost: (1000 * 0.075 + 1000 * 0.3) / 1000000 },
-        { name: 'unknown-model', prompt: 1000, completion: 1000, expectedCost: (1000 * 1.0 + 1000 * 2.0) / 1000000 },
+        {
+          name: 'gpt-4-turbo',
+          prompt: 1000,
+          completion: 1000,
+          expectedCost: (1000 * 30.0 + 1000 * 60.0) / 1000000,
+        },
+        {
+          name: 'gpt-3.5-turbo',
+          prompt: 1000,
+          completion: 1000,
+          expectedCost: (1000 * 0.5 + 1000 * 1.5) / 1000000,
+        },
+        {
+          name: 'claude-3-5-sonnet',
+          prompt: 1000,
+          completion: 1000,
+          expectedCost: (1000 * 3.0 + 1000 * 15.0) / 1000000,
+        },
+        {
+          name: 'claude-3-opus',
+          prompt: 1000,
+          completion: 1000,
+          expectedCost: (1000 * 15.0 + 1000 * 75.0) / 1000000,
+        },
+        {
+          name: 'gemini-1.5-pro',
+          prompt: 1000,
+          completion: 1000,
+          expectedCost: (1000 * 0.075 + 1000 * 0.3) / 1000000,
+        },
+        {
+          name: 'unknown-model',
+          prompt: 1000,
+          completion: 1000,
+          expectedCost: (1000 * 1.0 + 1000 * 2.0) / 1000000,
+        },
       ];
 
       for (const t of modelsToTest) {
@@ -290,7 +320,7 @@ describe('EventService', () => {
         expect(mockEventRepository.save).toHaveBeenCalledWith(
           expect.objectContaining({
             cost: t.expectedCost,
-          })
+          }),
         );
       }
     });
@@ -319,13 +349,17 @@ describe('EventService', () => {
       expect(mockEventRepository.save).toHaveBeenCalledWith(
         expect.objectContaining({
           cost: 9.99,
-        })
+        }),
       );
     });
 
     it('should create new agent and session if they are not found', async () => {
-      mockAgentRepository.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
-      mockSessionRepository.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+      mockAgentRepository.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
+      mockSessionRepository.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
 
       mockAgentRepository.create.mockClear();
       mockSessionRepository.create.mockClear();

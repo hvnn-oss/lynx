@@ -25,6 +25,7 @@ export const menuConfig: Record<string, MenuConfig> = {
           },
           { label: "dashboard.items.overview.usage", href: "/dashboard/usage" },
           { label: "dashboard.items.overview.cost", href: "/dashboard/cost" },
+          { label: "dashboard.items.overview.insights", href: "/dashboard/insights" },
         ],
       },
       {

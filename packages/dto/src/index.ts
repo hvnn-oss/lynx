@@ -5,3 +5,6 @@ export * from "./auth/verify-email.dto.js";
 export * from "./auth/register.dto.js";
 export * from "./auth/login.dto.js";
 
+// dashboard
+export * from "./dashboard.dto.js";
+

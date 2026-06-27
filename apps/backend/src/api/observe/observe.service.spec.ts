@@ -65,7 +65,7 @@ describe('ObserveService', () => {
     }).compile();
 
     service = module.get<ObserveService>(ObserveService);
-    
+
     mockEventRepository.createQueryBuilder.mockImplementation(() => ({
       select: jest.fn().mockReturnThis(),
       addSelect: jest.fn().mockReturnThis(),
@@ -113,14 +113,14 @@ describe('ObserveService', () => {
 
   it('should calculate overview metrics with empty database', async () => {
     mockSessionRepository.find.mockResolvedValueOnce([]);
-    mockEventRepository.createQueryBuilder.mockReturnValue({
+    (mockEventRepository.createQueryBuilder as jest.Mock).mockReturnValue({
       select: jest.fn().mockReturnThis(),
       innerJoin: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
       getRawOne: jest.fn().mockResolvedValueOnce({ avg: null }),
       getCount: jest.fn().mockResolvedValue(0),
-    });
+    } as any);
 
     const result = await service.getOverviewMetrics('ws-1');
     expect(result.totalSessions).toBe(0);
@@ -148,7 +148,18 @@ describe('ObserveService', () => {
     ];
     mockAgentRepository.find.mockResolvedValueOnce(mockAgents);
 
-    const result = (await service.getAgentStats('ws-1')) as any[];
+    interface AgentStatResult {
+      id: string;
+      name: string;
+      runCount: number;
+      totalTokens: number;
+      totalCost: number;
+      avgLatency: number;
+    }
+
+    const result = (await service.getAgentStats(
+      'ws-1',
+    )) as unknown as AgentStatResult[];
     expect(result.length).toBe(2);
     expect(result[0].id).toBe('agent-1');
     expect(result[0].runCount).toBe(2);

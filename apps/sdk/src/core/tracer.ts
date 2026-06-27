@@ -26,7 +26,7 @@ export class LynxTracer {
    * 트레이서 인스턴스를 초기화합니다.
    */
   constructor(private readonly config: LynxConfig) {
-    const interval = this.config.flushIntervalMs ?? 3000;
+    const interval = this.config.flushIntervalMs ?? 10000;
     this.flushTimer = setInterval(() => {
       void this.flush();
     }, interval);
@@ -75,7 +75,7 @@ export class LynxTracer {
       return;
     }
 
-    const url = `${this.config.lynxCloudUrl}/api/v1/events/batch`;
+    const url = `${this.config.lynxCloudUrl}/openapi/v1/events/batch`;
     console.log(`[LynxTracer] flushing ${eventsToFlush.length} events to: ${url}`);
     
     const headers: Record<string, string> = {

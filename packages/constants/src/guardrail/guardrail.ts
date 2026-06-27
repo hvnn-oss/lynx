@@ -14,3 +14,14 @@ export const GUARDRAIL_ACTIONS = {
 
 export type GuardrailActions =
   (typeof GUARDRAIL_ACTIONS)[keyof typeof GUARDRAIL_ACTIONS];
+
+export const RISK_LEVEL = {
+  INFO: "INFO",
+  LOW: "LOW",
+  MEDIUM: "MEDIUM",
+  HIGH: "HIGH",
+  CRITICAL: "CRITICAL",
+} as const;
+
+export type RiskLevel = (typeof RISK_LEVEL)[keyof typeof RISK_LEVEL];
+

@@ -14,6 +14,8 @@ import { PromptEntity } from "./entities/prompt/prompt.entity";
 import { SessionEntity } from "./entities/session/session.entity";
 import { OrganizationUserEntity } from "./entities/organization/organization-user.entity";
 import { OrganizationDomainEntity } from "./entities/organization/domain.entity";
+import { FilterPolicyEntity } from "./entities/organization/filter-policy.entity";
+
 
 export const AppDataSource = new DataSource({
   type: "postgres",
@@ -36,6 +38,7 @@ export const AppDataSource = new DataSource({
     PromptVersionEntity,
     PromptEntity,
     SessionEntity,
+    FilterPolicyEntity,
   ],
   migrations: [__dirname + "/migrations/*.ts"],
   subscribers: [],

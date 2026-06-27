@@ -280,8 +280,9 @@ export class EventService {
       .createQueryBuilder('event')
       .delete()
       .where('event.timestamp < :freeLimit', { freeLimit })
-      .andWhere((qb) => {
-        const subQuery = qb
+      .andWhere(() => {
+        const subQuery = this.dataSource
+          .createQueryBuilder()
           .subQuery()
           .select('s.id')
           .from(SessionEntity, 's')
@@ -303,8 +304,9 @@ export class EventService {
       .createQueryBuilder('event')
       .delete()
       .where('event.timestamp < :proLimit', { proLimit })
-      .andWhere((qb) => {
-        const subQuery = qb
+      .andWhere(() => {
+        const subQuery = this.dataSource
+          .createQueryBuilder()
           .subQuery()
           .select('s.id')
           .from(SessionEntity, 's')
@@ -326,8 +328,9 @@ export class EventService {
       .createQueryBuilder('event')
       .delete()
       .where('event.timestamp < :entLimit', { entLimit })
-      .andWhere((qb) => {
-        const subQuery = qb
+      .andWhere(() => {
+        const subQuery = this.dataSource
+          .createQueryBuilder()
           .subQuery()
           .select('s.id')
           .from(SessionEntity, 's')

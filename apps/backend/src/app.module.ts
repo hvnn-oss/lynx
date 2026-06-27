@@ -12,6 +12,7 @@ import { MailerModule } from './providers/smtp/mail.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { EventModule } from './api/event/event.module';
 import { ObserveModule } from './api/observe/observe.module';
+import { DashboardModule } from './api/dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { ObserveModule } from './api/observe/observe.module';
     ScheduleModule.forRoot(),
     EventModule,
     ObserveModule,
+    DashboardModule,
   ],
   controllers: [AppController],
   providers: [AppService],

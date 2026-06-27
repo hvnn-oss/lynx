@@ -40,7 +40,7 @@ export function DashboardHeader() {
                 <Link href={item.url}>{item.title}</Link>
               </BreadcrumbLink>
             )}
-          </BreadcrumbItem>
+          </BreadcrumbItem>,
         );
         if (!isLast) {
           items.push(<BreadcrumbSeparator key={`sep-${index}`} />);
@@ -61,7 +61,7 @@ export function DashboardHeader() {
           <BreadcrumbLink asChild>
             <Link href={firstItem.url}>{firstItem.title}</Link>
           </BreadcrumbLink>
-        </BreadcrumbItem>
+        </BreadcrumbItem>,
       );
       items.push(<BreadcrumbSeparator key="sep-0" />);
 
@@ -69,7 +69,7 @@ export function DashboardHeader() {
       items.push(
         <BreadcrumbItem key="ellipsis">
           <BreadcrumbEllipsis />
-        </BreadcrumbItem>
+        </BreadcrumbItem>,
       );
       items.push(<BreadcrumbSeparator key="sep-ellipsis" />);
 
@@ -77,11 +77,9 @@ export function DashboardHeader() {
       items.push(
         <BreadcrumbItem key={secondToLastIdx}>
           <BreadcrumbLink asChild>
-            <Link href={secondToLastItem.url}>
-              {secondToLastItem.title}
-            </Link>
+            <Link href={secondToLastItem.url}>{secondToLastItem.title}</Link>
           </BreadcrumbLink>
-        </BreadcrumbItem>
+        </BreadcrumbItem>,
       );
       items.push(<BreadcrumbSeparator key={`sep-${secondToLastIdx}`} />);
 
@@ -89,7 +87,7 @@ export function DashboardHeader() {
       items.push(
         <BreadcrumbItem key={lastIdx}>
           <BreadcrumbPage>{lastItem.title}</BreadcrumbPage>
-        </BreadcrumbItem>
+        </BreadcrumbItem>,
       );
     }
 
@@ -109,9 +107,7 @@ export function DashboardHeader() {
         >
           <LynxLogo className="size-10" />
         </Link>
-        <div>
-          {renderBreadcrumbs()}
-        </div>
+        <div>{renderBreadcrumbs()}</div>
       </div>
       <div className="flex gap-5 items-center">
         <div className="flex gap-2">
@@ -121,10 +117,6 @@ export function DashboardHeader() {
             Search
           </Button>
         </div>
-        <Avatar>
-          <AvatarImage src="https://github.com/shadcn.png" />
-          <AvatarFallback>CN</AvatarFallback>
-        </Avatar>
       </div>
     </header>
   );

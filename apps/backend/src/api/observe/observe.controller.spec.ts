@@ -2,7 +2,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ObserveController } from './observe.controller';
 import { ObserveService } from './observe.service';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
 describe('ObserveController', () => {
   let controller: ObserveController;

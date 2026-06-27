@@ -3,7 +3,7 @@ import {
   OrganizationService,
   UpdateSsoSettingsDto,
 } from './organization.service';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
 @Controller('organization')
 export class OrganizationController {
