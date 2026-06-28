@@ -31,7 +31,7 @@ jobs:
         run: |
           rsync -av --delete \
             --exclude=".git" \
-            apps/docs/ docs-repo/
+            apps/lynx-docs/ docs-repo/
 
       - name: Commit and push
         working-directory: docs-repo
