@@ -1,11 +1,11 @@
 ---
-title: "Agent run 추적"
-description: "사용자 입력, context, decision, memory access, outcome을 수집합니다."
+title: "에이전트 실행 추적"
+description: "사용자 입력, 컨텍스트, 판단, 메모리 접근, 결과를 기록합니다."
 ---
 
 ## Run context
 
-`run()`은 async context를 만듭니다. Callback 내부에서 기록된 모든 Lynx event는 같은 run에 연결됩니다.
+`run()`은 async context를 만듭니다. callback 안에서 기록한 모든 Lynx 이벤트는 같은 run에 연결됩니다.
 
 ```ts
 await lynx.run(
@@ -20,7 +20,7 @@ await lynx.run(
 );
 ```
 
-Agent 이름만 넘길 수도 있습니다.
+Agent 이름만 넘겨도 됩니다.
 
 ```ts
 await lynx.run("SupportAgent", async () => {
@@ -30,7 +30,7 @@ await lynx.run("SupportAgent", async () => {
 
 ## Semantic event
 
-가능하면 generic log보다 semantic helper를 사용하세요.
+가능하면 generic log보다 semantic helper를 사용하세요. 나중에 대시보드와 디버깅 화면에서 훨씬 잘 읽힙니다.
 
 ```ts
 lynx.userInput("구독을 취소하고 싶어요", {
@@ -65,7 +65,7 @@ lynx.outcome({
 
 ## Attributes
 
-`setAttributes()`로 이후 이벤트에 안정적인 request ID나 business ID를 붙일 수 있습니다.
+`setAttributes()`로 이후 이벤트에 공통 request ID나 business ID를 붙일 수 있습니다.
 
 ```ts
 lynx.setAttributes({

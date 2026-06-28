@@ -1,9 +1,9 @@
 ---
 title: "가드레일"
-description: "위험한 도구 호출 전에 로컬 정책을 평가합니다."
+description: "위험한 도구 호출이 실행되기 전에 로컬 정책을 평가합니다."
 ---
 
-`guardTool()`은 tool 함수를 로컬 policy check로 감쌉니다. Policy는 tool call 전에 실행됩니다. Policy가 차단하면 tool 함수는 실행되지 않습니다.
+`guardTool()`은 도구 함수를 로컬 정책 검사로 감쌉니다. 정책은 실제 도구 호출 전에 실행됩니다. 정책이 차단을 결정하면 도구 함수는 실행되지 않습니다.
 
 ```ts
 import { LynxPolicyError } from "@lynx/sdk";
@@ -35,29 +35,29 @@ try {
 }
 ```
 
-## Policy decision
+## 정책 판단
 
-`beforeCall`은 다음 action을 반환할 수 있습니다.
+`beforeCall`은 다음 action 중 하나를 반환할 수 있습니다.
 
 | Action | 동작 |
 | --- | --- |
-| `ALLOW` | Tool을 실행합니다. |
-| `WARN` | Tool을 실행하고 warning을 기록합니다. |
-| `BLOCK` | Tool을 차단하고 `LynxPolicyError`를 던집니다. |
-| `REQUIRE_APPROVAL` | Tool을 차단하고 `LynxPolicyError`를 던집니다. |
-| `REDACT` | 결정을 기록합니다. Redaction은 policy callback에서 적용한 뒤 tool을 허용하세요. |
-| `MODIFY` | 결정을 기록합니다. Modification은 policy callback에서 적용한 뒤 tool을 허용하세요. |
+| `ALLOW` | 도구를 실행합니다. |
+| `WARN` | 도구를 실행하고 warning을 기록합니다. |
+| `BLOCK` | 도구를 차단하고 `LynxPolicyError`를 던집니다. |
+| `REQUIRE_APPROVAL` | 도구를 차단하고 `LynxPolicyError`를 던집니다. |
+| `REDACT` | 판단을 기록합니다. 실제 redaction은 policy callback에서 적용한 뒤 도구에 넘기세요. |
+| `MODIFY` | 판단을 기록합니다. 실제 modification은 policy callback에서 적용한 뒤 도구에 넘기세요. |
 
 ## Failure mode
 
-Policy evaluation 자체가 throw하면 `failureMode`가 동작을 결정합니다.
+정책 평가 자체가 실패하면 `failureMode`에 따라 동작이 달라집니다.
 
 | Failure mode | 동작 |
 | --- | --- |
-| `FAIL_OPEN` | Tool call을 허용하고 policy error를 기록합니다. |
-| `FAIL_CLOSED` | Tool call을 차단합니다. |
-| `REQUIRE_APPROVAL` | `REQUIRE_APPROVAL`로 차단합니다. |
+| `FAIL_OPEN` | 도구 호출은 허용하고 policy error를 기록합니다. |
+| `FAIL_CLOSED` | 도구 호출을 차단합니다. |
+| `REQUIRE_APPROVAL` | `REQUIRE_APPROVAL` 상태로 차단합니다. |
 
 ## 서버 가용성
 
-Guardrail 결정은 로컬에서 일어납니다. Lynx 서버가 내려가도 SDK는 policy를 평가합니다. Policy decision telemetry는 queue에 저장되고 나중에 retry됩니다.
+가드레일 판단은 로컬에서 이루어집니다. Lynx 서버가 내려가도 SDK는 계속 정책을 평가합니다. 정책 판단 데이터는 큐에 보관했다가 나중에 다시 전송합니다.

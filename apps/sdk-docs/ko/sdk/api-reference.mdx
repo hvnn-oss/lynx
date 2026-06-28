@@ -1,11 +1,11 @@
 ---
 title: "API 레퍼런스"
-description: "주요 Lynx SDK class, helper, option 레퍼런스입니다."
+description: "주요 Lynx SDK 클래스, 헬퍼, 옵션을 정리합니다."
 ---
 
 ## `LynxTracer`
 
-주요 telemetry collector입니다.
+Lynx SDK의 중심이 되는 수집기입니다.
 
 ```ts
 import { LynxTracer } from "@lynx/sdk";
@@ -25,7 +25,7 @@ await lynx.run("SupportAgent", async () => {
 
 ### `run(options, callback)`
 
-구조화된 run metadata를 사용합니다.
+구조화된 run metadata를 함께 넘길 수 있습니다.
 
 ```ts
 await lynx.run(
@@ -41,38 +41,38 @@ await lynx.run(
 );
 ```
 
-### Semantic helper
+### Semantic 헬퍼
 
 | Method | 목적 |
 | --- | --- |
 | `userInput(input, metadata?)` | 사용자 입력을 기록합니다. |
-| `decision(reasonOrDecision, options?)` | 에이전트 결정을 기록합니다. |
-| `context(labelOrData, dataOrMetadata?)` | 검색되었거나 구성된 context를 기록합니다. |
-| `memory(label, payload)` | Memory access를 기록합니다. |
-| `outcome(options)` | 최종 session outcome을 기록합니다. |
-| `setAttributes(attributes)` | Run 안의 이후 event에 attribute를 붙입니다. |
-| `annotate(label, payload)` | Custom annotation을 기록합니다. |
-| `log(label, payload)` | Custom context alert를 기록합니다. |
+| `decision(reasonOrDecision, options?)` | 에이전트의 판단을 기록합니다. |
+| `context(labelOrData, dataOrMetadata?)` | 검색되었거나 구성된 컨텍스트를 기록합니다. |
+| `memory(label, payload)` | 메모리 접근을 기록합니다. |
+| `outcome(options)` | 최종 세션 결과를 기록합니다. |
+| `setAttributes(attributes)` | 이후 이벤트에 붙일 공통 attribute를 설정합니다. |
+| `annotate(label, payload)` | 커스텀 annotation을 남깁니다. |
+| `log(label, payload)` | 커스텀 context alert를 기록합니다. |
 
-### Instrumentation helper
-
-| Method | 목적 |
-| --- | --- |
-| `instrumentLLM(client, options?)` | LLM client object를 감쌉니다. |
-| `instrumentTool(name, fn, metadata?)` | Tool 함수를 감쌉니다. |
-| `guardTool(name, fn, options)` | Tool을 로컬 policy evaluation과 함께 감쌉니다. |
-
-### Delivery helper
+### 계측 헬퍼
 
 | Method | 목적 |
 | --- | --- |
-| `flush()` | Queue에 쌓인 telemetry를 즉시 전송합니다. |
-| `shutdown(options?)` | Timer를 정리하고 종료 전 flush합니다. |
-| `getStatus()` | 로컬 queue, circuit breaker, delivery 상태를 읽습니다. |
+| `instrumentLLM(client, options?)` | LLM 클라이언트 객체를 감쌉니다. |
+| `instrumentTool(name, fn, metadata?)` | 도구 함수를 감쌉니다. |
+| `guardTool(name, fn, options)` | 도구 함수를 로컬 정책 평가와 함께 감쌉니다. |
+
+### 전송 헬퍼
+
+| Method | 목적 |
+| --- | --- |
+| `flush()` | 큐에 쌓인 수집 데이터를 즉시 전송합니다. |
+| `shutdown(options?)` | 타이머를 정리하고 종료 전에 flush를 시도합니다. |
+| `getStatus()` | 로컬 큐, 서킷 브레이커, 전송 상태를 읽습니다. |
 
 ## `LynxPolicyError`
 
-`guardTool()`이 tool call을 차단하면 throw됩니다.
+`guardTool()`이 도구 호출을 차단하면 `LynxPolicyError`를 던집니다.
 
 ```ts
 import { LynxPolicyError } from "@lynx/sdk";
@@ -90,4 +90,4 @@ if (error instanceof LynxPolicyError) {
 import { lynx } from "@lynx/sdk";
 ```
 
-간단한 애플리케이션에서는 이 export를 사용하세요. Process, tenant, test마다 명시적인 설정이 필요하면 `new LynxTracer()`를 사용하세요.
+간단한 애플리케이션에서는 이 기본 export를 사용하면 됩니다. 프로세스, tenant, test마다 설정을 명확히 분리해야 한다면 `new LynxTracer()`를 사용하세요.

@@ -1,11 +1,11 @@
 ---
 title: "전송과 안정성"
-description: "Background delivery, flush, timeout, retry, circuit breaker 동작을 이해합니다."
+description: "백그라운드 전송, flush, 타임아웃, 재시도, 서킷 브레이커가 어떻게 동작하는지 설명합니다."
 ---
 
-Lynx는 telemetry 전송 실패가 AI 서비스를 멈추지 않도록 설계되었습니다.
+Lynx는 수집 데이터 전송 실패가 AI 서비스를 멈추지 않도록 설계되어 있습니다. 운영 환경에서는 관측 데이터보다 사용자 요청의 흐름이 먼저입니다.
 
-## 프로덕션 기본값
+## 운영 기본값
 
 | 옵션 | 기본값 |
 | --- | --- |
@@ -20,9 +20,9 @@ Lynx는 telemetry 전송 실패가 AI 서비스를 멈추지 않도록 설계되
 | `circuitBreaker.failureThreshold` | `3` |
 | `circuitBreaker.cooldownMs` | `30000` |
 
-## Background delivery
+## 백그라운드 전송
 
-Background mode에서 `run()`은 event를 로컬에 기록하고 telemetry 전송을 기다리지 않습니다. SDK는 timer, 명시적 `flush()`, 또는 `shutdown()`에서 event를 전송합니다.
+백그라운드 모드에서 `run()`은 이벤트를 로컬에 기록하고 전송을 기다리지 않습니다. SDK는 타이머, 명시적인 `flush()`, 또는 `shutdown()` 시점에 이벤트를 전송합니다.
 
 ```ts
 const lynx = new LynxTracer({
@@ -37,9 +37,9 @@ const lynx = new LynxTracer({
 });
 ```
 
-## Blocking delivery
+## Blocking 전송
 
-현재 request lifecycle 안에서 전송 시도를 해야 하는 환경에서만 blocking mode를 사용하세요.
+현재 요청 안에서 전송 시도까지 끝내야 하는 특수한 환경에서만 blocking mode를 사용하세요.
 
 ```ts
 const lynx = new LynxTracer({
@@ -78,6 +78,6 @@ console.log(status.droppedEvents);
 
 ## Lynx 서버가 내려간 경우
 
-SDK는 network error, timeout, non-2xx response를 catch합니다. 실패한 batch는 메모리 retry queue로 이동합니다. 반복 실패 후 circuit breaker가 열리고 cooldown이 끝날 때까지 전송 시도를 멈춥니다.
+SDK는 네트워크 오류, 타임아웃, 2xx가 아닌 응답을 내부에서 처리합니다. 실패한 batch는 메모리 재시도 큐로 이동합니다. 실패가 반복되면 서킷 브레이커가 열리고, cooldown이 끝날 때까지 전송 시도를 잠시 멈춥니다.
 
-Queue가 `maxQueueSize`에 도달하면 SDK는 `overflowStrategy`에 따라 event를 drop합니다.
+큐가 `maxQueueSize`에 도달하면 SDK는 `overflowStrategy`에 따라 이벤트를 버립니다.

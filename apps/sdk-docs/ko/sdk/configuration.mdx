@@ -22,11 +22,11 @@ const lynx = new LynxTracer({
 
 | 옵션 | 기본값 | 설명 |
 | --- | --- | --- |
-| `sampleRate` | `1` | 수집할 run 비율입니다. `0`부터 `1`까지 설정합니다. |
+| `sampleRate` | `1` | 수집할 run의 비율입니다. `0`부터 `1`까지 설정할 수 있습니다. |
 | `captureInput` | `true` | 입력 payload를 수집합니다. |
 | `captureOutput` | `true` | 출력 payload를 수집합니다. |
 | `captureMode` | `"smart"` | `"full"`, `"metadata-only"`, `"smart"` 중 하나를 사용합니다. |
-| `maxPayloadLength` | `5000` | 직렬화된 payload 최대 길이입니다. |
+| `maxPayloadLength` | `5000` | 직렬화된 payload의 최대 길이입니다. |
 
 ## 전송 옵션
 
@@ -62,27 +62,27 @@ import { lynx } from "@lynx/sdk";
 
 | 변수 | 설명 |
 | --- | --- |
-| `LYNX_CLIENT_ID` | Client 또는 service 식별자입니다. |
-| `LYNX_ENDPOINT` | Lynx server URL입니다. |
-| `LYNX_API_KEY` | Ingestion API key입니다. |
+| `LYNX_CLIENT_ID` | 클라이언트 또는 서비스 이름입니다. |
+| `LYNX_ENDPOINT` | Lynx 서버 URL입니다. |
+| `LYNX_API_KEY` | 수집 API key입니다. |
 | `LYNX_WORKSPACE_ID` | 기본 workspace ID입니다. |
 | `LYNX_AGENT_ID` | 기본 agent ID입니다. |
 | `LYNX_SAMPLE_RATE` | `0`부터 `1`까지의 sampling rate입니다. |
 | `LYNX_CAPTURE_INPUT` | 입력 수집 여부입니다. |
 | `LYNX_CAPTURE_OUTPUT` | 출력 수집 여부입니다. |
 | `LYNX_CAPTURE_MODE` | `full`, `metadata-only`, `smart` 중 하나입니다. |
-| `LYNX_MAX_PAYLOAD_LENGTH` | 최대 payload 문자열 길이입니다. |
+| `LYNX_MAX_PAYLOAD_LENGTH` | payload 최대 문자 수입니다. |
 | `LYNX_APP_VERSION` | 애플리케이션 버전 메타데이터입니다. |
 | `LYNX_DEPLOYMENT_ID` | 배포 ID 메타데이터입니다. |
-| `LYNX_ENVIRONMENT` | 런타임 환경 메타데이터입니다. |
+| `LYNX_ENVIRONMENT` | 실행 환경 메타데이터입니다. |
 | `LYNX_POLICY_VERSION` | 정책 버전 메타데이터입니다. |
 | `LYNX_DELIVERY_MODE` | `BLOCKING` 또는 `BACKGROUND`입니다. |
-| `LYNX_DELIVERY_TIMEOUT_MS` | 전송 timeout입니다. 단위는 millisecond입니다. |
+| `LYNX_DELIVERY_TIMEOUT_MS` | 전송 타임아웃입니다. 단위는 millisecond입니다. |
 | `LYNX_DELIVERY_FLUSH_ON_RUN_END` | `true` 또는 `false`입니다. |
 | `LYNX_DELIVERY_FLUSH_INTERVAL_MS` | 백그라운드 flush 주기입니다. |
-| `LYNX_DELIVERY_BATCH_SIZE` | Blocking mode에서 flush를 유도하는 batch size입니다. |
-| `LYNX_DELIVERY_MAX_QUEUE_SIZE` | queue에 유지할 최대 event 수입니다. |
+| `LYNX_DELIVERY_BATCH_SIZE` | flush를 유도하는 batch size입니다. |
+| `LYNX_DELIVERY_MAX_QUEUE_SIZE` | 큐에 보관할 수 있는 최대 이벤트 수입니다. |
 | `LYNX_DELIVERY_OVERFLOW_STRATEGY` | `DROP_OLDEST` 또는 `DROP_NEWEST`입니다. |
 | `LYNX_CIRCUIT_BREAKER_ENABLED` | `true` 또는 `false`입니다. |
-| `LYNX_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | Circuit breaker를 열기 전 연속 실패 횟수입니다. |
-| `LYNX_CIRCUIT_BREAKER_COOLDOWN_MS` | Circuit breaker cooldown입니다. |
+| `LYNX_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | 서킷 브레이커를 열기 전까지 허용할 연속 실패 횟수입니다. |
+| `LYNX_CIRCUIT_BREAKER_COOLDOWN_MS` | 서킷 브레이커 cooldown 시간입니다. |
