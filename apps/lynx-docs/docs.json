@@ -67,7 +67,12 @@
           },
           {
             "group": "SDK 사용하기",
-            "pages": ["ko/tracing", "ko/instrumentation", "ko/guardrails", "ko/delivery"]
+            "pages": [
+              "ko/tracing",
+              "ko/instrumentation",
+              "ko/guardrails",
+              "ko/delivery"
+            ]
           },
           {
             "group": "레퍼런스",
@@ -78,11 +83,20 @@
     ]
   },
   "contextual": {
-    "options": ["copy", "view", "chatgpt", "claude", "perplexity", "mcp", "cursor", "vscode"]
+    "options": [
+      "copy",
+      "view",
+      "chatgpt",
+      "claude",
+      "perplexity",
+      "mcp",
+      "cursor",
+      "vscode"
+    ]
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/hvnn-me"
+      "github": "https://github.com/hvnn-oss"
     }
   }
 }
