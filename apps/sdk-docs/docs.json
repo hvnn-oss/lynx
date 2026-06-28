@@ -100,7 +100,7 @@
   },
   "fonts": {
     "family": "InterDisplay",
-    "source": "/fonts/InterDisplay-Regular.woff2",
+    "source": "/fonts/PretendardVariable.woff2",
     "format": "woff2",
     "weight": 400
   },
