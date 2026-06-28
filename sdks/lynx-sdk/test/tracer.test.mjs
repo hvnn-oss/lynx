@@ -136,6 +136,167 @@ test("circuit breaker skips immediate telemetry retries after failures", async (
   assert.equal(fetchCount, 1);
 });
 
+test("parallel runs keep AsyncLocalStorage contexts isolated", async () => {
+  const batches = [];
+  globalThis.fetch = async (_url, init) => {
+    batches.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+
+  const tracer = createTracer({ batchSize: 100, flushOnRunEnd: false });
+  await Promise.all([
+    tracer.run(
+      { agentName: "SupportAgent", sessionId: "session-A" },
+      async () => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        tracer.decision("A decision");
+      },
+    ),
+    tracer.run(
+      { agentName: "SupportAgent", sessionId: "session-B" },
+      async () => {
+        tracer.decision("B decision");
+      },
+    ),
+  ]);
+  await tracer.shutdown();
+
+  const events = batches.flat();
+  const decisionA = events.find(
+    (event) => event.payload.reason === "A decision",
+  );
+  const decisionB = events.find(
+    (event) => event.payload.reason === "B decision",
+  );
+  assert.equal(decisionA.sessionId, "session-A");
+  assert.equal(decisionB.sessionId, "session-B");
+});
+
+test("delivery queue drops oldest events when maxQueueSize is reached", async () => {
+  const batches = [];
+  globalThis.fetch = async (_url, init) => {
+    batches.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+
+  const tracer = createTracer({
+    batchSize: 100,
+    flushOnRunEnd: false,
+    delivery: {
+      maxQueueSize: 3,
+      overflowStrategy: "DROP_OLDEST",
+    },
+  });
+
+  await tracer.run("SupportAgent", async () => {
+    tracer.log("first", { index: 1 });
+    tracer.log("second", { index: 2 });
+    tracer.log("third", { index: 3 });
+    tracer.log("fourth", { index: 4 });
+  });
+  await tracer.shutdown();
+
+  const labels = batches
+    .flat()
+    .map((event) => event.label)
+    .filter((label) => ["first", "second", "third", "fourth"].includes(label));
+  assert.deepEqual(labels, ["third", "fourth"]);
+});
+
+test("setAttributes attaches metadata to subsequent events only", async () => {
+  const batches = [];
+  globalThis.fetch = async (_url, init) => {
+    batches.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+
+  const tracer = createTracer({ batchSize: 100, flushOnRunEnd: false });
+  await tracer.run("SupportAgent", async () => {
+    tracer.log("before", { ok: true });
+    tracer.setAttributes({ orderId: "order-1" });
+    tracer.log("after", { ok: true });
+  });
+  await tracer.shutdown();
+
+  const events = batches.flat();
+  assert.equal(
+    events.find((event) => event.label === "before").payload.orderId,
+    undefined,
+  );
+  assert.equal(
+    events.find((event) => event.label === "after").payload.orderId,
+    "order-1",
+  );
+});
+
+test("guardTool supports action decisions and input shortcut", async () => {
+  const batches = [];
+  globalThis.fetch = async (_url, init) => {
+    batches.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+
+  const tracer = createTracer();
+  const refund = tracer.guardTool(
+    "refund",
+    async ({ amount }) => ({ refunded: amount }),
+    {
+      riskLevel: "HIGH",
+      beforeCall: ({ input }) => ({
+        action: input.amount <= 100 ? "ALLOW" : "BLOCK",
+        policyId: "refund-limit",
+        reason: "Refund amount is over the limit",
+      }),
+    },
+  );
+
+  await assert.rejects(
+    () => tracer.run("SupportAgent", () => refund({ amount: 500 })),
+    /Refund amount is over the limit/,
+  );
+  await tracer.shutdown();
+
+  const policy = batches
+    .flat()
+    .find((event) => event.eventType === "POLICY_EVALUATION");
+  assert.equal(policy.payload.action, "BLOCK");
+  assert.equal(policy.payload.input.amount, 500);
+});
+
+test("guardTool applies failureMode when policy evaluation throws", async () => {
+  const batches = [];
+  globalThis.fetch = async (_url, init) => {
+    batches.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+
+  const tracer = createTracer();
+  const riskyTool = tracer.guardTool(
+    "wireTransfer",
+    async () => ({ ok: true }),
+    {
+      riskLevel: "HIGH",
+      failureMode: "FAIL_CLOSED",
+      beforeCall: () => {
+        throw new Error("policy service unavailable");
+      },
+    },
+  );
+
+  await assert.rejects(
+    () => tracer.run("SupportAgent", () => riskyTool({ amount: 500 })),
+    /policy service unavailable/,
+  );
+  await tracer.shutdown();
+
+  const policy = batches
+    .flat()
+    .find((event) => event.eventType === "POLICY_EVALUATION");
+  assert.equal(policy.payload.action, "BLOCK");
+  assert.equal(policy.payload.metadata.policyError, true);
+  assert.equal(policy.payload.metadata.failureMode, "FAIL_CLOSED");
+});
+
 test("semantic APIs capture agent behavior and outcome events", async () => {
   const batches = [];
   globalThis.fetch = async (_url, init) => {

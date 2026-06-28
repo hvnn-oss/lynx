@@ -8,6 +8,8 @@ import {
   LynxGuardToolOptions,
   LynxOutcomeOptions,
   LynxPolicyDecision,
+  LynxPolicyAction,
+  LynxDecisionOptions,
   LynxToolMetadata,
 } from "./types.js";
 import { processPayload } from "../utils/payload.js";
@@ -15,6 +17,7 @@ import { generateTraceId, generateSpanId } from "../utils/id.js";
 import { instrumentLLM, instrumentTool } from "../instrumentation/index.js";
 
 const SDK_VERSION = "1.0.0";
+const DEFAULT_MAX_QUEUE_SIZE = 1000;
 
 function stableHash(data: any): string {
   const str = typeof data === "string" ? data : JSON.stringify(data ?? "");
@@ -50,6 +53,8 @@ function stableHash(data: any): string {
  */
 export class LynxTracer {
   private static readonly storage = new AsyncLocalStorage<LynxContext>();
+  private static readonly instances = new Set<LynxTracer>();
+  private static beforeExitHookRegistered = false;
   private readonly pendingPromises = new Set<Promise<any>>();
   private readonly eventQueue: LynxEventDto[] = [];
   private readonly retryQueue: LynxEventDto[] = [];
@@ -60,6 +65,7 @@ export class LynxTracer {
   private isFlushInProgress = false;
   private consecutiveFlushFailures = 0;
   private circuitOpenedAt = 0;
+  private droppedEventCount = 0;
 
   /**
    * Creates a tracer with the provided Lynx telemetry configuration.
@@ -72,7 +78,12 @@ export class LynxTracer {
    * @param config Runtime configuration for telemetry capture and delivery.
    */
   constructor(private readonly config: LynxConfig) {
-    const interval = this.config.flushIntervalMs ?? 3000;
+    LynxTracer.instances.add(this);
+
+    const interval =
+      this.config.delivery?.flushIntervalMs ??
+      this.config.flushIntervalMs ??
+      3000;
     this.flushTimer = setInterval(() => {
       void this.flush();
     }, interval);
@@ -82,11 +93,21 @@ export class LynxTracer {
     }
 
     // Flush remaining telemetry once when the process is about to exit.
-    if (typeof process !== "undefined") {
+    if (
+      typeof process !== "undefined" &&
+      !LynxTracer.beforeExitHookRegistered
+    ) {
+      LynxTracer.beforeExitHookRegistered = true;
       process.once("beforeExit", () => {
-        void this.shutdown();
+        void LynxTracer.shutdownAll();
       });
     }
+  }
+
+  private static async shutdownAll(): Promise<void> {
+    await Promise.allSettled(
+      Array.from(LynxTracer.instances).map((instance) => instance.shutdown()),
+    );
   }
 
   /**
@@ -99,6 +120,85 @@ export class LynxTracer {
    */
   static getStore(): LynxContext | undefined {
     return LynxTracer.storage.getStore();
+  }
+
+  private getFlushOnRunEnd(): boolean {
+    return (
+      this.config.delivery?.flushOnRunEnd ?? this.config.flushOnRunEnd ?? true
+    );
+  }
+
+  private getRequestTimeoutMs(): number {
+    return (
+      this.config.delivery?.timeoutMs ?? this.config.requestTimeoutMs ?? 5000
+    );
+  }
+
+  private isBackgroundOnly(): boolean {
+    return (
+      this.config.delivery?.mode === "BACKGROUND" ||
+      this.config.backgroundOnly === true
+    );
+  }
+
+  private getMaxQueueSize(): number {
+    return this.config.delivery?.maxQueueSize ?? DEFAULT_MAX_QUEUE_SIZE;
+  }
+
+  private getOverflowStrategy(): "DROP_OLDEST" | "DROP_NEWEST" {
+    return this.config.delivery?.overflowStrategy ?? "DROP_OLDEST";
+  }
+
+  private enqueueEvent(event: LynxEventDto): boolean {
+    const maxQueueSize = this.getMaxQueueSize();
+    if (maxQueueSize <= 0) {
+      this.droppedEventCount += 1;
+      return false;
+    }
+
+    const totalQueued = this.eventQueue.length + this.retryQueue.length;
+    if (totalQueued >= maxQueueSize) {
+      this.droppedEventCount += 1;
+
+      if (this.getOverflowStrategy() === "DROP_NEWEST") {
+        return false;
+      }
+
+      if (this.retryQueue.length > 0) {
+        this.retryQueue.shift();
+      } else {
+        this.eventQueue.shift();
+      }
+    }
+
+    this.eventQueue.push(event);
+    return true;
+  }
+
+  private enqueueRetryEvent(event: LynxEventDto): boolean {
+    const maxQueueSize = this.getMaxQueueSize();
+    if (maxQueueSize <= 0) {
+      this.droppedEventCount += 1;
+      return false;
+    }
+
+    const totalQueued = this.eventQueue.length + this.retryQueue.length;
+    if (totalQueued >= maxQueueSize) {
+      this.droppedEventCount += 1;
+
+      if (this.getOverflowStrategy() === "DROP_NEWEST") {
+        return false;
+      }
+
+      if (this.eventQueue.length > 0) {
+        this.eventQueue.shift();
+      } else {
+        this.retryQueue.shift();
+      }
+    }
+
+    this.retryQueue.push(event);
+    return true;
   }
 
   /**
@@ -156,7 +256,7 @@ export class LynxTracer {
       method: "POST",
       headers,
       body: JSON.stringify(eventsToFlush),
-      signal: AbortSignal.timeout(this.config.requestTimeoutMs ?? 5000),
+      signal: AbortSignal.timeout(this.getRequestTimeoutMs()),
     })
       .then(async (res) => {
         if (!res.ok) {
@@ -189,7 +289,7 @@ export class LynxTracer {
       });
 
     this.pendingPromises.add(promise);
-    if (!this.config.backgroundOnly || this.isShuttingDown) {
+    if (!this.isBackgroundOnly() || this.isShuttingDown) {
       await promise;
     }
   }
@@ -216,10 +316,15 @@ export class LynxTracer {
     if (this.pendingPromises.size > 0) {
       await Promise.allSettled(Array.from(this.pendingPromises));
     }
+    LynxTracer.instances.delete(this);
   }
 
   private isCircuitBreakerEnabled(): boolean {
-    return this.config.circuitBreakerEnabled !== false;
+    return (
+      this.config.circuitBreaker?.enabled ??
+      this.config.circuitBreakerEnabled ??
+      true
+    );
   }
 
   private isCircuitOpen(): boolean {
@@ -229,7 +334,9 @@ export class LynxTracer {
 
     return (
       Date.now() - this.circuitOpenedAt <
-      (this.config.circuitBreakerCooldownMs ?? 30000)
+      (this.config.circuitBreaker?.cooldownMs ??
+        this.config.circuitBreakerCooldownMs ??
+        30000)
     );
   }
 
@@ -247,7 +354,9 @@ export class LynxTracer {
     if (
       this.isCircuitBreakerEnabled() &&
       this.consecutiveFlushFailures >=
-        (this.config.circuitBreakerFailureThreshold ?? 3)
+        (this.config.circuitBreaker?.failureThreshold ??
+          this.config.circuitBreakerFailureThreshold ??
+          3)
     ) {
       this.circuitOpenedAt = Date.now();
       console.warn(
@@ -255,15 +364,11 @@ export class LynxTracer {
       );
     }
 
-    const maxBufferSize = 1000;
-    const totalCount = this.retryQueue.length + events.length;
-    if (totalCount > maxBufferSize) {
-      const discardCount = totalCount - maxBufferSize;
-      this.retryQueue.splice(0, discardCount); // OOM 諛⑹?瑜??꾪빐 ?ㅻ옒???ㅽ뙣 ?대깽????젣
+    for (const event of events) {
+      this.enqueueRetryEvent(event);
     }
-    this.retryQueue.push(...events);
 
-    // 理쒕? 1遺??쒕룄濡?吏??諛깆삤??    this.backoffDelayMs = Math.min(this.backoffDelayMs * 2, 60000);
+    this.backoffDelayMs = Math.min(this.backoffDelayMs * 2, 60000);
     console.warn(
       `[LynxTracer] Offline retry buffer saved ${events.length} events. Total size: ${this.retryQueue.length}. Backing off for ${this.backoffDelayMs}ms.`,
     );
@@ -340,6 +445,7 @@ export class LynxTracer {
       agentId,
       sessionId,
       eventCounts: parentContext?.eventCounts ?? {},
+      attributes: { ...parentContext?.attributes },
     };
 
     console.log(
@@ -395,10 +501,10 @@ export class LynxTracer {
         );
         throw err;
       } finally {
-        if (this.config.flushOnRunEnd !== false) {
+        if (this.getFlushOnRunEnd()) {
           await this.flush();
         }
-        if (!this.config.backgroundOnly && this.pendingPromises.size > 0) {
+        if (!this.isBackgroundOnly() && this.pendingPromises.size > 0) {
           console.log(
             `[LynxTracer] awaiting ${this.pendingPromises.size} pending telemetry transmissions...`,
           );
@@ -455,8 +561,22 @@ export class LynxTracer {
    * @param reason Short explanation of the selected action.
    * @param options Optional structured metadata about the decision.
    */
-  decision(reason: string, options: Record<string, any> = {}): void {
-    this.capture("AGENT_DECISION", "agent.decision", { reason, ...options });
+  decision(
+    reasonOrDecision: string | LynxDecisionOptions,
+    options: Record<string, any> = {},
+  ): void {
+    if (typeof reasonOrDecision === "string") {
+      this.capture("AGENT_DECISION", "agent.decision", {
+        reason: reasonOrDecision,
+        ...options,
+      });
+      return;
+    }
+
+    this.capture("AGENT_DECISION", `agent.decision:${reasonOrDecision.name}`, {
+      ...reasonOrDecision,
+      ...reasonOrDecision.metadata,
+    });
   }
 
   /**
@@ -469,11 +589,49 @@ export class LynxTracer {
    * @param data Context data or a summary of the context.
    * @param metadata Optional metadata such as source, query, score, or label.
    */
-  context(data: any, metadata: Record<string, any> = {}): void {
-    this.capture("CONTEXT_RETRIEVAL", metadata.label ?? "context.retrieval", {
-      data,
-      ...metadata,
-    });
+  context(
+    labelOrData: string | any,
+    dataOrMetadata: any = {},
+    metadata: Record<string, any> = {},
+  ): void {
+    if (typeof labelOrData === "string") {
+      this.capture("CONTEXT_RETRIEVAL", labelOrData, {
+        data: dataOrMetadata,
+        ...metadata,
+      });
+      return;
+    }
+
+    this.capture(
+      "CONTEXT_RETRIEVAL",
+      dataOrMetadata.label ?? "context.retrieval",
+      {
+        data: labelOrData,
+        ...dataOrMetadata,
+      },
+    );
+  }
+
+  /**
+   * Adds attributes to the current run context.
+   *
+   * Attributes are attached to subsequent events captured in the same async
+   * context. Use this for stable request or business identifiers such as
+   * `orderId`, `tenantId`, or `workflowId`.
+   *
+   * @param attributes Key-value attributes to merge into the active context.
+   */
+  setAttributes(attributes: Record<string, any>): void {
+    const context = LynxTracer.storage.getStore();
+    if (!context) {
+      console.warn("[LynxTracer] setAttributes called outside a run context.");
+      return;
+    }
+
+    context.attributes = {
+      ...context.attributes,
+      ...attributes,
+    };
   }
 
   /**
@@ -574,9 +732,11 @@ export class LynxTracer {
     const loopPayload = this.detectLoop(eventType, label, payload, context);
     const processedPayload = processPayload(
       {
+        ...context.attributes,
         ...payload,
         ...loopPayload,
         sdkVersion: SDK_VERSION,
+        droppedEventCount: this.droppedEventCount || undefined,
         appVersion: payload?.appVersion ?? this.config.appVersion,
         deploymentId: payload?.deploymentId ?? this.config.deploymentId,
         environment: payload?.environment ?? this.config.environment,
@@ -605,7 +765,10 @@ export class LynxTracer {
       schemaVersion: "1", // ?ㅽ궎留?踰꾩???異붽?
     };
 
-    this.eventQueue.push(eventDto);
+    const queued = this.enqueueEvent(eventDto);
+    if (!queued) {
+      return;
+    }
 
     if (loopPayload.loopDetected && eventType !== "LOOP_DETECTED") {
       this.captureInternal(
@@ -675,6 +838,60 @@ export class LynxTracer {
     return instrumentTool(this, toolName, fn, metadata);
   }
 
+  private getDefaultFailureMode(
+    riskLevel: LynxToolMetadata["riskLevel"],
+  ): NonNullable<LynxToolMetadata["failureMode"]> {
+    if (riskLevel === "HIGH" || riskLevel === "CRITICAL") {
+      return "FAIL_CLOSED";
+    }
+    if (riskLevel === "MEDIUM") {
+      return "REQUIRE_APPROVAL";
+    }
+    return "FAIL_OPEN";
+  }
+
+  private normalizePolicyDecision(
+    decision: LynxPolicyDecision,
+  ): LynxPolicyDecision & { action: LynxPolicyAction; allow: boolean } {
+    const action =
+      decision.action ?? (decision.allow === false ? "BLOCK" : "ALLOW");
+    const allow =
+      action === "ALLOW" || action === "WARN" || action === "REDACT";
+
+    return {
+      ...decision,
+      action,
+      allow,
+    };
+  }
+
+  private decisionFromPolicyError(
+    err: unknown,
+    options: LynxToolMetadata,
+  ): LynxPolicyDecision & { action: LynxPolicyAction; allow: boolean } {
+    const failureMode =
+      options.failureMode ?? this.getDefaultFailureMode(options.riskLevel);
+    const reason =
+      err instanceof Error ? err.message : "Policy evaluation failed";
+    const action: LynxPolicyAction =
+      failureMode === "FAIL_OPEN"
+        ? "ALLOW"
+        : failureMode === "REQUIRE_APPROVAL"
+          ? "REQUIRE_APPROVAL"
+          : "BLOCK";
+
+    return {
+      action,
+      allow: action === "ALLOW",
+      reason,
+      severity: options.riskLevel,
+      metadata: {
+        policyError: true,
+        failureMode,
+      },
+    };
+  }
+
   /**
    * Wraps a tool with a local policy check before execution.
    *
@@ -696,14 +913,33 @@ export class LynxTracer {
     options: LynxGuardToolOptions<Parameters<T>> = {},
   ): T {
     const guarded = (async (...args: Parameters<T>) => {
-      const decision = options.beforeCall
-        ? await options.beforeCall({ toolName, args, metadata: options })
-        : ({ allow: true } satisfies LynxPolicyDecision);
+      const input = args[0];
+      let decision: LynxPolicyDecision & {
+        action: LynxPolicyAction;
+        allow: boolean;
+      };
+
+      try {
+        decision = this.normalizePolicyDecision(
+          options.beforeCall
+            ? await options.beforeCall({
+                toolName,
+                input,
+                args,
+                metadata: options,
+              })
+            : ({ action: "ALLOW" } satisfies LynxPolicyDecision),
+        );
+      } catch (err) {
+        decision = this.decisionFromPolicyError(err, options);
+      }
 
       this.capture("POLICY_EVALUATION", `policy:${toolName}`, {
         toolName,
-        args: args[0],
-        argsHash: stableHash(args[0]),
+        input,
+        args,
+        argsHash: stableHash(input),
+        action: decision.action,
         allow: decision.allow,
         policyId: decision.policyId,
         policyVersion:
@@ -718,8 +954,10 @@ export class LynxTracer {
       if (!decision.allow) {
         this.capture("POLICY_VIOLATION", `policy.violation:${toolName}`, {
           toolName,
-          args: args[0],
-          argsHash: stableHash(args[0]),
+          input,
+          args,
+          argsHash: stableHash(input),
+          action: decision.action,
           policyId: decision.policyId,
           policyVersion:
             decision.policyVersion ??
@@ -730,7 +968,7 @@ export class LynxTracer {
         });
         this.capture("GUARDRAIL_ACTIVATED", `guardrail.blocked:${toolName}`, {
           toolName,
-          action: "BLOCK",
+          action: decision.action,
           reason: decision.reason,
           riskLevel: decision.severity ?? options.riskLevel,
         });

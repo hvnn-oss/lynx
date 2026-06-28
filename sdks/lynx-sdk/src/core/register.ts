@@ -1,6 +1,5 @@
 import { LynxTracer } from "./tracer.js";
 
-// 환경변수 파싱 헬퍼 함수들
 const parseBool = (val: string | undefined): boolean | undefined => {
   if (val === undefined) return undefined;
   return val.toLowerCase() === "true";
@@ -16,8 +15,8 @@ const parseNum = (val: string | undefined): number | undefined => {
  * Default Lynx tracer instance configured from environment variables.
  *
  * This is the recommended entry point for most applications. Configure it with
- * `LYNX_CLIENT_ID`, `LYNX_CLOUD_URL`, `LYNX_API_KEY`, and optional capture or
- * deployment metadata variables before importing the SDK.
+ * `LYNX_CLIENT_ID`, `LYNX_CLOUD_URL`, `LYNX_API_KEY`, and optional capture,
+ * delivery, and deployment metadata variables before importing the SDK.
  *
  * @example
  * ```ts
@@ -43,6 +42,7 @@ export const lynx = new LynxTracer({
   deploymentId: process.env.LYNX_DEPLOYMENT_ID,
   environment: process.env.LYNX_ENVIRONMENT || process.env.NODE_ENV,
   policyVersion: process.env.LYNX_POLICY_VERSION,
+
   flushOnRunEnd: parseBool(process.env.LYNX_FLUSH_ON_RUN_END),
   requestTimeoutMs: parseNum(process.env.LYNX_REQUEST_TIMEOUT_MS),
   backgroundOnly: parseBool(process.env.LYNX_BACKGROUND_ONLY),
@@ -53,4 +53,20 @@ export const lynx = new LynxTracer({
   circuitBreakerCooldownMs: parseNum(
     process.env.LYNX_CIRCUIT_BREAKER_COOLDOWN_MS,
   ),
+
+  delivery: {
+    mode: process.env.LYNX_DELIVERY_MODE as any,
+    timeoutMs: parseNum(process.env.LYNX_DELIVERY_TIMEOUT_MS),
+    flushOnRunEnd: parseBool(process.env.LYNX_DELIVERY_FLUSH_ON_RUN_END),
+    flushIntervalMs: parseNum(process.env.LYNX_DELIVERY_FLUSH_INTERVAL_MS),
+    maxQueueSize: parseNum(process.env.LYNX_DELIVERY_MAX_QUEUE_SIZE),
+    overflowStrategy: process.env.LYNX_DELIVERY_OVERFLOW_STRATEGY as any,
+  },
+  circuitBreaker: {
+    enabled: parseBool(process.env.LYNX_EXPORTER_CIRCUIT_BREAKER_ENABLED),
+    failureThreshold: parseNum(
+      process.env.LYNX_EXPORTER_CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+    ),
+    cooldownMs: parseNum(process.env.LYNX_EXPORTER_CIRCUIT_BREAKER_COOLDOWN_MS),
+  },
 });

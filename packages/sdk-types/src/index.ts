@@ -11,6 +11,7 @@ export interface LynxContext {
   agentId?: string;
   sessionId?: string;
   eventCounts?: Record<string, number>;
+  attributes?: Record<string, any>;
 }
 
 /**
@@ -114,6 +115,28 @@ export interface LynxConfig {
    * attempt, in milliseconds. Defaults to 30000ms.
    */
   circuitBreakerCooldownMs?: number;
+
+  /**
+   * Structured delivery configuration. Flat delivery fields are still accepted
+   * for backwards compatibility.
+   */
+  delivery?: {
+    mode?: "BLOCKING" | "BACKGROUND";
+    timeoutMs?: number;
+    flushOnRunEnd?: boolean;
+    flushIntervalMs?: number;
+    maxQueueSize?: number;
+    overflowStrategy?: "DROP_OLDEST" | "DROP_NEWEST";
+  };
+
+  /**
+   * Circuit breaker configuration for telemetry export only.
+   */
+  circuitBreaker?: {
+    enabled?: boolean;
+    failureThreshold?: number;
+    cooldownMs?: number;
+  };
 }
 
 /**
@@ -128,6 +151,17 @@ export interface TokenUsage {
 export type LynxSessionStatus = "COMPLETED" | "FAILED" | "CANCELLED";
 export type LynxBusinessStatus = "SUCCEEDED" | "FAILED" | "PARTIAL" | "UNKNOWN";
 export type LynxRiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+export type LynxPolicyAction =
+  | "ALLOW"
+  | "BLOCK"
+  | "WARN"
+  | "REQUIRE_APPROVAL"
+  | "REDACT"
+  | "MODIFY";
+export type LynxGuardFailureMode =
+  | "FAIL_OPEN"
+  | "FAIL_CLOSED"
+  | "REQUIRE_APPROVAL";
 
 export interface LynxOutcomeOptions {
   status: LynxSessionStatus;
@@ -137,17 +171,29 @@ export interface LynxOutcomeOptions {
   metadata?: Record<string, any>;
 }
 
+export interface LynxDecisionOptions {
+  name: string;
+  description?: string;
+  selected?: string;
+  alternatives?: string[];
+  confidence?: number;
+  reason?: string;
+  metadata?: Record<string, any>;
+}
+
 export interface LynxToolMetadata {
   toolVersion?: string;
   sideEffect?: boolean;
   riskLevel?: LynxRiskLevel;
   externalTarget?: string;
   idempotencyKey?: string;
+  failureMode?: LynxGuardFailureMode;
   [key: string]: any;
 }
 
 export interface LynxPolicyDecision {
-  allow: boolean;
+  allow?: boolean;
+  action?: LynxPolicyAction;
   policyId?: string;
   policyVersion?: string;
   reason?: string;
@@ -160,6 +206,7 @@ export interface LynxGuardToolOptions<
 > extends LynxToolMetadata {
   beforeCall?: (context: {
     toolName: string;
+    input: TArgs[0];
     args: TArgs;
     metadata?: LynxToolMetadata;
   }) => LynxPolicyDecision | Promise<LynxPolicyDecision>;
@@ -247,6 +294,7 @@ export interface LynxEventPayloadDto {
   messageCount?: number;
   contextLength?: number;
   sdkVersion?: string;
+  droppedEventCount?: number;
   appVersion?: string;
   deploymentId?: string;
   environment?: string;
