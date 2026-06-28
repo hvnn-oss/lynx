@@ -21,7 +21,7 @@
           "links": [
             {
               "label": "Support",
-              "href": "mailto:help@hvnn.me"
+              "href": "mailto:partners@hvnn.me"
             }
           ],
           "primary": {
@@ -33,15 +33,20 @@
         "groups": [
           {
             "group": "Get started",
-            "pages": ["index", "quickstart", "configuration"]
+            "pages": ["index", "sdk/quickstart", "sdk/configuration"]
           },
           {
             "group": "Use the SDK",
-            "pages": ["tracing", "instrumentation", "guardrails", "delivery"]
+            "pages": [
+              "sdk/tracing",
+              "sdk/instrumentation",
+              "sdk/guardrails",
+              "sdk/delivery"
+            ]
           },
           {
             "group": "Reference",
-            "pages": ["api-reference"]
+            "pages": ["sdk/api-reference"]
           }
         ]
       },
@@ -51,32 +56,32 @@
           "links": [
             {
               "label": "지원",
-              "href": "mailto:help@hvnn.me"
+              "href": "mailto:partners@hvnn.me"
             }
           ],
           "primary": {
             "type": "button",
             "label": "대시보드",
-            "href": "https://app.lynx.dev"
+            "href": "https://app.lynxops.co"
           }
         },
         "groups": [
           {
             "group": "시작하기",
-            "pages": ["ko/index", "ko/quickstart", "ko/configuration"]
+            "pages": ["ko/index", "ko/sdk/quickstart", "ko/sdk/configuration"]
           },
           {
             "group": "SDK 사용하기",
             "pages": [
-              "ko/tracing",
-              "ko/instrumentation",
-              "ko/guardrails",
-              "ko/delivery"
+              "ko/sdk/tracing",
+              "ko/sdk/instrumentation",
+              "ko/sdk/guardrails",
+              "ko/sdk/delivery"
             ]
           },
           {
             "group": "레퍼런스",
-            "pages": ["ko/api-reference"]
+            "pages": ["ko/sdk/api-reference"]
           }
         ]
       }
@@ -85,7 +90,6 @@
   "contextual": {
     "options": [
       "copy",
-      "view",
       "chatgpt",
       "claude",
       "perplexity",

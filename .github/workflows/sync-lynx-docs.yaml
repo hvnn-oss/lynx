@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "apps/lynx-docs/**"
+      - "apps/sdk-docs/**"
 
 jobs:
   sync:
@@ -34,7 +34,7 @@ jobs:
         run: |
           rsync -av --delete \
             --exclude=".git" \
-            apps/lynx-docs/ docs-repo/
+            apps/sdk-docs/ docs-repo/
 
       - name: Commit and push
         working-directory: docs-repo
