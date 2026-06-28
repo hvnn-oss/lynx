@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { LynxTracer } from "../dist/index.js";
+import { LynxPolicyError, LynxTracer } from "../dist/index.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -11,25 +11,29 @@ afterEach(() => {
 function createTracer(overrides = {}) {
   return new LynxTracer({
     clientId: "test-client",
-    lynxCloudUrl: "http://lynx.test",
+    endpoint: "http://lynx.test",
     apiKey: "test-api-key",
-    flushIntervalMs: 60_000,
+    delivery: {
+      flushIntervalMs: 60_000,
+    },
     ...overrides,
   });
 }
 
-test("run flushes queued events even when the batch size is not reached", async () => {
+test("flush sends queued events even when the batch size is not reached", async () => {
   const batches = [];
   globalThis.fetch = async (_url, init) => {
     batches.push(JSON.parse(init.body));
     return new Response(JSON.stringify({ success: true }), { status: 200 });
   };
 
-  const tracer = createTracer({ batchSize: 50 });
+  const tracer = createTracer({
+    delivery: { batchSize: 50, flushIntervalMs: 60_000 },
+  });
   await tracer.run("SupportAgent", async () => {
     tracer.log("decision", { reason: "selected refund workflow" });
   });
-  await tracer.shutdown();
+  await tracer.flush();
 
   assert.equal(batches.length, 1);
   assert.equal(batches[0].length, 3);
@@ -46,7 +50,9 @@ test("shutdown flushes queued events and clears the timer", async () => {
     return new Response(JSON.stringify({ success: true }), { status: 200 });
   };
 
-  const tracer = createTracer({ batchSize: 50 });
+  const tracer = createTracer({
+    delivery: { batchSize: 50, flushIntervalMs: 60_000 },
+  });
   await tracer.run("SupportAgent", async () => {
     tracer.log("manual-note", { ok: true });
   });
@@ -56,14 +62,16 @@ test("shutdown flushes queued events and clears the timer", async () => {
   assert.equal(batches.length, 1);
 });
 
-test("flushOnRunEnd=false keeps telemetry out of the run response path", async () => {
+test("default background delivery keeps telemetry out of the run response path", async () => {
   const batches = [];
   globalThis.fetch = async (_url, init) => {
     batches.push(JSON.parse(init.body));
     return new Response(JSON.stringify({ success: true }), { status: 200 });
   };
 
-  const tracer = createTracer({ batchSize: 50, flushOnRunEnd: false });
+  const tracer = createTracer({
+    delivery: { batchSize: 50, flushIntervalMs: 60_000 },
+  });
   await tracer.run("SupportAgent", async () => {
     tracer.log("manual-note", { ok: true });
   });
@@ -73,37 +81,36 @@ test("flushOnRunEnd=false keeps telemetry out of the run response path", async (
   assert.equal(batches.length, 1);
 });
 
-test("backgroundOnly=true does not wait for telemetry delivery after run", async () => {
-  let resolveFetch;
-  let fetchStarted = false;
+test("background mode does not start HTTP delivery from run", async () => {
+  let fetchCount = 0;
   globalThis.fetch = async () => {
-    fetchStarted = true;
-    return new Promise((resolve) => {
-      resolveFetch = () =>
-        resolve(
-          new Response(JSON.stringify({ success: true }), { status: 200 }),
-        );
-    });
+    fetchCount += 1;
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
   };
 
-  const tracer = createTracer({ batchSize: 50, backgroundOnly: true });
+  const tracer = createTracer({
+    delivery: { mode: "BACKGROUND", batchSize: 50, flushIntervalMs: 60_000 },
+  });
   await tracer.run("SupportAgent", async () => {
     tracer.log("manual-note", { ok: true });
   });
 
-  assert.equal(fetchStarted, true);
-  resolveFetch();
+  assert.equal(fetchCount, 0);
+  await tracer.flush();
+  assert.equal(fetchCount, 1);
   await tracer.shutdown();
 });
 
-test("requestTimeoutMs is passed to telemetry requests", async () => {
+test("delivery.timeoutMs is passed to telemetry requests", async () => {
   let signal;
   globalThis.fetch = async (_url, init) => {
     signal = init.signal;
     return new Response(JSON.stringify({ success: true }), { status: 200 });
   };
 
-  const tracer = createTracer({ requestTimeoutMs: 25 });
+  const tracer = createTracer({
+    delivery: { timeoutMs: 25, flushIntervalMs: 60_000 },
+  });
   await tracer.run("SupportAgent", async () => {
     tracer.log("manual-note", { ok: true });
   });
@@ -120,9 +127,15 @@ test("circuit breaker skips immediate telemetry retries after failures", async (
   };
 
   const tracer = createTracer({
-    batchSize: 50,
-    circuitBreakerFailureThreshold: 1,
-    circuitBreakerCooldownMs: 60_000,
+    delivery: {
+      batchSize: 50,
+      flushOnRunEnd: true,
+      flushIntervalMs: 60_000,
+    },
+    circuitBreaker: {
+      failureThreshold: 1,
+      cooldownMs: 60_000,
+    },
   });
 
   await tracer.run("SupportAgent", async () => {
@@ -143,7 +156,9 @@ test("parallel runs keep AsyncLocalStorage contexts isolated", async () => {
     return new Response(JSON.stringify({ success: true }), { status: 200 });
   };
 
-  const tracer = createTracer({ batchSize: 100, flushOnRunEnd: false });
+  const tracer = createTracer({
+    delivery: { batchSize: 100, flushIntervalMs: 60_000 },
+  });
   await Promise.all([
     tracer.run(
       { agentName: "SupportAgent", sessionId: "session-A" },
@@ -180,9 +195,9 @@ test("delivery queue drops oldest events when maxQueueSize is reached", async ()
   };
 
   const tracer = createTracer({
-    batchSize: 100,
-    flushOnRunEnd: false,
     delivery: {
+      batchSize: 100,
+      flushIntervalMs: 60_000,
       maxQueueSize: 3,
       overflowStrategy: "DROP_OLDEST",
     },
@@ -210,7 +225,9 @@ test("setAttributes attaches metadata to subsequent events only", async () => {
     return new Response(JSON.stringify({ success: true }), { status: 200 });
   };
 
-  const tracer = createTracer({ batchSize: 100, flushOnRunEnd: false });
+  const tracer = createTracer({
+    delivery: { batchSize: 100, flushIntervalMs: 60_000 },
+  });
   await tracer.run("SupportAgent", async () => {
     tracer.log("before", { ok: true });
     tracer.setAttributes({ orderId: "order-1" });
@@ -252,7 +269,13 @@ test("guardTool supports action decisions and input shortcut", async () => {
 
   await assert.rejects(
     () => tracer.run("SupportAgent", () => refund({ amount: 500 })),
-    /Refund amount is over the limit/,
+    (error) => {
+      assert.ok(error instanceof LynxPolicyError);
+      assert.equal(error.action, "BLOCK");
+      assert.equal(error.policyId, "refund-limit");
+      assert.match(error.message, /Refund amount is over the limit/);
+      return true;
+    },
   );
   await tracer.shutdown();
 
@@ -261,6 +284,52 @@ test("guardTool supports action decisions and input shortcut", async () => {
     .find((event) => event.eventType === "POLICY_EVALUATION");
   assert.equal(policy.payload.action, "BLOCK");
   assert.equal(policy.payload.input.amount, 500);
+});
+
+test("getStatus reports queue and circuit breaker state", async () => {
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ success: false }), { status: 200 });
+
+  const tracer = createTracer({
+    delivery: {
+      batchSize: 50,
+      flushIntervalMs: 60_000,
+    },
+    circuitBreaker: {
+      failureThreshold: 1,
+      cooldownMs: 60_000,
+    },
+  });
+
+  await tracer.run("SupportAgent", async () => {
+    tracer.log("manual-note", { ok: false });
+  });
+  await tracer.flush();
+
+  const status = tracer.getStatus();
+  assert.equal(status.queueSize, 3);
+  assert.equal(status.circuitState, "OPEN");
+  assert.equal(status.lastError, "batch_failed");
+  await tracer.shutdown({ timeoutMs: 20 });
+});
+
+test("shutdown can return after the configured timeout", async () => {
+  globalThis.fetch = async () => new Promise(() => {});
+
+  const tracer = createTracer({
+    delivery: {
+      batchSize: 50,
+      flushIntervalMs: 60_000,
+    },
+  });
+
+  await tracer.run("SupportAgent", async () => {
+    tracer.log("manual-note", { ok: true });
+  });
+
+  const start = Date.now();
+  await tracer.shutdown({ timeoutMs: 20 });
+  assert.equal(Date.now() - start < 500, true);
 });
 
 test("guardTool applies failureMode when policy evaluation throws", async () => {

@@ -11,6 +11,8 @@ import {
   LynxPolicyAction,
   LynxDecisionOptions,
   LynxToolMetadata,
+  LynxShutdownOptions,
+  LynxStatus,
 } from "./types.js";
 import { processPayload } from "../utils/payload.js";
 import { generateTraceId, generateSpanId } from "../utils/id.js";
@@ -18,6 +20,24 @@ import { instrumentLLM, instrumentTool } from "../instrumentation/index.js";
 
 const SDK_VERSION = "1.0.0";
 const DEFAULT_MAX_QUEUE_SIZE = 1000;
+const DEFAULT_BATCH_SIZE = 50;
+
+export class LynxPolicyError extends Error {
+  constructor(
+    message: string,
+    public readonly action: Extract<
+      LynxPolicyAction,
+      "BLOCK" | "REQUIRE_APPROVAL"
+    >,
+    public readonly policyId?: string,
+    public readonly severity?: LynxToolMetadata["riskLevel"],
+    public readonly reason?: string,
+    public readonly metadata?: Record<string, any>,
+  ) {
+    super(message);
+    this.name = "LynxPolicyError";
+  }
+}
 
 function stableHash(data: any): string {
   const str = typeof data === "string" ? data : JSON.stringify(data ?? "");
@@ -41,7 +61,7 @@ function stableHash(data: any): string {
  * ```ts
  * const tracer = new LynxTracer({
  *   clientId: "support-service",
- *   lynxCloudUrl: "https://lynx.example.com",
+ *   endpoint: "https://lynx.example.com",
  *   apiKey: process.env.LYNX_API_KEY,
  * });
  *
@@ -66,6 +86,8 @@ export class LynxTracer {
   private consecutiveFlushFailures = 0;
   private circuitOpenedAt = 0;
   private droppedEventCount = 0;
+  private lastDeliveryAt?: string;
+  private lastError?: string;
 
   /**
    * Creates a tracer with the provided Lynx telemetry configuration.
@@ -80,12 +102,9 @@ export class LynxTracer {
   constructor(private readonly config: LynxConfig) {
     LynxTracer.instances.add(this);
 
-    const interval =
-      this.config.delivery?.flushIntervalMs ??
-      this.config.flushIntervalMs ??
-      3000;
+    const interval = this.config.delivery?.flushIntervalMs ?? 3000;
     this.flushTimer = setInterval(() => {
-      void this.flush();
+      void this.flushInternal(false);
     }, interval);
     // Do not keep the Node.js process alive only for telemetry flushing.
     if (this.flushTimer && typeof this.flushTimer.unref === "function") {
@@ -123,22 +142,15 @@ export class LynxTracer {
   }
 
   private getFlushOnRunEnd(): boolean {
-    return (
-      this.config.delivery?.flushOnRunEnd ?? this.config.flushOnRunEnd ?? true
-    );
+    return this.config.delivery?.flushOnRunEnd ?? false;
   }
 
   private getRequestTimeoutMs(): number {
-    return (
-      this.config.delivery?.timeoutMs ?? this.config.requestTimeoutMs ?? 5000
-    );
+    return this.config.delivery?.timeoutMs ?? 1000;
   }
 
   private isBackgroundOnly(): boolean {
-    return (
-      this.config.delivery?.mode === "BACKGROUND" ||
-      this.config.backgroundOnly === true
-    );
+    return (this.config.delivery?.mode ?? "BACKGROUND") === "BACKGROUND";
   }
 
   private getMaxQueueSize(): number {
@@ -207,11 +219,15 @@ export class LynxTracer {
    * Events are sent in a single batch request. If delivery fails, the batch is
    * moved into an in-memory retry queue and future flushes are delayed with
    * exponential backoff. Normal applications usually do not need to call this
-   * manually because the tracer flushes on an interval and after each `run()`.
+   * manually because the tracer flushes on an interval.
    *
    * @returns A promise that resolves after the current flush attempt completes.
    */
   async flush(): Promise<void> {
+    await this.flushInternal(true);
+  }
+
+  private async flushInternal(waitForDelivery: boolean): Promise<void> {
     if (this.eventQueue.length === 0 && this.retryQueue.length === 0) {
       return;
     }
@@ -239,7 +255,7 @@ export class LynxTracer {
     }
 
     this.isFlushInProgress = true;
-    const url = `${this.config.lynxCloudUrl}/openapi/v1/events/batch`;
+    const url = `${this.config.endpoint}/openapi/v1/events/batch`;
     console.log(
       `[LynxTracer] flushing ${eventsToFlush.length} events to: ${url}`,
     );
@@ -289,9 +305,28 @@ export class LynxTracer {
       });
 
     this.pendingPromises.add(promise);
-    if (!this.isBackgroundOnly() || this.isShuttingDown) {
+    if (waitForDelivery || this.isShuttingDown) {
       await promise;
     }
+  }
+
+  /**
+   * Returns a lightweight snapshot of SDK delivery health.
+   *
+   * Use this for readiness diagnostics, operational dashboards, or tests. The
+   * status reflects local SDK state only; it does not perform a network request.
+   *
+   * @returns Current queue, circuit breaker, and delivery state.
+   */
+  getStatus(): LynxStatus {
+    return {
+      queueSize: this.eventQueue.length + this.retryQueue.length,
+      droppedEvents: this.droppedEventCount,
+      circuitState: this.getCircuitState(),
+      lastDeliveryAt: this.lastDeliveryAt,
+      lastError: this.lastError,
+      pendingTransmissions: this.pendingPromises.size,
+    };
   }
 
   /**
@@ -303,7 +338,7 @@ export class LynxTracer {
    *
    * @returns A promise that resolves after pending telemetry transmissions settle.
    */
-  async shutdown(): Promise<void> {
+  async shutdown(options: LynxShutdownOptions = {}): Promise<void> {
     if (this.isShuttingDown) return;
 
     this.isShuttingDown = true;
@@ -312,19 +347,26 @@ export class LynxTracer {
       this.flushTimer = null;
     }
 
-    await this.flush();
-    if (this.pendingPromises.size > 0) {
-      await Promise.allSettled(Array.from(this.pendingPromises));
+    const shutdownWork = async () => {
+      await this.flushInternal(true);
+      if (this.pendingPromises.size > 0) {
+        await Promise.allSettled(Array.from(this.pendingPromises));
+      }
+    };
+
+    if (options.timeoutMs !== undefined) {
+      await Promise.race([
+        shutdownWork(),
+        new Promise<void>((resolve) => setTimeout(resolve, options.timeoutMs)),
+      ]);
+    } else {
+      await shutdownWork();
     }
     LynxTracer.instances.delete(this);
   }
 
   private isCircuitBreakerEnabled(): boolean {
-    return (
-      this.config.circuitBreaker?.enabled ??
-      this.config.circuitBreakerEnabled ??
-      true
-    );
+    return this.config.circuitBreaker?.enabled ?? true;
   }
 
   private isCircuitOpen(): boolean {
@@ -334,10 +376,18 @@ export class LynxTracer {
 
     return (
       Date.now() - this.circuitOpenedAt <
-      (this.config.circuitBreaker?.cooldownMs ??
-        this.config.circuitBreakerCooldownMs ??
-        30000)
+      (this.config.circuitBreaker?.cooldownMs ?? 30000)
     );
+  }
+
+  private getCircuitState(): LynxStatus["circuitState"] {
+    if (!this.isCircuitBreakerEnabled()) {
+      return "DISABLED";
+    }
+    if (this.circuitOpenedAt === 0) {
+      return "CLOSED";
+    }
+    return this.isCircuitOpen() ? "OPEN" : "HALF_OPEN";
   }
 
   private handleSuccessfulFlush(): void {
@@ -345,6 +395,8 @@ export class LynxTracer {
     this.backoffDelayMs = 1000;
     this.consecutiveFlushFailures = 0;
     this.circuitOpenedAt = 0;
+    this.lastDeliveryAt = new Date().toISOString();
+    this.lastError = undefined;
   }
 
   private handleFailedEvents(events: LynxEventDto[], reason: string): void {
@@ -354,15 +406,14 @@ export class LynxTracer {
     if (
       this.isCircuitBreakerEnabled() &&
       this.consecutiveFlushFailures >=
-        (this.config.circuitBreaker?.failureThreshold ??
-          this.config.circuitBreakerFailureThreshold ??
-          3)
+        (this.config.circuitBreaker?.failureThreshold ?? 3)
     ) {
       this.circuitOpenedAt = Date.now();
       console.warn(
         `[LynxTracer] Telemetry circuit breaker opened after ${this.consecutiveFlushFailures} consecutive failures. Reason: ${reason}.`,
       );
     }
+    this.lastError = reason;
 
     for (const event of events) {
       this.enqueueRetryEvent(event);
@@ -502,7 +553,7 @@ export class LynxTracer {
         throw err;
       } finally {
         if (this.getFlushOnRunEnd()) {
-          await this.flush();
+          await this.flushInternal(!this.isBackgroundOnly());
         }
         if (!this.isBackgroundOnly() && this.pendingPromises.size > 0) {
           console.log(
@@ -783,9 +834,9 @@ export class LynxTracer {
       );
     }
 
-    const maxBatchSize = this.config.batchSize ?? 50;
-    if (this.eventQueue.length >= maxBatchSize) {
-      void this.flush();
+    const maxBatchSize = this.config.delivery?.batchSize ?? DEFAULT_BATCH_SIZE;
+    if (!this.isBackgroundOnly() && this.eventQueue.length >= maxBatchSize) {
+      void this.flushInternal(false);
     }
   }
 
@@ -855,8 +906,7 @@ export class LynxTracer {
   ): LynxPolicyDecision & { action: LynxPolicyAction; allow: boolean } {
     const action =
       decision.action ?? (decision.allow === false ? "BLOCK" : "ALLOW");
-    const allow =
-      action === "ALLOW" || action === "WARN" || action === "REDACT";
+    const allow = action === "ALLOW" || action === "WARN";
 
     return {
       ...decision,
@@ -972,8 +1022,13 @@ export class LynxTracer {
           reason: decision.reason,
           riskLevel: decision.severity ?? options.riskLevel,
         });
-        throw new Error(
+        throw new LynxPolicyError(
           decision.reason || `Lynx guard blocked tool call: ${toolName}`,
+          decision.action === "REQUIRE_APPROVAL" ? "REQUIRE_APPROVAL" : "BLOCK",
+          decision.policyId,
+          decision.severity ?? options.riskLevel,
+          decision.reason,
+          decision.metadata,
         );
       }
 

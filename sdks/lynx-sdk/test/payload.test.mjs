@@ -5,9 +5,11 @@ import { LynxTracer } from "../dist/index.js";
 function createTracer(overrides = {}) {
   return new LynxTracer({
     clientId: "test-client",
-    lynxCloudUrl: "http://lynx.test",
+    endpoint: "http://lynx.test",
     apiKey: "test-api-key",
-    flushIntervalMs: 60_000,
+    delivery: {
+      flushIntervalMs: 60_000,
+    },
     ...overrides,
   });
 }
@@ -36,7 +38,9 @@ test("payload processing masks sensitive values by key name", async () => {
     });
     await tracer.shutdown();
 
-    const event = batches.flat().find((item) => item.label === "sensitive-input");
+    const event = batches
+      .flat()
+      .find((item) => item.label === "sensitive-input");
     assert.equal(event.payload.input.password, "[MASKED_SECRET]");
     assert.equal(event.payload.input.apiKey, "[MASKED_SECRET]");
     assert.equal(event.payload.input.nested.refreshToken, "[MASKED_SECRET]");
@@ -58,8 +62,8 @@ test("metadata-only mode keeps hashes and removes raw input/output", async () =>
     const tracer = createTracer({ captureMode: "metadata-only" });
     await tracer.run("SupportAgent", async () => {
       tracer.log("metadata-only", {
-      input: "hello user@example.com",
-      output: "done",
+        input: "hello user@example.com",
+        output: "done",
       });
     });
     await tracer.shutdown();
