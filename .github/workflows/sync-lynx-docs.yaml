@@ -36,9 +36,14 @@ jobs:
 
       - name: Commit and push
         working-directory: docs-repo
+        env:
+          APP_TOKEN: ${{ steps.get_workflow_token.outputs.token }}
         run: |
           git config user.name "lynxops"
           git config user.email "bot@lynxops.co"
+
+          git config --local http.https://github.com "AUTHORIZATION: basic $(echo -n "x-access-token:$APP_TOKEN" | base64)"
+
           git add -A
 
           if git diff --cached --quiet; then
@@ -46,7 +51,5 @@ jobs:
           fi
 
           git commit -m "docs: sync from monorepo"
-
-          git remote set-url origin "https://x-access-token:${{ steps.get_workflow_token.outputs.token }}@://github.com"
 
           git push origin main
