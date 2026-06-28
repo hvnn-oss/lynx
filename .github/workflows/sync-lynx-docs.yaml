@@ -13,11 +13,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Generate GitHub App Token
+        id: get_workflow_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.DOCS_APP_ID }}
+          private-key: ${{ secrets.DOCS_APP_PRIVATE_KEY }}
+
       - name: Checkout docs repository
         uses: actions/checkout@v4
         with:
           repository: hvnn-oss/lynx-docs
-          token: ${{ secrets.DOCS_REPO_TOKEN }}
+          token: ${{ steps.get_workflow_token.outputs.token }}
           path: docs-repo
 
       - name: Sync documentation
