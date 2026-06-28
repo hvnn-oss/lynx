@@ -1,0 +1,41 @@
+name: Sync Lynx docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/lynx-docs/**"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout docs repository
+        uses: actions/checkout@v4
+        with:
+          repository: hvnn-oss/lynx-docs
+          token: ${{ secrets.DOCS_REPO_TOKEN }}
+          path: docs-repo
+
+      - name: Sync documentation
+        run: |
+          rsync -av --delete \
+            --exclude=".git" \
+            apps/docs/ docs-repo/
+
+      - name: Commit and push
+        working-directory: docs-repo
+        run: |
+          git config user.name "lynxops"
+          git config user.email "bot@lynxops.co"
+          git add -A
+
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+
+          git commit -m "docs: sync from monorepo"
+          git push
