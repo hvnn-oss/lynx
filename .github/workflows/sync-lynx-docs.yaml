@@ -26,6 +26,7 @@ jobs:
           repository: hvnn-oss/lynx-docs
           token: ${{ steps.get_workflow_token.outputs.token }}
           path: docs-repo
+          persist-credentials: false
 
       - name: Sync documentation
         run: |
@@ -45,4 +46,7 @@ jobs:
           fi
 
           git commit -m "docs: sync from monorepo"
-          git push
+
+          git remote set-url origin "https://x-access-token:${{ steps.get_workflow_token.outputs.token }}@://github.com"
+
+          git push origin main
