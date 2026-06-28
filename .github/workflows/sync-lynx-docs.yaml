@@ -20,6 +20,8 @@ jobs:
         with:
           app-id: ${{ secrets.DOCS_APP_ID }}
           private-key: ${{ secrets.DOCS_APP_PRIVATE_KEY }}
+          owner: hvnn-oss
+          repositories: lynx-docs
 
       - name: Checkout docs repository
         uses: actions/checkout@v4
@@ -37,7 +39,7 @@ jobs:
       - name: Commit and push
         working-directory: docs-repo
         run: |
-          git config user.name "lynxops"
+          git config user.name "haven-docs-automation[bot]"
           git config user.email "bot@lynxops.co"
 
           git add -A
