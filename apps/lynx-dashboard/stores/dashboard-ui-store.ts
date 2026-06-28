@@ -17,17 +17,26 @@ interface PanelMetric {
 }
 
 interface DashboardUiState {
-  selectedWorkspaceId: string;
+  selectedWorkspaceId: string | undefined;
   activeSection: DashboardSection;
   panelMetrics: Record<string, PanelMetric>;
-  setSelectedWorkspaceId: (workspaceId: string) => void;
+  setSelectedWorkspaceId: (workspaceId: string | undefined) => void;
   setActiveSection: (section: DashboardSection) => void;
   markPanelRendered: (panelId: string, renderedAt?: number) => void;
   markPanelDataReady: (panelId: string, dataUpdatedAt: number) => void;
 }
 
-const defaultWorkspaceId =
-  process.env.NEXT_PUBLIC_DEFAULT_WORKSPACE_ID ?? "ws-1";
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function normalizeWorkspaceId(workspaceId: unknown): string | undefined {
+  if (typeof workspaceId !== "string") return undefined;
+  return uuidPattern.test(workspaceId) ? workspaceId : undefined;
+}
+
+const defaultWorkspaceId = normalizeWorkspaceId(
+  process.env.NEXT_PUBLIC_DEFAULT_WORKSPACE_ID,
+);
 
 export const useDashboardUiStore = create<DashboardUiState>()(
   persist(
@@ -69,6 +78,18 @@ export const useDashboardUiStore = create<DashboardUiState>()(
         selectedWorkspaceId: state.selectedWorkspaceId,
         activeSection: state.activeSection,
       }),
+      version: 1,
+      migrate: (persistedState) => {
+        if (!persistedState || typeof persistedState !== "object") {
+          return persistedState;
+        }
+
+        const state = persistedState as Partial<DashboardUiState>;
+        return {
+          ...state,
+          selectedWorkspaceId: normalizeWorkspaceId(state.selectedWorkspaceId),
+        };
+      },
     },
   ),
 );

@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString } from "class-validator";
+import { IsNotEmpty, IsUUID } from "class-validator";
 
 /**
  * 대시보드 조회를 위한 기본 쿼리 파라미터 DTO입니다.
@@ -6,7 +6,7 @@ import { IsNotEmpty, IsString } from "class-validator";
  */
 export class DashboardQueryDto {
   @IsNotEmpty()
-  @IsString()
+  @IsUUID()
   workspaceId!: string;
 }
 

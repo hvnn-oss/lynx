@@ -8,6 +8,8 @@ allowBuilds:
   "@swc/core": false
   bcrypt: false
   esbuild: false
+  keytar: false
   msw: false
+  puppeteer: false
   sharp: false
   unrs-resolver: false

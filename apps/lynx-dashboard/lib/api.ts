@@ -64,10 +64,7 @@ api.interceptors.response.use(
 
 export default api;
 
-export type QueryParams = Record<
-  string,
-  string | number | boolean | null | undefined
->;
+export type QueryParams = object;
 
 export async function getJson<T>(
   url: string,
@@ -85,10 +82,12 @@ export async function postJson<TResponse, TBody>(
   return response.data;
 }
 
-function cleanParams(params?: QueryParams): QueryParams | undefined {
+function cleanParams(
+  params?: QueryParams,
+): Record<string, unknown> | undefined {
   if (!params) return undefined;
 
   return Object.fromEntries(
     Object.entries(params).filter(([, value]) => value !== undefined),
-  ) as QueryParams;
+  );
 }

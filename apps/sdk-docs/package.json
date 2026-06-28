@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "mint dev",
+    "dev": "mint dev --port 3002",
     "build": "mint build",
     "lint": "mint broken-links",
     "check-types": "mint broken-links"

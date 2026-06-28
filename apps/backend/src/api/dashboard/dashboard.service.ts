@@ -105,7 +105,7 @@ export class DashboardService {
 
       // 데이터가 없을 경우 데모 모드로 전환
       if (totalRuns === 0) {
-        return this.getDemoHomeMetrics();
+        return this.getEmptyHomeMetrics();
       }
 
       const previousMetrics = (await sessionRepository
@@ -322,7 +322,6 @@ export class DashboardService {
         `Failed to load database overview metrics: ${error.message}`,
         error.stack,
       );
-      if (this.shouldUseDemoFallback()) return this.getDemoHomeMetrics();
       throw err;
     }
   }
@@ -345,7 +344,7 @@ export class DashboardService {
       });
 
       if (sessionCount === 0) {
-        return this.getDemoStatusMetrics();
+        return this.getEmptyStatusMetrics();
       }
 
       const agentSessionsRaw = (await sessionRepository
@@ -482,10 +481,8 @@ export class DashboardService {
           critical,
           offline,
         },
-        modelStatus:
-          modelStatus.length > 0 ? modelStatus : this.getDefaultModelStatus(),
-        toolStatus:
-          toolStatus.length > 0 ? toolStatus : this.getDefaultToolStatus(),
+        modelStatus,
+        toolStatus,
         recentOutages,
         slo: {
           metricName: 'Success Rate',
@@ -500,7 +497,6 @@ export class DashboardService {
         `Failed to load system status metrics: ${error.message}`,
         error.stack,
       );
-      if (this.shouldUseDemoFallback()) return this.getDemoStatusMetrics();
       throw err;
     }
   }
@@ -521,7 +517,7 @@ export class DashboardService {
       });
 
       if (sessionCount === 0) {
-        return this.getDemoMetricsData();
+        return this.getEmptyMetricsData();
       }
 
       const runMetricsRaw = (await sessionRepository
@@ -631,14 +627,14 @@ export class DashboardService {
 
       return {
         runMetrics: {
-          runsPerSec: runsPerSec > 0 ? runsPerSec : 0.15,
-          tokensPerSec: tokensPerSec > 0 ? tokensPerSec : 250.0,
-          requestsPerSec: requestsPerSec > 0 ? requestsPerSec : 0.35,
+          runsPerSec,
+          tokensPerSec,
+          requestsPerSec,
         },
         latencyDistribution: {
-          p50: p50 > 0 ? p50 : 1.8,
-          p95: p95 > 0 ? p95 : 4.5,
-          p99: p99 > 0 ? p99 : 9.2,
+          p50,
+          p95,
+          p99,
         },
         tokenMetrics: {
           inputTokens: parseInt(tokensRaw?.input ?? '0', 10),
@@ -649,10 +645,7 @@ export class DashboardService {
           llmError: llmErrors,
           validationError: validationErrors,
         },
-        agentComparison:
-          agentComparison.length > 0
-            ? agentComparison
-            : this.getDefaultAgentComparison(),
+        agentComparison,
       };
     } catch (err: unknown) {
       const error = err as Error;
@@ -660,7 +653,6 @@ export class DashboardService {
         `Failed to load metrics data: ${error.message}`,
         error.stack,
       );
-      if (this.shouldUseDemoFallback()) return this.getDemoMetricsData();
       throw err;
     }
   }
@@ -680,7 +672,7 @@ export class DashboardService {
       });
 
       if (sessionCount === 0) {
-        return this.getDemoUsageMetrics();
+        return this.getEmptyUsageMetrics();
       }
 
       const topAgentsRaw = (await sessionRepository
@@ -781,14 +773,11 @@ export class DashboardService {
       }));
 
       return {
-        topAgents:
-          topAgents.length > 0 ? topAgents : this.getDefaultTopAgents(),
+        topAgents,
         heatmap,
         userUsage,
-        toolUsage:
-          toolUsage.length > 0 ? toolUsage : this.getDefaultToolUsage(),
-        modelUsage:
-          modelUsage.length > 0 ? modelUsage : this.getDefaultModelUsage(),
+        toolUsage,
+        modelUsage,
       };
     } catch (err: unknown) {
       const error = err as Error;
@@ -796,7 +785,6 @@ export class DashboardService {
         `Failed to load usage metrics: ${error.message}`,
         error.stack,
       );
-      if (this.shouldUseDemoFallback()) return this.getDemoUsageMetrics();
       throw err;
     }
   }
@@ -823,7 +811,7 @@ export class DashboardService {
       });
 
       if (sessionCount === 0) {
-        return this.getDemoCostMetrics();
+        return this.getEmptyCostMetrics();
       }
 
       const costTodayRaw = (await sessionRepository
@@ -938,25 +926,21 @@ export class DashboardService {
 
       return {
         totalCost: {
-          today: costToday > 0 ? parseFloat(costToday.toFixed(2)) : 12.5,
-          thisWeek: costWeek > 0 ? parseFloat(costWeek.toFixed(2)) : 84.1,
-          thisMonth: costMonth > 0 ? parseFloat(costMonth.toFixed(2)) : 320.5,
+          today: parseFloat(costToday.toFixed(2)),
+          thisWeek: parseFloat(costWeek.toFixed(2)),
+          thisMonth: parseFloat(costMonth.toFixed(2)),
         },
         costBreakdown: {
-          model: parseFloat(modelCost.toFixed(2)) || 84.22,
-          tool: parseFloat(toolCost.toFixed(2)) || 32.1,
-          storage: parseFloat(storageCost.toFixed(2)) || 11.1,
+          model: parseFloat(modelCost.toFixed(2)),
+          tool: parseFloat(toolCost.toFixed(2)),
+          storage: parseFloat(storageCost.toFixed(2)),
         },
-        costByAgent:
-          costByAgent.length > 0 ? costByAgent : this.getDefaultCostByAgent(),
+        costByAgent,
         costPerRun: {
-          average: avgCost > 0 ? avgCost : 0.0125,
+          average: avgCost,
           timeSeries,
         },
-        costAnomalies:
-          costAnomalies.length > 0
-            ? costAnomalies
-            : this.getDefaultCostAnomalies(),
+        costAnomalies,
       };
     } catch (err: unknown) {
       const error = err as Error;
@@ -964,7 +948,6 @@ export class DashboardService {
         `Failed to load cost metrics: ${error.message}`,
         error.stack,
       );
-      if (this.shouldUseDemoFallback()) return this.getDemoCostMetrics();
       throw err;
     }
   }
@@ -985,7 +968,7 @@ export class DashboardService {
       });
 
       if (sessionCount === 0) {
-        return this.getDemoInsights();
+        return this.getEmptyInsights();
       }
 
       const insights: DashboardInsightsDto['insights'] = [];
@@ -1054,7 +1037,7 @@ export class DashboardService {
       }
 
       if (insights.length === 0) {
-        return this.getDemoInsights();
+        return this.getEmptyInsights();
       }
 
       return { insights };
@@ -1064,16 +1047,110 @@ export class DashboardService {
         `Failed to load automated insights: ${error.message}`,
         error.stack,
       );
-      if (this.shouldUseDemoFallback()) return this.getDemoInsights();
       throw err;
     }
   }
 
-  private shouldUseDemoFallback() {
-    return process.env.NODE_ENV !== 'production';
+  private getEmptyHomeMetrics(): DashboardHomeMetricsDto {
+    return {
+      kpis: {
+        agentRuns: { value: 0, change: 0, trend: 'up' },
+        successRate: { value: 0, change: 0, trend: 'up' },
+        avgLatency: { value: 0, change: 0, trend: 'up' },
+        cost: { value: 0, change: 0, trend: 'up' },
+        activeAgents: { value: 0 },
+        criticalAlerts: { value: 0, change: 0, trend: 'up' },
+      },
+      healthScores: [],
+      runVolume: [],
+      failureTrend: [],
+      recentIssues: [],
+    };
   }
 
-  private getDemoHomeMetrics() {
+  private getEmptyStatusMetrics(): DashboardStatusMetricsDto {
+    return {
+      agentStatus: {
+        healthy: 0,
+        warning: 0,
+        critical: 0,
+        offline: 0,
+      },
+      modelStatus: [],
+      toolStatus: [],
+      recentOutages: [],
+      slo: {
+        metricName: 'Success Rate',
+        target: 95,
+        current: 0,
+        status: 'NON_COMPLIANT',
+      },
+    };
+  }
+
+  private getEmptyMetricsData(): DashboardMetricsDataDto {
+    return {
+      runMetrics: {
+        runsPerSec: 0,
+        tokensPerSec: 0,
+        requestsPerSec: 0,
+      },
+      latencyDistribution: {
+        p50: 0,
+        p95: 0,
+        p99: 0,
+      },
+      tokenMetrics: {
+        inputTokens: 0,
+        outputTokens: 0,
+      },
+      errorRate: {
+        toolError: 0,
+        llmError: 0,
+        validationError: 0,
+      },
+      agentComparison: [],
+    };
+  }
+
+  private getEmptyUsageMetrics(): DashboardUsageMetricsDto {
+    return {
+      topAgents: [],
+      heatmap: [],
+      userUsage: [],
+      toolUsage: [],
+      modelUsage: [],
+    };
+  }
+
+  private getEmptyCostMetrics(): DashboardCostMetricsDto {
+    return {
+      totalCost: {
+        today: 0,
+        thisWeek: 0,
+        thisMonth: 0,
+      },
+      costBreakdown: {
+        model: 0,
+        tool: 0,
+        storage: 0,
+      },
+      costByAgent: [],
+      costPerRun: {
+        average: 0,
+        timeSeries: [],
+      },
+      costAnomalies: [],
+    };
+  }
+
+  private getEmptyInsights(): DashboardInsightsDto {
+    return {
+      insights: [],
+    };
+  }
+
+  getDemoHomeMetrics(): DashboardHomeMetricsDto {
     const hours = Array.from({ length: 24 }).map((_, i) => {
       const d = new Date();
       d.setHours(d.getHours() - (23 - i));
@@ -1156,7 +1233,7 @@ export class DashboardService {
     ];
   }
 
-  private getDemoStatusMetrics() {
+  getDemoStatusMetrics(): DashboardStatusMetricsDto {
     return {
       agentStatus: {
         healthy: 12,
@@ -1199,7 +1276,7 @@ export class DashboardService {
     ];
   }
 
-  private getDemoMetricsData() {
+  getDemoMetricsData(): DashboardMetricsDataDto {
     return {
       runMetrics: {
         runsPerSec: 15.4,
@@ -1248,7 +1325,7 @@ export class DashboardService {
     ];
   }
 
-  private getDemoUsageMetrics() {
+  getDemoUsageMetrics(): DashboardUsageMetricsDto {
     const heatmap: Array<{ day: number; hour: number; count: number }> = [];
     for (let day = 0; day < 7; day++) {
       for (let hour = 0; hour < 24; hour++) {
@@ -1292,7 +1369,7 @@ export class DashboardService {
     ];
   }
 
-  private getDemoCostMetrics() {
+  getDemoCostMetrics(): DashboardCostMetricsDto {
     return {
       totalCost: {
         today: 127.42,
@@ -1321,7 +1398,7 @@ export class DashboardService {
     };
   }
 
-  private getDemoInsights() {
+  getDemoInsights(): DashboardInsightsDto {
     return {
       insights: [
         {

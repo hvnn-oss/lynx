@@ -14,6 +14,8 @@ import { EventModule } from './api/event/event.module';
 import { ObserveModule } from './api/observe/observe.module';
 import { DashboardModule } from './api/dashboard/dashboard.module';
 import { DebugModule } from './api/debug/debug.module';
+import { DemoModule } from './api/demo/demo.module';
+import { WorkspaceModule } from './api/workspace/workspace.module';
 
 function parseBooleanEnv(
   value: string | boolean | undefined,
@@ -71,6 +73,8 @@ function parseBooleanEnv(
     ObserveModule,
     DashboardModule,
     DebugModule,
+    DemoModule,
+    WorkspaceModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -8,6 +8,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   Min,
   ValidateNested,
@@ -35,7 +36,7 @@ export type DebugTrendDirection = "up" | "down" | "flat";
  */
 export class DebugWorkspaceQueryDto {
   @IsNotEmpty()
-  @IsString()
+  @IsUUID()
   workspaceId!: string;
 }
 
@@ -219,7 +220,7 @@ export class DebugReplayOverrideDto {
  */
 export class DebugReproduceRequestDto {
   @IsNotEmpty()
-  @IsString()
+  @IsUUID()
   workspaceId!: string;
 
   @IsOptional()
@@ -247,7 +248,7 @@ export class DebugReproduceRequestDto {
 
 export class DebugPolicySimulationRequestDto {
   @IsNotEmpty()
-  @IsString()
+  @IsUUID()
   workspaceId!: string;
 
   @IsNotEmpty()
