@@ -98,6 +98,12 @@
       "vscode"
     ]
   },
+  "fonts": {
+    "family": "InterDisplay",
+    "source": "/fonts/InterDisplay-Regular.woff2",
+    "format": "woff2",
+    "weight": 400
+  },
   "footer": {
     "socials": {
       "github": "https://github.com/hvnn-oss"
