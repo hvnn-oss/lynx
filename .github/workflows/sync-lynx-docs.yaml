@@ -11,7 +11,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout monorepo
+        uses: actions/checkout@v4
 
       - name: Generate GitHub App Token
         id: get_workflow_token
@@ -26,7 +27,6 @@ jobs:
           repository: hvnn-oss/lynx-docs
           token: ${{ steps.get_workflow_token.outputs.token }}
           path: docs-repo
-          persist-credentials: false
 
       - name: Sync documentation
         run: |
@@ -36,20 +36,16 @@ jobs:
 
       - name: Commit and push
         working-directory: docs-repo
-        env:
-          APP_TOKEN: ${{ steps.get_workflow_token.outputs.token }}
         run: |
           git config user.name "lynxops"
           git config user.email "bot@lynxops.co"
 
-          git config --local http.https://github.com "AUTHORIZATION: basic $(echo -n "x-access-token:$APP_TOKEN" | base64)"
-
           git add -A
 
           if git diff --cached --quiet; then
+            echo "No documentation changes to commit."
             exit 0
           fi
 
           git commit -m "docs: sync from monorepo"
-
           git push origin main
