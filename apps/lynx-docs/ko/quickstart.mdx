@@ -1,0 +1,76 @@
+---
+title: "빠른 시작"
+description: "Lynx SDK를 설치하고 첫 AI 에이전트 실행을 수집합니다."
+---
+
+## 준비물
+
+- Node.js 18 이상
+- Lynx ingestion endpoint
+- Lynx API key
+
+## 설치
+
+```bash
+npm install @lynx/sdk
+```
+
+다른 패키지 매니저도 사용할 수 있습니다.
+
+```bash
+pnpm add @lynx/sdk
+yarn add @lynx/sdk
+```
+
+## Tracer 만들기
+
+```ts
+import { LynxTracer } from "@lynx/sdk";
+
+const lynx = new LynxTracer({
+  clientId: "support-api",
+  endpoint: "https://lynx.example.com",
+  apiKey: process.env.LYNX_API_KEY,
+});
+```
+
+## Agent run 추적하기
+
+에이전트 workflow를 `run()`으로 감싸세요. Callback 안에서 수집되는 이벤트는 같은 run context에 연결됩니다.
+
+```ts
+await lynx.run("SupportAgent", async () => {
+  lynx.userInput("환불하고 싶어요", { userId: "usr_123" });
+  lynx.setAttributes({ orderId: "order_123" });
+
+  lynx.context("refund-policy", {
+    refundWindowDays: 30,
+  });
+
+  lynx.decision({
+    name: "select_refund_workflow",
+    selected: "refund",
+    confidence: 0.82,
+    reason: "주문이 환불 가능 기간 안에 있습니다",
+  });
+
+  lynx.outcome({
+    status: "COMPLETED",
+    businessStatus: "SUCCEEDED",
+  });
+});
+```
+
+## 안전하게 종료하기
+
+서버에서는 process shutdown hook에서 `shutdown()`을 호출하세요. Serverless 함수에서는 handler가 끝나기 전에 마지막 flush가 필요할 때 호출하면 됩니다.
+
+```ts
+process.on("SIGTERM", () => {
+  void lynx.shutdown({ timeoutMs: 1000 });
+});
+```
+
+<Note>
+  기본 전송 모드는 background-only입니다. Telemetry 전송 실패가 agent workflow의 예외로 전파되지 않습니다.
+</Note>

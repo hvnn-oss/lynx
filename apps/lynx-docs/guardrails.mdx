@@ -1,0 +1,63 @@
+---
+title: "Guardrails"
+description: "Evaluate local policy before risky tool calls run."
+---
+
+`guardTool()` wraps a tool function with a local policy check. The policy runs before the tool call. If the policy blocks, the tool function is not executed.
+
+```ts
+import { LynxPolicyError } from "@lynx/sdk";
+
+const refund = lynx.guardTool(
+  "refund",
+  async ({ amount }: { amount: number }) => {
+    return { refunded: amount };
+  },
+  {
+    riskLevel: "HIGH",
+    sideEffect: true,
+    failureMode: "FAIL_CLOSED",
+    beforeCall: ({ input }) => ({
+      action: input.amount <= 100 ? "ALLOW" : "BLOCK",
+      policyId: "refund-limit",
+      reason: "Refund amount is over the limit",
+      severity: "HIGH",
+    }),
+  },
+);
+
+try {
+  await lynx.run("SupportAgent", () => refund({ amount: 500 }));
+} catch (error) {
+  if (error instanceof LynxPolicyError) {
+    console.log(error.action, error.policyId, error.reason);
+  }
+}
+```
+
+## Policy decisions
+
+`beforeCall` can return these actions:
+
+| Action | Behavior |
+| --- | --- |
+| `ALLOW` | Run the tool. |
+| `WARN` | Run the tool and record the warning. |
+| `BLOCK` | Block the tool and throw `LynxPolicyError`. |
+| `REQUIRE_APPROVAL` | Block the tool and throw `LynxPolicyError`. |
+| `REDACT` | Record the decision. Apply redaction in your policy callback before allowing the tool. |
+| `MODIFY` | Record the decision. Apply modifications in your policy callback before allowing the tool. |
+
+## Failure modes
+
+If policy evaluation itself throws, `failureMode` decides what happens.
+
+| Failure mode | Behavior |
+| --- | --- |
+| `FAIL_OPEN` | Allow the tool call and record a policy error. |
+| `FAIL_CLOSED` | Block the tool call. |
+| `REQUIRE_APPROVAL` | Block with `REQUIRE_APPROVAL`. |
+
+## Server availability
+
+Guardrail decisions are local. If the Lynx server is unavailable, the SDK still evaluates the policy. Telemetry for the policy decision is queued and retried later.

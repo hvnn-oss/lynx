@@ -1,0 +1,65 @@
+---
+title: "계측"
+description: "애플리케이션 흐름을 바꾸지 않고 LLM client와 tool 함수를 감쌉니다."
+---
+
+## LLM client 계측
+
+`instrumentLLM()`은 원본 client와 같은 public shape를 가진 proxy를 반환합니다. 알려진 generation method는 자동으로 수집됩니다.
+
+```ts
+const openai = lynx.instrumentLLM(new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+}));
+
+await lynx.run("SupportAgent", async () => {
+  const response = await openai.chat.completions.create({
+    model: "gpt-4.1-mini",
+    messages: [{ role: "user", content: "이 티켓을 요약해줘" }],
+  });
+
+  lynx.decision("support triage를 위해 티켓을 요약했습니다");
+  return response;
+});
+```
+
+Lynx는 model metadata, latency, 가능한 경우 token usage, span ID, error를 기록합니다.
+
+## Tool 계측
+
+일반 telemetry에는 `instrumentTool()`을 사용하세요. Policy check까지 필요하면 `guardTool()`을 사용하세요.
+
+```ts
+const searchOrders = lynx.instrumentTool(
+  "search_orders",
+  async ({ userId }: { userId: string }) => {
+    return db.orders.findMany({ where: { userId } });
+  },
+  {
+    toolVersion: "2026-06-01",
+    sideEffect: false,
+    riskLevel: "LOW",
+  },
+);
+
+await lynx.run("SupportAgent", async () => {
+  const orders = await searchOrders({ userId: "usr_123" });
+  lynx.context("orders", orders);
+});
+```
+
+## Custom LLM interception
+
+Client가 표준 method 이름을 쓰지 않는다면 custom rule을 넘기세요.
+
+```ts
+const model = lynx.instrumentLLM(customClient, {
+  modelLabel: "custom.llm",
+  customRule: {
+    isTargetMethod: (path) => path.join(".") === "responses.generate",
+    extractInput: (args) => args[0],
+    extractOutput: (result) => result.text,
+    extractUsage: (result) => result.usage,
+  },
+});
+```

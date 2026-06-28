@@ -1,0 +1,65 @@
+---
+title: "Instrumentation"
+description: "Wrap LLM clients and tool functions without changing your application flow."
+---
+
+## Instrument an LLM client
+
+`instrumentLLM()` returns a proxy with the same public shape as the original client. Known generation methods are captured automatically.
+
+```ts
+const openai = lynx.instrumentLLM(new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+}));
+
+await lynx.run("SupportAgent", async () => {
+  const response = await openai.chat.completions.create({
+    model: "gpt-4.1-mini",
+    messages: [{ role: "user", content: "Summarize this ticket" }],
+  });
+
+  lynx.decision("summarized ticket for support triage");
+  return response;
+});
+```
+
+Lynx records model metadata, latency, token usage when available, span IDs, and errors.
+
+## Instrument a tool
+
+Use `instrumentTool()` for normal telemetry. Use `guardTool()` when you also need a policy check.
+
+```ts
+const searchOrders = lynx.instrumentTool(
+  "search_orders",
+  async ({ userId }: { userId: string }) => {
+    return db.orders.findMany({ where: { userId } });
+  },
+  {
+    toolVersion: "2026-06-01",
+    sideEffect: false,
+    riskLevel: "LOW",
+  },
+);
+
+await lynx.run("SupportAgent", async () => {
+  const orders = await searchOrders({ userId: "usr_123" });
+  lynx.context("orders", orders);
+});
+```
+
+## Custom LLM interception
+
+If your client uses non-standard method names, pass a custom rule.
+
+```ts
+const model = lynx.instrumentLLM(customClient, {
+  modelLabel: "custom.llm",
+  customRule: {
+    isTargetMethod: (path) => path.join(".") === "responses.generate",
+    extractInput: (args) => args[0],
+    extractOutput: (result) => result.text,
+    extractUsage: (result) => result.usage,
+  },
+});
+```

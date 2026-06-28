@@ -1,0 +1,41 @@
+---
+title: "Lynx SDK"
+description: "TypeScript 애플리케이션에서 AI 에이전트 행동, 도구 호출, 가드레일, 실행 결과를 추적합니다."
+---
+
+Lynx SDK는 AI 에이전트가 왜 특정 행동을 했는지 이해할 수 있게 해줍니다. 실행 컨텍스트, LLM 호출, 도구 사용, 정책 결정, 메모리 접근, 최종 결과를 수집해 Lynx 서버로 전송합니다.
+
+Lynx는 단순 로그가 아니라 프로덕션 AI 서비스의 관측 가능성을 위해 설계되었습니다.
+
+<CardGroup cols={2}>
+  <Card title="몇 분 안에 시작" icon="rocket" href="/ko/quickstart">
+    SDK를 설치하고 tracer를 만든 뒤 첫 에이전트 실행을 기록합니다.
+  </Card>
+  <Card title="프로덕션 안전 전송" icon="shield-check" href="/ko/delivery">
+    백그라운드 전송, timeout, retry, circuit breaker로 서비스 흐름을 보호합니다.
+  </Card>
+  <Card title="로컬 가드레일" icon="lock" href="/ko/guardrails">
+    Lynx 서버 상태와 무관하게 위험한 도구 호출을 로컬에서 차단합니다.
+  </Card>
+  <Card title="LLM과 도구 계측" icon="sparkles" href="/ko/instrumentation">
+    LLM client와 tool 함수를 span 단위 telemetry로 감쌉니다.
+  </Card>
+</CardGroup>
+
+## Lynx가 수집하는 정보
+
+- Agent run, session, workspace 메타데이터
+- 사용자 입력과 구조화된 context
+- 에이전트 결정과 그 이유
+- LLM 호출, 모델 메타데이터, latency, token usage, error
+- Tool call, tool result, side effect, risk metadata
+- 로컬 policy evaluation과 guardrail activation
+- Memory access와 session outcome
+
+## Lynx 서버가 내려가면 어떻게 되나요?
+
+기본 설정에서는 AI 서비스가 계속 실행됩니다. SDK는 telemetry를 메모리에 queueing하고, 전송 실패 시 retry하며, 반복 실패 후 circuit breaker를 엽니다. Guardrail 결정은 계속 로컬에서 수행됩니다.
+
+<Tip>
+  Lynx telemetry는 관측을 위한 것이며 기본적으로 애플리케이션 실행을 막지 않습니다. 필요한 환경에서는 blocking flush를 명시적으로 켤 수 있습니다.
+</Tip>

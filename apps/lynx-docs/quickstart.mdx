@@ -1,47 +1,76 @@
 ---
 title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+description: "Install Lynx SDK and capture your first AI agent run."
 ---
-
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
 
 ## Prerequisites
 
-Before you begin, you must have:
+- Node.js 18 or later
+- A Lynx ingestion endpoint
+- A Lynx API key
 
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
+## Install
 
-## Get started
+```bash
+npm install @lynx/sdk
+```
 
-<Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+You can also use your package manager of choice:
 
-    ```bash
-    npm install your-package
-    ```
-  </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+```bash
+pnpm add @lynx/sdk
+yarn add @lynx/sdk
+```
 
-    ```bash
-    your-cli init
-    ```
-  </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+## Create a tracer
 
-    ```bash
-    your-cli start
-    ```
-  </Step>
-</Steps>
+```ts
+import { LynxTracer } from "@lynx/sdk";
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+const lynx = new LynxTracer({
+  clientId: "support-api",
+  endpoint: "https://lynx.example.com",
+  apiKey: process.env.LYNX_API_KEY,
+});
+```
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>
+## Trace an agent run
+
+Wrap your agent workflow in `run()`. Events captured inside the callback are attached to the same run context.
+
+```ts
+await lynx.run("SupportAgent", async () => {
+  lynx.userInput("I want a refund", { userId: "usr_123" });
+  lynx.setAttributes({ orderId: "order_123" });
+
+  lynx.context("refund-policy", {
+    refundWindowDays: 30,
+  });
+
+  lynx.decision({
+    name: "select_refund_workflow",
+    selected: "refund",
+    confidence: 0.82,
+    reason: "The order is inside the refund window",
+  });
+
+  lynx.outcome({
+    status: "COMPLETED",
+    businessStatus: "SUCCEEDED",
+  });
+});
+```
+
+## Shut down gracefully
+
+For servers, call `shutdown()` in your process shutdown hook. For serverless functions, call it before the handler exits if you need a best-effort final flush.
+
+```ts
+process.on("SIGTERM", () => {
+  void lynx.shutdown({ timeoutMs: 1000 });
+});
+```
+
+<Note>
+  The default delivery mode is background-only. Telemetry failures do not throw from your agent workflow.
+</Note>

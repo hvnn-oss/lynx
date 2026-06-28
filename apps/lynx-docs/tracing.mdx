@@ -1,0 +1,86 @@
+---
+title: "Tracing agent runs"
+description: "Capture user input, context, decisions, memory access, and outcomes."
+---
+
+## Run context
+
+`run()` creates an async context. Every Lynx event recorded inside the callback is attached to the same run.
+
+```ts
+await lynx.run(
+  {
+    agentName: "SupportAgent",
+    workspaceId: "workspace_123",
+    sessionId: "session_123",
+  },
+  async () => {
+    lynx.userInput("Where is my order?");
+  },
+);
+```
+
+You can also pass only an agent name.
+
+```ts
+await lynx.run("SupportAgent", async () => {
+  lynx.userInput("Where is my order?");
+});
+```
+
+## Semantic events
+
+Use semantic helpers instead of generic logs when possible.
+
+```ts
+lynx.userInput("I want to cancel my subscription", {
+  userId: "usr_123",
+});
+
+lynx.context("account-state", {
+  plan: "pro",
+  renewalDate: "2026-07-01",
+});
+
+lynx.decision({
+  name: "choose_retention_offer",
+  selected: "discount_offer",
+  alternatives: ["cancel_now", "pause_subscription"],
+  confidence: 0.74,
+  reason: "User has high engagement and renewal is soon",
+});
+
+lynx.memory("customer-profile", {
+  operation: "read",
+  key: "usr_123",
+  hit: true,
+});
+
+lynx.outcome({
+  status: "COMPLETED",
+  businessStatus: "SUCCEEDED",
+  reason: "Customer accepted the retention offer",
+});
+```
+
+## Attributes
+
+Use `setAttributes()` to attach stable request or business IDs to later events.
+
+```ts
+lynx.setAttributes({
+  tenantId: "tenant_123",
+  orderId: "order_123",
+});
+```
+
+## Custom annotations
+
+Use `annotate()` or `log()` for custom breadcrumbs that do not fit a semantic helper.
+
+```ts
+lynx.annotate("routing.selected", {
+  queue: "billing",
+  score: 0.91,
+});
+```

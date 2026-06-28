@@ -1,0 +1,14 @@
+{
+  "name": "lynx-docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "mint dev",
+    "build": "mint build",
+    "lint": "mint broken-links",
+    "check-types": "mint broken-links"
+  },
+  "devDependencies": {
+    "mint": "latest"
+  }
+}

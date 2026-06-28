@@ -1,0 +1,88 @@
+---
+title: "Configuration"
+description: "Configure capture, delivery, metadata, and environment variables."
+---
+
+## Basic configuration
+
+```ts
+import { LynxTracer } from "@lynx/sdk";
+
+const lynx = new LynxTracer({
+  clientId: "support-api",
+  endpoint: "https://lynx.example.com",
+  apiKey: process.env.LYNX_API_KEY,
+  workspaceId: "workspace_123",
+  environment: "production",
+  appVersion: "1.4.0",
+});
+```
+
+## Capture options
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `sampleRate` | `1` | Fraction of runs to capture, from `0` to `1`. |
+| `captureInput` | `true` | Capture input payloads. |
+| `captureOutput` | `true` | Capture output payloads. |
+| `captureMode` | `"smart"` | Use `"full"`, `"metadata-only"`, or `"smart"`. |
+| `maxPayloadLength` | `5000` | Maximum serialized payload length. |
+
+## Delivery options
+
+```ts
+const lynx = new LynxTracer({
+  clientId: "support-api",
+  endpoint: "https://lynx.example.com",
+  apiKey: process.env.LYNX_API_KEY,
+  delivery: {
+    mode: "BACKGROUND",
+    timeoutMs: 1000,
+    flushOnRunEnd: false,
+    flushIntervalMs: 3000,
+    batchSize: 50,
+    maxQueueSize: 1000,
+    overflowStrategy: "DROP_OLDEST",
+  },
+  circuitBreaker: {
+    enabled: true,
+    failureThreshold: 3,
+    cooldownMs: 30000,
+  },
+});
+```
+
+## Environment variables
+
+The default `lynx` export reads configuration from environment variables.
+
+```ts
+import { lynx } from "@lynx/sdk";
+```
+
+| Variable | Description |
+| --- | --- |
+| `LYNX_CLIENT_ID` | Client or service identifier. |
+| `LYNX_ENDPOINT` | Lynx server URL. |
+| `LYNX_API_KEY` | API key for ingestion. |
+| `LYNX_WORKSPACE_ID` | Default workspace ID. |
+| `LYNX_AGENT_ID` | Default agent ID. |
+| `LYNX_SAMPLE_RATE` | Sampling rate from `0` to `1`. |
+| `LYNX_CAPTURE_INPUT` | Whether to capture inputs. |
+| `LYNX_CAPTURE_OUTPUT` | Whether to capture outputs. |
+| `LYNX_CAPTURE_MODE` | `full`, `metadata-only`, or `smart`. |
+| `LYNX_MAX_PAYLOAD_LENGTH` | Maximum payload string length. |
+| `LYNX_APP_VERSION` | Application version metadata. |
+| `LYNX_DEPLOYMENT_ID` | Deployment ID metadata. |
+| `LYNX_ENVIRONMENT` | Runtime environment metadata. |
+| `LYNX_POLICY_VERSION` | Policy version metadata. |
+| `LYNX_DELIVERY_MODE` | `BLOCKING` or `BACKGROUND`. |
+| `LYNX_DELIVERY_TIMEOUT_MS` | Delivery timeout in milliseconds. |
+| `LYNX_DELIVERY_FLUSH_ON_RUN_END` | `true` or `false`. |
+| `LYNX_DELIVERY_FLUSH_INTERVAL_MS` | Background flush interval. |
+| `LYNX_DELIVERY_BATCH_SIZE` | Batch size for blocking mode triggers. |
+| `LYNX_DELIVERY_MAX_QUEUE_SIZE` | Maximum queued event count. |
+| `LYNX_DELIVERY_OVERFLOW_STRATEGY` | `DROP_OLDEST` or `DROP_NEWEST`. |
+| `LYNX_CIRCUIT_BREAKER_ENABLED` | `true` or `false`. |
+| `LYNX_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | Failure count before opening the breaker. |
+| `LYNX_CIRCUIT_BREAKER_COOLDOWN_MS` | Breaker cooldown in milliseconds. |

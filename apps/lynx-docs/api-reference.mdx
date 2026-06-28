@@ -1,0 +1,93 @@
+---
+title: "API reference"
+description: "Reference for the primary Lynx SDK classes, helpers, and options."
+---
+
+## `LynxTracer`
+
+Main telemetry collector.
+
+```ts
+import { LynxTracer } from "@lynx/sdk";
+
+const lynx = new LynxTracer(config);
+```
+
+### `run(agentName, callback)`
+
+Runs code inside a Lynx trace context.
+
+```ts
+await lynx.run("SupportAgent", async () => {
+  lynx.userInput("Help me reset my password");
+});
+```
+
+### `run(options, callback)`
+
+Use structured run metadata.
+
+```ts
+await lynx.run(
+  {
+    agentName: "SupportAgent",
+    workspaceId: "workspace_123",
+    agentId: "agent_123",
+    sessionId: "session_123",
+  },
+  async () => {
+    // agent work
+  },
+);
+```
+
+### Semantic helpers
+
+| Method | Purpose |
+| --- | --- |
+| `userInput(input, metadata?)` | Capture user input. |
+| `decision(reasonOrDecision, options?)` | Capture an agent decision. |
+| `context(labelOrData, dataOrMetadata?)` | Capture retrieved or constructed context. |
+| `memory(label, payload)` | Capture memory access. |
+| `outcome(options)` | Capture final session outcome. |
+| `setAttributes(attributes)` | Attach attributes to later events in the run. |
+| `annotate(label, payload)` | Capture a custom annotation. |
+| `log(label, payload)` | Capture a custom context alert. |
+
+### Instrumentation helpers
+
+| Method | Purpose |
+| --- | --- |
+| `instrumentLLM(client, options?)` | Wrap an LLM client object. |
+| `instrumentTool(name, fn, metadata?)` | Wrap a tool function. |
+| `guardTool(name, fn, options)` | Wrap a tool with local policy evaluation. |
+
+### Delivery helpers
+
+| Method | Purpose |
+| --- | --- |
+| `flush()` | Send queued telemetry now. |
+| `shutdown(options?)` | Clear timers and flush before exit. |
+| `getStatus()` | Read local queue, circuit breaker, and delivery status. |
+
+## `LynxPolicyError`
+
+Thrown when `guardTool()` blocks a tool call.
+
+```ts
+import { LynxPolicyError } from "@lynx/sdk";
+
+if (error instanceof LynxPolicyError) {
+  console.log(error.action);
+}
+```
+
+## `lynx`
+
+Default tracer configured from environment variables.
+
+```ts
+import { lynx } from "@lynx/sdk";
+```
+
+Use this for simple applications. Use `new LynxTracer()` when you need explicit config per process, tenant, or test.

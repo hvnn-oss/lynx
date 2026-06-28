@@ -15,7 +15,7 @@ import NoDataScreen from "@/components/layouts/dashboard/no-data";
 export function DashboardHomeView() {
   const { query, data } = useDashboardHomeData();
 
-  return <NoDataScreen />;
+  // return <NoDataScreen />;
 
   return (
     <main className="space-y-6 p-6">

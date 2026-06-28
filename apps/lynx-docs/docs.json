@@ -1,69 +1,88 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Mintlify Starter Kit",
+  "name": "Lynx",
   "colors": {
     "primary": "#334CFF",
-    "light": "#537efc",
+    "light": "#537EFC",
     "dark": "#313494"
   },
   "favicon": "/favicon.svg",
-  "navigation": {
-    "pages": [
-      {
-        "group": "Getting Started",
-        "pages": ["index", "quickstart"]
-      }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
   "logo": {
     "light": "/logo/light.svg",
     "dark": "/logo/dark.svg"
   },
-  "navbar": {
-    "links": [
+  "navigation": {
+    "languages": [
       {
-        "label": "Help",
-        "href": "mailto:help@hvnn.me"
+        "language": "en",
+        "default": true,
+        "navbar": {
+          "links": [
+            {
+              "label": "Support",
+              "href": "mailto:help@hvnn.me"
+            }
+          ],
+          "primary": {
+            "type": "button",
+            "label": "Dashboard",
+            "href": "https://app.lynx.dev"
+          }
+        },
+        "groups": [
+          {
+            "group": "Get started",
+            "pages": ["index", "quickstart", "configuration"]
+          },
+          {
+            "group": "Use the SDK",
+            "pages": ["tracing", "instrumentation", "guardrails", "delivery"]
+          },
+          {
+            "group": "Reference",
+            "pages": ["api-reference"]
+          }
+        ]
+      },
+      {
+        "language": "ko",
+        "navbar": {
+          "links": [
+            {
+              "label": "지원",
+              "href": "mailto:help@hvnn.me"
+            }
+          ],
+          "primary": {
+            "type": "button",
+            "label": "대시보드",
+            "href": "https://app.lynx.dev"
+          }
+        },
+        "groups": [
+          {
+            "group": "시작하기",
+            "pages": ["ko/index", "ko/quickstart", "ko/configuration"]
+          },
+          {
+            "group": "SDK 사용하기",
+            "pages": ["ko/tracing", "ko/instrumentation", "ko/guardrails", "ko/delivery"]
+          },
+          {
+            "group": "레퍼런스",
+            "pages": ["ko/api-reference"]
+          }
+        ]
       }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://app.mintlify.com"
-    }
+    ]
   },
   "contextual": {
-    "options": [
-      "copy",
-      "view",
-      "chatgpt",
-      "claude",
-      "perplexity",
-      "mcp",
-      "cursor",
-      "vscode"
-    ]
+    "options": ["copy", "view", "chatgpt", "claude", "perplexity", "mcp", "cursor", "vscode"]
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
+      "github": "https://github.com/hvnn-me"
     }
   }
 }

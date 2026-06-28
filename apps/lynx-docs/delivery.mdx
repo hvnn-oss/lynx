@@ -1,0 +1,83 @@
+---
+title: "Delivery and reliability"
+description: "Understand background delivery, flushing, timeouts, retries, and circuit breaker behavior."
+---
+
+Lynx is designed so telemetry failures do not stop your AI service by default.
+
+## Production defaults
+
+| Option | Default |
+| --- | --- |
+| `delivery.mode` | `"BACKGROUND"` |
+| `delivery.timeoutMs` | `1000` |
+| `delivery.flushOnRunEnd` | `false` |
+| `delivery.flushIntervalMs` | `3000` |
+| `delivery.batchSize` | `50` |
+| `delivery.maxQueueSize` | `1000` |
+| `delivery.overflowStrategy` | `"DROP_OLDEST"` |
+| `circuitBreaker.enabled` | `true` |
+| `circuitBreaker.failureThreshold` | `3` |
+| `circuitBreaker.cooldownMs` | `30000` |
+
+## Background delivery
+
+In background mode, `run()` records events locally and returns without waiting for telemetry delivery. The SDK sends events from a timer, from explicit `flush()`, or from `shutdown()`.
+
+```ts
+const lynx = new LynxTracer({
+  clientId: "support-api",
+  endpoint: "https://lynx.example.com",
+  apiKey: process.env.LYNX_API_KEY,
+  delivery: {
+    mode: "BACKGROUND",
+    timeoutMs: 1000,
+    flushOnRunEnd: false,
+  },
+});
+```
+
+## Blocking delivery
+
+Use blocking mode only when the current process must make a send attempt during the request lifecycle.
+
+```ts
+const lynx = new LynxTracer({
+  clientId: "worker",
+  endpoint: "https://lynx.example.com",
+  apiKey: process.env.LYNX_API_KEY,
+  delivery: {
+    mode: "BLOCKING",
+    flushOnRunEnd: true,
+    timeoutMs: 1500,
+  },
+});
+```
+
+## Flush and shutdown
+
+```ts
+await lynx.flush();
+```
+
+Use `shutdown()` before the process exits.
+
+```ts
+await lynx.shutdown({ timeoutMs: 1000 });
+```
+
+## Local status
+
+```ts
+const status = lynx.getStatus();
+
+console.log(status.queueSize);
+console.log(status.circuitState);
+console.log(status.droppedEvents);
+```
+
+## If the Lynx server is down
+
+The SDK catches network, timeout, and non-2xx response errors. Failed batches move to an in-memory retry queue. After repeated failures, the circuit breaker opens and pauses delivery attempts until the cooldown passes.
+
+If the queue reaches `maxQueueSize`, the SDK drops events according to `overflowStrategy`.

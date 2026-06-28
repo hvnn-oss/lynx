@@ -1,0 +1,93 @@
+---
+title: "API 레퍼런스"
+description: "주요 Lynx SDK class, helper, option 레퍼런스입니다."
+---
+
+## `LynxTracer`
+
+주요 telemetry collector입니다.
+
+```ts
+import { LynxTracer } from "@lynx/sdk";
+
+const lynx = new LynxTracer(config);
+```
+
+### `run(agentName, callback)`
+
+코드를 Lynx trace context 안에서 실행합니다.
+
+```ts
+await lynx.run("SupportAgent", async () => {
+  lynx.userInput("비밀번호를 재설정하고 싶어요");
+});
+```
+
+### `run(options, callback)`
+
+구조화된 run metadata를 사용합니다.
+
+```ts
+await lynx.run(
+  {
+    agentName: "SupportAgent",
+    workspaceId: "workspace_123",
+    agentId: "agent_123",
+    sessionId: "session_123",
+  },
+  async () => {
+    // agent work
+  },
+);
+```
+
+### Semantic helper
+
+| Method | 목적 |
+| --- | --- |
+| `userInput(input, metadata?)` | 사용자 입력을 기록합니다. |
+| `decision(reasonOrDecision, options?)` | 에이전트 결정을 기록합니다. |
+| `context(labelOrData, dataOrMetadata?)` | 검색되었거나 구성된 context를 기록합니다. |
+| `memory(label, payload)` | Memory access를 기록합니다. |
+| `outcome(options)` | 최종 session outcome을 기록합니다. |
+| `setAttributes(attributes)` | Run 안의 이후 event에 attribute를 붙입니다. |
+| `annotate(label, payload)` | Custom annotation을 기록합니다. |
+| `log(label, payload)` | Custom context alert를 기록합니다. |
+
+### Instrumentation helper
+
+| Method | 목적 |
+| --- | --- |
+| `instrumentLLM(client, options?)` | LLM client object를 감쌉니다. |
+| `instrumentTool(name, fn, metadata?)` | Tool 함수를 감쌉니다. |
+| `guardTool(name, fn, options)` | Tool을 로컬 policy evaluation과 함께 감쌉니다. |
+
+### Delivery helper
+
+| Method | 목적 |
+| --- | --- |
+| `flush()` | Queue에 쌓인 telemetry를 즉시 전송합니다. |
+| `shutdown(options?)` | Timer를 정리하고 종료 전 flush합니다. |
+| `getStatus()` | 로컬 queue, circuit breaker, delivery 상태를 읽습니다. |
+
+## `LynxPolicyError`
+
+`guardTool()`이 tool call을 차단하면 throw됩니다.
+
+```ts
+import { LynxPolicyError } from "@lynx/sdk";
+
+if (error instanceof LynxPolicyError) {
+  console.log(error.action);
+}
+```
+
+## `lynx`
+
+환경 변수에서 설정을 읽는 기본 tracer입니다.
+
+```ts
+import { lynx } from "@lynx/sdk";
+```
+
+간단한 애플리케이션에서는 이 export를 사용하세요. Process, tenant, test마다 명시적인 설정이 필요하면 `new LynxTracer()`를 사용하세요.

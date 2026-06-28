@@ -1,0 +1,86 @@
+---
+title: "Agent run 추적"
+description: "사용자 입력, context, decision, memory access, outcome을 수집합니다."
+---
+
+## Run context
+
+`run()`은 async context를 만듭니다. Callback 내부에서 기록된 모든 Lynx event는 같은 run에 연결됩니다.
+
+```ts
+await lynx.run(
+  {
+    agentName: "SupportAgent",
+    workspaceId: "workspace_123",
+    sessionId: "session_123",
+  },
+  async () => {
+    lynx.userInput("주문이 어디 있나요?");
+  },
+);
+```
+
+Agent 이름만 넘길 수도 있습니다.
+
+```ts
+await lynx.run("SupportAgent", async () => {
+  lynx.userInput("주문이 어디 있나요?");
+});
+```
+
+## Semantic event
+
+가능하면 generic log보다 semantic helper를 사용하세요.
+
+```ts
+lynx.userInput("구독을 취소하고 싶어요", {
+  userId: "usr_123",
+});
+
+lynx.context("account-state", {
+  plan: "pro",
+  renewalDate: "2026-07-01",
+});
+
+lynx.decision({
+  name: "choose_retention_offer",
+  selected: "discount_offer",
+  alternatives: ["cancel_now", "pause_subscription"],
+  confidence: 0.74,
+  reason: "사용자의 사용량이 높고 갱신일이 가깝습니다",
+});
+
+lynx.memory("customer-profile", {
+  operation: "read",
+  key: "usr_123",
+  hit: true,
+});
+
+lynx.outcome({
+  status: "COMPLETED",
+  businessStatus: "SUCCEEDED",
+  reason: "고객이 retention offer를 수락했습니다",
+});
+```
+
+## Attributes
+
+`setAttributes()`로 이후 이벤트에 안정적인 request ID나 business ID를 붙일 수 있습니다.
+
+```ts
+lynx.setAttributes({
+  tenantId: "tenant_123",
+  orderId: "order_123",
+});
+```
+
+## Custom annotation
+
+Semantic helper로 표현하기 어려운 breadcrumb는 `annotate()` 또는 `log()`를 사용하세요.
+
+```ts
+lynx.annotate("routing.selected", {
+  queue: "billing",
+  score: 0.91,
+});
+```
