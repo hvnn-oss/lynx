@@ -189,11 +189,12 @@ export class DashboardService {
           agentId: row.agentId,
           agentName: row.agentName,
           score,
-          status: (score >= 90
-            ? 'HEALTHY'
-            : score >= 75
-              ? 'WARNING'
-              : 'CRITICAL') as 'HEALTHY' | 'WARNING' | 'CRITICAL',
+          status:
+            score >= 90
+              ? ('HEALTHY' as const)
+              : score >= 75
+                ? ('WARNING' as const)
+                : ('CRITICAL' as const),
         };
       });
 

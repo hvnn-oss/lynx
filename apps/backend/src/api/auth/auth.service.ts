@@ -670,7 +670,7 @@ export class AuthService {
   }
 
   // SAML 2.0 응답(Assertion)을 파싱하여 로그인 세션을 생성합니다. (SAML POST 백 콜백 처리)
-  async handleSamlCallback(samlResponse: string, res: express.Response) {
+  handleSamlCallback(samlResponse: string, res: express.Response) {
     try {
       void samlResponse;
       this.logger.warn(

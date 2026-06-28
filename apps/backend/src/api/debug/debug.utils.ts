@@ -2,6 +2,7 @@ import type { EventEntity } from '@repo/database';
 import type { DebugSeverity } from '@repo/dto';
 
 type LynxRiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+export type EventPayload = Record<string, unknown>;
 
 export type DebugIssueType =
   | 'RUNTIME_ERROR'
@@ -38,13 +39,59 @@ const severityRank: Record<DebugSeverity, number> = {
 
 const MAX_PREVIEW_LENGTH = 240;
 
+export const isRecord = (value: unknown): value is EventPayload =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+export const getPayload = (event: EventEntity): EventPayload =>
+  isRecord(event.payload) ? event.payload : {};
+
+export const getPayloadString = (
+  payload: EventPayload,
+  key: string,
+): string | undefined => {
+  const value = payload[key];
+  return typeof value === 'string' ? value : undefined;
+};
+
+export const getPayloadNumber = (
+  payload: EventPayload,
+  key: string,
+): number | undefined => {
+  const value = payload[key];
+  return typeof value === 'number' ? value : undefined;
+};
+
+export const getPayloadBoolean = (
+  payload: EventPayload,
+  key: string,
+): boolean | undefined => {
+  const value = payload[key];
+  return typeof value === 'boolean' ? value : undefined;
+};
+
+export const getPayloadRiskLevel = (
+  payload: EventPayload,
+  key: string,
+): LynxRiskLevel | undefined => {
+  const value = payload[key];
+  return value === 'LOW' ||
+    value === 'MEDIUM' ||
+    value === 'HIGH' ||
+    value === 'CRITICAL'
+    ? value
+    : undefined;
+};
+
+export const toDebugString = (value: unknown): string | undefined =>
+  typeof value === 'string' ? value : createPreview(value);
+
 export const maxSeverity = (
   left: DebugSeverity,
   right: DebugSeverity,
 ): DebugSeverity => (severityRank[left] >= severityRank[right] ? left : right);
 
 export const computeSeverity = (event: EventEntity): DebugSeverity => {
-  const payload = (event.payload ?? {}) as Record<string, any>;
+  const payload = getPayload(event);
   const reported =
     normalizeReportedSeverity(payload.severity) ??
     riskToSeverity(payload.riskLevel);
@@ -57,7 +104,9 @@ export const computeSeverity = (event: EventEntity): DebugSeverity => {
     payload.error
   ) {
     computed = 'CRITICAL';
-  } else if ((event.latency ?? payload.latency ?? 0) >= 3000) {
+  } else if (
+    (event.latency ?? getPayloadNumber(payload, 'latency') ?? 0) >= 3000
+  ) {
     computed = 'WARNING';
   }
 
@@ -68,8 +117,8 @@ export const deriveIssues = (events: EventEntity[]): DebugIssue[] => {
   const issues: DebugIssue[] = [];
 
   for (const event of events) {
-    const payload = (event.payload ?? {}) as Record<string, any>;
-    const latency = event.latency ?? payload.latency;
+    const payload = getPayload(event);
+    const latency = event.latency ?? getPayloadNumber(payload, 'latency');
     const base = {
       eventId: event.id,
       eventType: event.eventType,
@@ -83,7 +132,8 @@ export const deriveIssues = (events: EventEntity[]): DebugIssue[] => {
         ...base,
         type: 'RUNTIME_ERROR',
         severity: 'CRITICAL',
-        reason: payload.error ?? 'Runtime error event was recorded.',
+        reason:
+          toDebugString(payload.error) ?? 'Runtime error event was recorded.',
       });
     }
     if (
@@ -94,7 +144,9 @@ export const deriveIssues = (events: EventEntity[]): DebugIssue[] => {
         ...base,
         type: 'POLICY_BLOCK',
         severity: computeSeverity(event),
-        reason: payload.reason ?? 'Policy blocked or activated guardrail.',
+        reason:
+          toDebugString(payload.reason) ??
+          'Policy blocked or activated guardrail.',
       });
     }
     if (
@@ -105,7 +157,7 @@ export const deriveIssues = (events: EventEntity[]): DebugIssue[] => {
         ...base,
         type: 'TOOL_FAILURE',
         severity: 'CRITICAL',
-        reason: payload.error ?? 'Tool execution failed.',
+        reason: toDebugString(payload.error) ?? 'Tool execution failed.',
       });
     }
     if (typeof latency === 'number' && latency >= 3000) {
@@ -140,7 +192,7 @@ export const deriveIssues = (events: EventEntity[]): DebugIssue[] => {
         ...base,
         type: 'CONTEXT_FAILURE',
         severity: 'WARNING',
-        reason: payload.error ?? 'Context retrieval failed.',
+        reason: toDebugString(payload.error) ?? 'Context retrieval failed.',
       });
     }
     if (event.eventType === 'SESSION_OUTCOME') {
@@ -151,7 +203,9 @@ export const deriveIssues = (events: EventEntity[]): DebugIssue[] => {
           ...base,
           type: 'BUSINESS_FAILURE',
           severity: computeSeverity(event),
-          reason: payload.reason ?? 'Session ended with failed outcome.',
+          reason:
+            toDebugString(payload.reason) ??
+            'Session ended with failed outcome.',
         });
       }
     }
@@ -176,7 +230,7 @@ export const createPreview = (value: unknown): string | undefined => {
   const raw =
     typeof value === 'string'
       ? value
-      : JSON.stringify(value, (_key, nestedValue) =>
+      : JSON.stringify(value, (_key: string, nestedValue: unknown): unknown =>
           typeof nestedValue === 'bigint'
             ? nestedValue.toString()
             : nestedValue,
@@ -224,10 +278,10 @@ export const createFailureSignature = (input: {
   ].join('|');
 
 export const getSpanId = (event: EventEntity): string | undefined =>
-  (event.payload as Record<string, any> | undefined)?.spanId;
+  getPayloadString(getPayload(event), 'spanId');
 
 export const getParentSpanId = (event: EventEntity): string | undefined =>
-  (event.payload as Record<string, any> | undefined)?.parentSpanId;
+  getPayloadString(getPayload(event), 'parentSpanId');
 
 export const calculateDepth = (
   event: EventEntity,
@@ -306,9 +360,7 @@ const scorePath = (
   };
 };
 
-const riskToSeverity = (
-  riskLevel?: LynxRiskLevel,
-): DebugSeverity | undefined => {
+const riskToSeverity = (riskLevel: unknown): DebugSeverity | undefined => {
   if (riskLevel === 'CRITICAL' || riskLevel === 'HIGH') return 'CRITICAL';
   if (riskLevel === 'MEDIUM') return 'WARNING';
   if (riskLevel === 'LOW') return 'INFO';

@@ -6,11 +6,14 @@ import {
   percentile,
 } from './debug.utils';
 
-const createEvent = (
-  id: string,
-  payload: Record<string, any> = {},
-): EventEntity =>
-  ({
+type TestPayload = Record<string, unknown> & {
+  eventType?: string;
+  label?: string;
+  latency?: number;
+};
+
+const createEvent = (id: string, payload: TestPayload = {}): EventEntity => {
+  return {
     id,
     eventType: payload.eventType ?? 'CONTEXT_ALERT',
     label: payload.label ?? id,
@@ -19,7 +22,8 @@ const createEvent = (
     cost: 0,
     timestamp: new Date('2026-06-28T00:00:00Z'),
     createdAt: new Date('2026-06-28T00:00:00Z'),
-  }) as EventEntity;
+  } as EventEntity;
+};
 
 describe('debug utils', () => {
   it('calculates percentile with nearest-rank and empty input handling', () => {

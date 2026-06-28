@@ -7,6 +7,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 describe('ObserveController', () => {
   let controller: ObserveController;
   let service: ObserveService;
+  type MockRequest = Parameters<ObserveController['getOverviewMetrics']>[1];
 
   const mockObserveService = {
     getOverviewMetrics: jest.fn(() =>
@@ -18,7 +19,7 @@ describe('ObserveController', () => {
     getSessionTimeline: jest.fn(() => Promise.resolve([])),
     getRecentErrors: jest.fn(() => Promise.resolve([])),
   };
-  const mockReq = { user: { sub: 'user-1' } } as any;
+  const mockReq = { user: { sub: 'user-1' } } as MockRequest;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({

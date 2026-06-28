@@ -27,6 +27,7 @@ import {
   DebugTimelineNodeDto,
   DebugTimelineQueryDto,
   DebugTimelineResponseDto,
+  DebugSeverity,
 } from '@repo/dto';
 import { WorkspaceAccessService } from '../../common/services/workspace-access.service';
 import {
@@ -37,9 +38,17 @@ import {
   createFailureSignature,
   createPreview,
   deriveIssues,
+  EventPayload,
+  getPayload,
+  getPayloadBoolean,
+  getPayloadNumber,
+  getPayloadRiskLevel,
+  getPayloadString,
   getSpanId,
+  isRecord,
   maxSeverity,
   percentile,
+  toDebugString,
 } from './debug.utils';
 
 interface CursorValue {
@@ -298,7 +307,7 @@ export class DebugService {
     let unknownCount = 0;
 
     const accesses = events.map((event) => {
-      const payload = (event.payload ?? {}) as Record<string, any>;
+      const payload = getPayload(event);
       if (payload.hit === true) hitCount += 1;
       else if (payload.hit === false) missCount += 1;
       else unknownCount += 1;
@@ -307,10 +316,10 @@ export class DebugService {
       return {
         eventId: event.id,
         sessionId,
-        operation: payload.operation ?? event.label,
-        key: payload.key,
-        hit: payload.hit,
-        stale: payload.stale,
+        operation: getPayloadString(payload, 'operation') ?? event.label,
+        key: getPayloadString(payload, 'key'),
+        hit: getPayloadBoolean(payload, 'hit'),
+        stale: getPayloadBoolean(payload, 'stale'),
         timestamp: event.timestamp.toISOString(),
         summary: createPreview(payload.data ?? payload.value ?? payload),
       };
@@ -337,12 +346,12 @@ export class DebugService {
     const grouped = new Map<string, EventEntity[]>();
 
     for (const event of issueEvents) {
-      const payload = (event.payload ?? {}) as Record<string, any>;
+      const payload = getPayload(event);
       const signature = createFailureSignature({
         eventType: event.eventType,
         label: event.label,
-        model: payload.model,
-        toolName: payload.toolName,
+        model: getPayloadString(payload, 'model'),
+        toolName: getPayloadString(payload, 'toolName'),
       });
       grouped.set(signature, [...(grouped.get(signature) ?? []), event]);
     }
@@ -371,9 +380,8 @@ export class DebugService {
                 first.eventType as DebugFailurePatternResponseDto['patterns'][number]['signature']['eventTypes'][number],
               ],
               labels: [first.label],
-              model: (first.payload as Record<string, any> | undefined)?.model,
-              toolName: (first.payload as Record<string, any> | undefined)
-                ?.toolName,
+              model: getPayloadString(getPayload(first), 'model'),
+              toolName: getPayloadString(getPayload(first), 'toolName'),
             },
             signatureVersion: 'SIGNATURE_V1' as const,
             exampleSessionId: first.session?.id ?? '',
@@ -393,9 +401,12 @@ export class DebugService {
     const grouped = new Map<string, EventEntity[]>();
 
     for (const event of events) {
-      const payload = (event.payload ?? {}) as Record<string, any>;
+      const payload = getPayload(event);
       const label =
-        payload.toolName ?? payload.model ?? payload.operation ?? event.label;
+        getPayloadString(payload, 'toolName') ??
+        getPayloadString(payload, 'model') ??
+        getPayloadString(payload, 'operation') ??
+        event.label;
       const key = `${this.toBottleneckType(event)}:${label}`;
       grouped.set(key, [...(grouped.get(key) ?? []), event]);
     }
@@ -405,8 +416,7 @@ export class DebugService {
         .map(([key, groupedEvents]) => {
           const latencies = groupedEvents.map(
             (event) =>
-              event.latency ??
-              ((event.payload ?? {}) as Record<string, any>).latency,
+              event.latency ?? getPayloadNumber(getPayload(event), 'latency'),
           );
           const [type, label] = key.split(':', 2);
 
@@ -439,7 +449,8 @@ export class DebugService {
     await this.workspaceAccess.assertAccess(userId, workspaceId);
     const events = await this.getEventsForRange(workspaceId, query);
     const latencies = events.map(
-      (event) => event.latency ?? ((event.payload ?? {}) as any).latency,
+      (event) =>
+        event.latency ?? getPayloadNumber(getPayload(event), 'latency'),
     );
 
     return {
@@ -471,7 +482,7 @@ export class DebugService {
     const events = await this.getSessionEvents(workspaceId, sessionId);
 
     const steps = events.map((event, index) => {
-      const payload = (event.payload ?? {}) as Record<string, any>;
+      const payload = getPayload(event);
       const replayable = this.isReplayable(event.eventType, payload);
 
       return {
@@ -524,23 +535,26 @@ export class DebugService {
     await this.findSessionOrThrow(workspaceId, sessionId);
     const events = await this.getSessionEvents(workspaceId, sessionId);
     const policyEvents = events.filter((event) => {
-      const payload = (event.payload ?? {}) as Record<string, any>;
+      const payload = getPayload(event);
       return (
         event.eventType === 'POLICY_EVALUATION' &&
-        (!body.toolName || payload.toolName === body.toolName)
+        (!body.toolName ||
+          getPayloadString(payload, 'toolName') === body.toolName)
       );
     });
 
     const matchedPolicies = policyEvents.map((event) => {
-      const payload = (event.payload ?? {}) as Record<string, any>;
+      const payload = getPayload(event);
       const result = this.normalizePolicyResult(payload.action, payload.allow);
       return {
-        policyId: payload.policyId ?? event.id,
-        name: payload.policyName,
-        version: payload.policyVersion,
+        policyId: getPayloadString(payload, 'policyId') ?? event.id,
+        name: getPayloadString(payload, 'policyName'),
+        version: getPayloadString(payload, 'policyVersion'),
         result,
-        reason: payload.reason,
-        severity: payload.severity ?? payload.riskLevel,
+        reason: toDebugString(payload.reason),
+        severity:
+          getPayloadRiskLevel(payload, 'severity') ??
+          getPayloadRiskLevel(payload, 'riskLevel'),
       };
     });
     const result = matchedPolicies.some((policy) => policy.result === 'BLOCK')
@@ -699,9 +713,9 @@ export class DebugService {
       (left, right) => left.timestamp.getTime() - right.timestamp.getTime(),
     );
     const issues = deriveIssues(events);
-    const severity = issues.reduce(
+    const severity = issues.reduce<DebugSeverity>(
       (current, issue) => maxSeverity(current, issue.severity),
-      'INFO' as const,
+      'INFO',
     );
     const primaryIssue = issues[0]?.type;
 
@@ -725,7 +739,7 @@ export class DebugService {
   }
 
   private toEventLogItem(event: EventEntity): DebugEventLogItemDto {
-    const payload = (event.payload ?? {}) as Record<string, any>;
+    const payload = getPayload(event);
     const session = event.session;
 
     return {
@@ -737,12 +751,12 @@ export class DebugService {
       label: event.label,
       phase: this.getPhase(event),
       timestamp: event.timestamp.toISOString(),
-      latency: event.latency ?? payload.latency,
+      latency: event.latency ?? getPayloadNumber(payload, 'latency'),
       cost: Number(event.cost ?? payload.cost ?? 0),
-      model: payload.model,
-      toolName: payload.toolName,
+      model: getPayloadString(payload, 'model'),
+      toolName: getPayloadString(payload, 'toolName'),
       severity: computeSeverity(event),
-      error: payload.error,
+      error: toDebugString(payload.error),
       inputPreview: createPreview(payload.input ?? payload.args),
       outputPreview: createPreview(payload.output ?? payload.result),
       payload,
@@ -750,9 +764,15 @@ export class DebugService {
   }
 
   private getPhase(event: EventEntity): DebugEventLogItemDto['phase'] {
-    const payload = (event.payload ?? {}) as Record<string, any>;
-    if (['start', 'end', 'error', 'single'].includes(payload.phase)) {
-      return payload.phase;
+    const payload = getPayload(event);
+    const phase = getPayloadString(payload, 'phase');
+    if (
+      phase === 'start' ||
+      phase === 'end' ||
+      phase === 'error' ||
+      phase === 'single'
+    ) {
+      return phase;
     }
     if (event.eventType === 'ERROR' || payload.error) return 'error';
     return 'single';
@@ -763,7 +783,7 @@ export class DebugService {
     eventBySpanId: Map<string, EventEntity>,
     includePayload = false,
   ): DebugTimelineNodeDto {
-    const payload = (event.payload ?? {}) as Record<string, any>;
+    const payload = getPayload(event);
     const depth = calculateDepth(event, eventBySpanId);
 
     return {
@@ -773,21 +793,24 @@ export class DebugService {
       label: event.label,
       phase: this.getPhase(event),
       timestamp: event.timestamp.toISOString(),
-      spanId: payload.spanId,
-      parentSpanId: payload.parentSpanId,
+      spanId: getPayloadString(payload, 'spanId'),
+      parentSpanId: getPayloadString(payload, 'parentSpanId'),
       depth: depth.depth,
-      latency: event.latency ?? payload.latency,
+      latency: event.latency ?? getPayloadNumber(payload, 'latency'),
       cost: Number(event.cost ?? payload.cost ?? 0),
-      usage: payload.usage,
+      usage: this.toTokenUsage(payload.usage),
       severity: computeSeverity(event),
-      riskLevel: payload.riskLevel,
-      model: payload.model,
-      provider: payload.provider,
-      toolName: payload.toolName,
-      summary: payload.reason ?? payload.message ?? event.label,
+      riskLevel: getPayloadRiskLevel(payload, 'riskLevel'),
+      model: getPayloadString(payload, 'model'),
+      provider: getPayloadString(payload, 'provider'),
+      toolName: getPayloadString(payload, 'toolName'),
+      summary:
+        toDebugString(payload.reason) ??
+        toDebugString(payload.message) ??
+        event.label,
       inputPreview: createPreview(payload.input ?? payload.args),
       outputPreview: createPreview(payload.output ?? payload.result),
-      error: payload.error,
+      error: toDebugString(payload.error),
       orphaned: depth.orphaned,
       payload: includePayload ? payload : undefined,
     };
@@ -820,7 +843,8 @@ export class DebugService {
     const groups = new Map<string, number[]>();
     for (const event of events) {
       const bucket = event.timestamp.toISOString().slice(0, 13) + ':00:00.000Z';
-      const latency = event.latency ?? ((event.payload ?? {}) as any).latency;
+      const latency =
+        event.latency ?? getPayloadNumber(getPayload(event), 'latency');
       if (typeof latency !== 'number') continue;
       groups.set(bucket, [...(groups.get(bucket) ?? []), latency]);
     }
@@ -834,10 +858,12 @@ export class DebugService {
     }));
   }
 
-  private isReplayable(
-    eventType: string,
-    payload: Record<string, any>,
-  ): boolean {
+  private toTokenUsage(value: unknown): DebugTimelineNodeDto['usage'] {
+    if (!isRecord(value)) return undefined;
+    return value as unknown as DebugTimelineNodeDto['usage'];
+  }
+
+  private isReplayable(eventType: string, payload: EventPayload): boolean {
     if (eventType === 'USER_INPUT') return true;
     if (eventType === 'CONTEXT_RETRIEVAL') return true;
     if (eventType === 'MEMORY_ACCESS') return true;

@@ -1,6 +1,6 @@
 "use client";
 import { LynxLogo } from "@repo/ui/components/brands/lynx-logo";
-import { Button } from "@repo/ui/components/ui/button";
+import { Button, buttonVariants } from "@repo/ui/components/ui/button";
 import { Search } from "lucide-react";
 import Link from "next/link";
 import {
@@ -111,7 +111,12 @@ export function DashboardHeader() {
       </div>
       <div className="flex gap-5 items-center">
         <div className="flex gap-2">
-          <Button variant={"outline"}>기술 문서</Button>
+          <Link
+            href={"https://docs.lynxops.co"}
+            className={buttonVariants({ variant: "ghost" })}
+          >
+            기술 문서
+          </Link>
           <Button variant={"outline"} className="pr-4">
             <Search />
             Search

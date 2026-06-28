@@ -56,11 +56,11 @@ export class AuthController {
 
   // SAML 2.0 인증 완료 콜백을 처리합니다.
   @Post('/sso/saml/callback')
-  async samlCallback(
+  samlCallback(
     @Body('SAMLResponse') samlResponse: string,
     @Res() res: express.Response,
   ) {
-    return await this.authService.handleSamlCallback(samlResponse, res);
+    return this.authService.handleSamlCallback(samlResponse, res);
   }
 
   // 이메일 인증 메일 발송 요청을 처리합니다.

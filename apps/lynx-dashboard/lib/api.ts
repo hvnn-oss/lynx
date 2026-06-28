@@ -63,3 +63,32 @@ api.interceptors.response.use(
 );
 
 export default api;
+
+export type QueryParams = Record<
+  string,
+  string | number | boolean | null | undefined
+>;
+
+export async function getJson<T>(
+  url: string,
+  params?: QueryParams,
+): Promise<T> {
+  const response = await api.get<T>(url, { params: cleanParams(params) });
+  return response.data;
+}
+
+export async function postJson<TResponse, TBody>(
+  url: string,
+  body: TBody,
+): Promise<TResponse> {
+  const response = await api.post<TResponse>(url, body);
+  return response.data;
+}
+
+function cleanParams(params?: QueryParams): QueryParams | undefined {
+  if (!params) return undefined;
+
+  return Object.fromEntries(
+    Object.entries(params).filter(([, value]) => value !== undefined),
+  ) as QueryParams;
+}
