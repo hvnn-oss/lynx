@@ -14,7 +14,7 @@
 
 2. **백프레셔 완화 메모리 배치 큐 (Memory Batch Queue)**
    * 모든 텔레메트리 이벤트를 매번 fetch()하지 않고, 메모리 내 `eventQueue` 버퍼에 일시 적재합니다.
-   * 설정된 `batchSize`(기본 50개)를 초과하거나 `flushIntervalMs`(기본 3000ms) 주기마다 자동으로 일괄 전송(`POST /api/v1/events/batch`)을 수행하여 트래픽 오버헤드를 극적으로 감쇄시킵니다.
+   * 설정된 `batchSize`(기본 50개)를 초과하거나 `flushIntervalMs`(기본 3000ms) 주기마다 자동으로 일괄 전송(`POST /openapi/v1/events/batch`)을 수행하여 트래픽 오버헤드를 극적으로 감쇄시킵니다.
    * 노드 프로세스 종료 감지(`beforeExit`, `exit`) 시 미전송된 잔여 버퍼를 동기적으로 플러시(Flush)하여 유실을 원천 차단합니다.
 
 3. **장애 회복 오프라인 버퍼 & 지수 백오프 (Offline Buffer & Exponential Backoff)**
@@ -79,6 +79,56 @@ async function main() {
 main();
 ```
 
+### 행동 의미를 명시적으로 남기기
+
+자동 계측만으로는 에이전트가 왜 특정 행동을 골랐는지 전부 알기 어렵습니다.
+운영 분석과 재현이 필요한 지점에는 다음 API로 의미 정보를 함께 남길 수 있습니다.
+
+```typescript
+await lynx.run({ agentName: "SupportAgent", sessionId: "session-123" }, async () => {
+  lynx.userInput("지난 주문 환불해줘", { userId: "usr-1" });
+  lynx.context({ orderId: "ord-1", refundWindowDays: 30 });
+  lynx.memory("read", { key: "customer-tier", value: "gold" });
+  lynx.decision("refund workflow selected", {
+    candidates: ["refund", "faq"],
+    confidence: 0.82,
+  });
+
+  lynx.outcome({
+    status: "COMPLETED",
+    businessStatus: "FAILED",
+    reason: "Refund amount exceeded policy",
+    userImpact: "HIGH",
+  });
+});
+```
+
+### 실행 전 정책 검사
+
+위험한 툴은 `guardTool`로 감싸서 실행 전 정책 평가, 위반, 차단 이벤트를 남길 수 있습니다.
+
+```typescript
+const refund = lynx.guardTool(
+  "refund",
+  async ({ amount }: { amount: number }) => {
+    return { refunded: amount };
+  },
+  {
+    riskLevel: "HIGH",
+    sideEffect: true,
+    beforeCall: ({ args }) => {
+      const amount = args[0]?.amount ?? 0;
+      return {
+        allow: amount <= 100000,
+        policyId: "refund-limit",
+        reason: "Refund amount exceeded policy",
+        severity: "HIGH",
+      };
+    },
+  },
+);
+```
+
 ## ⚙️ 설정 옵션
 
 환경 변수(`process.env`)를 사용하여 간편하게 SDK 설정을 오버라이드할 수 있습니다:
@@ -90,3 +140,7 @@ main();
 | `LYNX_SAMPLE_RATE` | `1.0` | 텔레메트리 샘플링 비율 (0.0 ~ 1.0) |
 | `LYNX_CAPTURE_MODE` | `smart` | 압축 모드 (`full` 전체 전송, `metadata-only` 메타 정보만, `smart` 지능형 압축) |
 | `LYNX_MAX_PAYLOAD_LENGTH` | `1000` | 단일 문자열 값 최대 허용 길이 (스마트 압축 적용 시) |
+| `LYNX_APP_VERSION` | - | 재현과 배포 비교를 위한 애플리케이션 버전 |
+| `LYNX_DEPLOYMENT_ID` | - | 특정 배포 단위를 식별하기 위한 ID |
+| `LYNX_ENVIRONMENT` | `NODE_ENV` | 실행 환경 (`production`, `staging` 등) |
+| `LYNX_POLICY_VERSION` | - | 정책 평가와 차단 이벤트에 연결할 정책 버전 |

@@ -11,7 +11,7 @@ export class DashboardQueryDto {
 }
 
 /**
- * 1. 대시보드 홈(요약) API 응답 타입 정의
+ * 대시보드 홈(요약) API 응답 타입 정의
  */
 export interface DashboardHomeMetricsDto {
   kpis: {
@@ -40,7 +40,7 @@ export interface DashboardHomeMetricsDto {
 }
 
 /**
- * 2. 대시보드 상태(Status) API 응답 타입 정의
+ * 대시보드 상태(Status) API 응답 타입 정의
  */
 export interface DashboardStatusMetricsDto {
   agentStatus: {
@@ -72,7 +72,7 @@ export interface DashboardStatusMetricsDto {
 }
 
 /**
- * 3. 대시보드 옵저버빌리티 지표(Metrics) API 응답 타입 정의
+ * 대시보드 옵저버빌리티 지표(Metrics) API 응답 타입 정의
  */
 export interface DashboardMetricsDataDto {
   runMetrics: {
@@ -103,7 +103,7 @@ export interface DashboardMetricsDataDto {
 }
 
 /**
- * 4. 대시보드 사용 현황(Usage) API 응답 타입 정의
+ * 대시보드 사용 현황(Usage) API 응답 타입 정의
  */
 export interface DashboardUsageMetricsDto {
   topAgents: Array<{ name: string; count: number }>;
@@ -114,7 +114,7 @@ export interface DashboardUsageMetricsDto {
 }
 
 /**
- * 5. 대시보드 비용(Cost) API 응답 타입 정의
+ * 대시보드 비용(Cost) API 응답 타입 정의
  */
 export interface DashboardCostMetricsDto {
   totalCost: {
@@ -141,7 +141,7 @@ export interface DashboardCostMetricsDto {
 }
 
 /**
- * 6. 대시보드 인사이트(Insights) API 응답 타입 정의
+ * 대시보드 인사이트(Insights) API 응답 타입 정의
  */
 export interface DashboardInsightsDto {
   insights: Array<{

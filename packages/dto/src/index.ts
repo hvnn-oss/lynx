@@ -8,3 +8,5 @@ export * from "./auth/login.dto.js";
 // dashboard
 export * from "./dashboard.dto.js";
 
+// debug
+export * from "./debug.dto.js";

@@ -28,9 +28,9 @@ export class AgentEntity {
   })
   workspace!: WorkspaceEntity;
 
-  @OneToMany(() => SessionEntity, (session) => session)
+  @OneToMany(() => SessionEntity, (session) => session.agent)
   sessions!: SessionEntity[];
 
   @OneToMany(() => GuardrailViolationEntity, (blocked) => blocked.agent)
-  blocked!: GuardrailViolationEntity;
+  blocked!: GuardrailViolationEntity[];
 }

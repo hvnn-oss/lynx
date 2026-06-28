@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -9,6 +9,7 @@ import {
   AgentEntity,
 } from '@repo/database';
 import { LynxEventDto } from '@repo/dto';
+import { ERROR_CODES } from '@repo/constants';
 
 @Injectable()
 export class EventService {
@@ -38,33 +39,33 @@ export class EventService {
     const eventRepository = this.dataSource.getRepository(EventEntity);
 
     // 1. 워크스페이스 조회
-    let workspace: WorkspaceEntity | null = null;
-    if (apiKey) {
-      workspace = await workspaceRepository.findOne({
-        where: { apiKey },
+    if (!apiKey) {
+      throw new ForbiddenException({
+        error_code: ERROR_CODES.INVALID_INPUT,
+        message: 'API key is required.',
       });
     }
 
-    if (!workspace && workspaceId) {
-      workspace = await workspaceRepository.findOne({
-        where: { id: workspaceId },
+    const workspace = await workspaceRepository.findOne({
+      where: { apiKey },
+    });
+
+    if (!workspace) {
+      throw new ForbiddenException({
+        error_code: ERROR_CODES.INVALID_INPUT,
+        message: 'Invalid API key.',
       });
-      if (!workspace) {
-        workspace = await workspaceRepository.findOne({
-          where: { name: workspaceId },
-        });
-      }
     }
 
-    if (!workspace) {
-      workspace = await workspaceRepository.findOne({ where: {} });
-    }
-
-    if (!workspace) {
-      this.logger.error(
-        'No workspace found in the database. Event ingestion skipped.',
-      );
-      return { success: false, reason: 'No workspace found.' };
+    if (
+      workspaceId &&
+      workspaceId !== workspace.id &&
+      workspaceId !== workspace.name
+    ) {
+      throw new ForbiddenException({
+        error_code: ERROR_CODES.INVALID_INPUT,
+        message: 'Workspace does not match API key.',
+      });
     }
 
     // 2. 요금제별 보존 기간 검증

@@ -26,11 +26,13 @@ export class SignUpDto {
   token!: string;
 
   @IsNotEmpty()
+  @IsString()
   @MinLength(8)
   @MaxLength(20)
   password!: string;
 
   @IsNotEmpty()
+  @IsString()
   @MinLength(2)
   @MaxLength(10)
   name!: string;

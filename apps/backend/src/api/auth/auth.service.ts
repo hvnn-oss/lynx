@@ -26,7 +26,6 @@ import {
   OidcAccountEntity,
 } from '@repo/database';
 import * as express from 'express';
-import * as zlib from 'zlib';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { DataSource } from 'typeorm';
@@ -553,23 +552,12 @@ export class AuthService {
 
     // 2. SAML 2.0 로그인 흐름 구성 (AuthnRequest XML 생성 후 리다이렉트)
     if (org.samlEntryPoint && org.samlIssuer) {
-      try {
-        const acsUrl = `${this.configService.get('BACKEND_URL')}/auth/sso/saml/callback`;
-        const spEntityId = `${this.configService.get('BACKEND_URL')}/auth/sso/saml/metadata`;
-
-        const samlRequest = `<samlp:AuthnRequest xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" ID="_${crypto.randomUUID()}" Version="2.0" IssueInstant="${new Date().toISOString()}" ProtocolBinding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" AssertionConsumerServiceURL="${encodeURI(acsUrl)}"><saml:Issuer xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion">${spEntityId}</saml:Issuer></samlp:AuthnRequest>`;
-
-        const deflated = zlib.deflateRawSync(Buffer.from(samlRequest));
-        const samlRequestEncoded = deflated.toString('base64');
-        const redirectUrl = `${org.samlEntryPoint}?SAMLRequest=${encodeURIComponent(samlRequestEncoded)}`;
-
-        return res.redirect(redirectUrl);
-      } catch (err) {
-        this.logger.error('Failed to initiate SAML redirect', err);
-        return res.redirect(
-          `${this.configService.get('FRONTEND_URL')}/login?error=sso-initiation-failed`,
-        );
-      }
+      this.logger.warn(
+        'SAML login is disabled until signed assertion validation is implemented.',
+      );
+      return res.redirect(
+        `${this.configService.get('FRONTEND_URL')}/login?error=saml-validation-required`,
+      );
     }
 
     return res.redirect(
@@ -641,7 +629,7 @@ export class AuthService {
         );
       }
 
-      const { accessToken, refreshToken } = await this.signSsoUser(
+      const { refreshToken } = await this.signSsoUser(
         oidcEmail,
         LOGIN_PROVIDERS.OIDC,
         org,
@@ -662,7 +650,7 @@ export class AuthService {
       });
 
       return res.redirect(
-        `${this.configService.get('FRONTEND_URL')}/dashboard?sso_token=${accessToken}`,
+        `${this.configService.get('FRONTEND_URL')}/dashboard?sso=success`,
       );
     } catch (err) {
       this.logger.error('Failed to handle OIDC callback', err);
@@ -675,71 +663,16 @@ export class AuthService {
   // SAML 2.0 응답(Assertion)을 파싱하여 로그인 세션을 생성합니다. (SAML POST 백 콜백 처리)
   async handleSamlCallback(samlResponse: string, res: express.Response) {
     try {
-      const xml = Buffer.from(samlResponse, 'base64').toString('utf-8');
-
-      const nameIdMatch =
-        xml.match(/<saml:NameID[^>]*>([^<]+)<\/saml:NameID>/) ||
-        xml.match(/<NameID[^>]*>([^<]+)<\/NameID>/);
-      const email = nameIdMatch ? nameIdMatch[1].trim() : null;
-
-      if (!email) {
-        return res.send(`
-          <script>
-            window.location.href = '${this.configService.get('FRONTEND_URL')}/login?error=sso-invalid-saml-response';
-          </script>
-        `);
-      }
-
-      const emailParts = email.split('@');
-      if (emailParts.length !== 2) {
-        return res.send(`
-          <script>
-            window.location.href = '${this.configService.get('FRONTEND_URL')}/login?error=sso-invalid-email';
-          </script>
-        `);
-      }
-      const domain = emailParts[1];
-      const domainRepository = this.dataSource.getRepository(
-        OrganizationDomainEntity,
+      void samlResponse;
+      this.logger.warn(
+        'Rejected SAML callback because signed assertion validation is not implemented.',
       );
-      const foundDomain = await domainRepository.findOne({
-        where: { domain },
-        relations: { organization: true },
-      });
-
-      if (
-        !foundDomain ||
-        !foundDomain.organization ||
-        !foundDomain.organization.useSso
-      ) {
-        return res.send(`
-          <script>
-            window.location.href = '${this.configService.get('FRONTEND_URL')}/login?error=sso-not-configured';
-          </script>
-        `);
-      }
-
-      const org = foundDomain.organization;
-      const { accessToken, refreshToken } = await this.signSsoUser(
-        email,
-        LOGIN_PROVIDERS.SAML,
-        org,
-      );
-
-      res.cookie('refreshToken', refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
-
       return res.send(`
         <script>
-          localStorage.setItem('_uid', '${accessToken}');
-          window.location.href = '${this.configService.get('FRONTEND_URL')}/dashboard';
+          window.location.href = '${this.configService.get('FRONTEND_URL')}/login?error=saml-validation-required';
         </script>
       `);
+
     } catch (err) {
       this.logger.error('Failed to handle SAML callback', err);
       return res.send(`

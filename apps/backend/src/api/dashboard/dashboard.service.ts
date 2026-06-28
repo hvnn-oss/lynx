@@ -321,7 +321,8 @@ export class DashboardService {
         `Failed to load database overview metrics: ${error.message}`,
         error.stack,
       );
-      return this.getDemoHomeMetrics();
+      if (this.shouldUseDemoFallback()) return this.getDemoHomeMetrics();
+      throw err;
     }
   }
 
@@ -419,7 +420,9 @@ export class DashboardService {
         )
         .where('s.workspaceId = :workspaceId', { workspaceId })
         .andWhere('e.timestamp >= :tMinus24h', { tMinus24h })
-        .andWhere('e.eventType = :toolType', { toolType: 'TOOL_CALL' })
+        .andWhere('e.eventType IN (:...toolTypes)', {
+          toolTypes: ['CALL_TOOLS', 'TOOL_CALL', 'TOOL_RESULT'],
+        })
         .groupBy('e.label')
         .getRawMany()) as unknown as RawToolMetrics[];
 
@@ -496,7 +499,8 @@ export class DashboardService {
         `Failed to load system status metrics: ${error.message}`,
         error.stack,
       );
-      return this.getDemoStatusMetrics();
+      if (this.shouldUseDemoFallback()) return this.getDemoStatusMetrics();
+      throw err;
     }
   }
 
@@ -655,7 +659,8 @@ export class DashboardService {
         `Failed to load metrics data: ${error.message}`,
         error.stack,
       );
-      return this.getDemoMetricsData();
+      if (this.shouldUseDemoFallback()) return this.getDemoMetricsData();
+      throw err;
     }
   }
 
@@ -736,7 +741,9 @@ export class DashboardService {
         .select('e.label', 'toolName')
         .addSelect('COUNT(e.id)', 'count')
         .where('s.workspaceId = :workspaceId', { workspaceId })
-        .andWhere('e.eventType = :toolType', { toolType: 'TOOL_CALL' })
+        .andWhere('e.eventType IN (:...toolTypes)', {
+          toolTypes: ['CALL_TOOLS', 'TOOL_CALL', 'TOOL_RESULT'],
+        })
         .groupBy('e.label')
         .orderBy('count', 'DESC')
         .getRawMany()) as unknown as Array<{
@@ -788,7 +795,8 @@ export class DashboardService {
         `Failed to load usage metrics: ${error.message}`,
         error.stack,
       );
-      return this.getDemoUsageMetrics();
+      if (this.shouldUseDemoFallback()) return this.getDemoUsageMetrics();
+      throw err;
     }
   }
 
@@ -847,7 +855,9 @@ export class DashboardService {
         .innerJoin('e.session', 's')
         .select('SUM(e.cost)', 'cost')
         .where('s.workspaceId = :workspaceId', { workspaceId })
-        .andWhere("e.eventType = 'LLM_REASONING'")
+        .andWhere('e.eventType IN (:...llmTypes)', {
+          llmTypes: ['LLM_REASONING', 'LLM_CALL'],
+        })
         .getRawOne()) as unknown as { cost: string | null } | undefined;
 
       const toolCostRaw = (await eventRepository
@@ -855,7 +865,9 @@ export class DashboardService {
         .innerJoin('e.session', 's')
         .select('SUM(e.cost)', 'cost')
         .where('s.workspaceId = :workspaceId', { workspaceId })
-        .andWhere("e.eventType = 'TOOL_CALL'")
+        .andWhere('e.eventType IN (:...toolTypes)', {
+          toolTypes: ['CALL_TOOLS', 'TOOL_CALL', 'TOOL_RESULT'],
+        })
         .getRawOne()) as unknown as { cost: string | null } | undefined;
 
       const modelCost = parseFloat(modelCostRaw?.cost ?? '0');
@@ -951,7 +963,8 @@ export class DashboardService {
         `Failed to load cost metrics: ${error.message}`,
         error.stack,
       );
-      return this.getDemoCostMetrics();
+      if (this.shouldUseDemoFallback()) return this.getDemoCostMetrics();
+      throw err;
     }
   }
 
@@ -1050,8 +1063,13 @@ export class DashboardService {
         `Failed to load automated insights: ${error.message}`,
         error.stack,
       );
-      return this.getDemoInsights();
+      if (this.shouldUseDemoFallback()) return this.getDemoInsights();
+      throw err;
     }
+  }
+
+  private shouldUseDemoFallback() {
+    return process.env.NODE_ENV !== 'production';
   }
 
   private getDemoHomeMetrics() {

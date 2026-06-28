@@ -1,4 +1,10 @@
-import { Module, Global, Provider } from '@nestjs/common';
+import {
+  Global,
+  Inject,
+  Module,
+  OnApplicationShutdown,
+  Provider,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from './redis.constants';
@@ -26,4 +32,10 @@ const redisProvider: Provider = {
   providers: [redisProvider],
   exports: [REDIS_CLIENT],
 })
-export class RedisModule {}
+export class RedisModule implements OnApplicationShutdown {
+  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
+
+  onApplicationShutdown() {
+    this.redis.disconnect();
+  }
+}

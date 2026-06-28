@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
-import { EventController, IngestEventDto } from './event.controller';
+import { EventController } from './event.controller';
 import { EventService } from './event.service';
-import { LynxEventType } from '@repo/dto';
+import { IngestEventDto, LynxEventType } from '@repo/dto';
 
 describe('EventController', () => {
   let controller: EventController;
@@ -45,8 +45,8 @@ describe('EventController', () => {
       timestamp: Date.now(),
     };
 
-    const result = await controller.ingest(dto);
-    expect(service.ingestEvent).toHaveBeenCalledWith(dto, undefined);
+    const result = await controller.ingest(dto, 'test-api-key');
+    expect(service.ingestEvent).toHaveBeenCalledWith(dto, 'test-api-key');
     expect(result).toEqual({ success: true });
   });
 
@@ -63,8 +63,8 @@ describe('EventController', () => {
       },
     ];
 
-    const result = await controller.ingestBatch(dtos);
-    expect(service.ingestEvents).toHaveBeenCalledWith(dtos, undefined);
+    const result = await controller.ingestBatch(dtos, 'test-api-key');
+    expect(service.ingestEvents).toHaveBeenCalledWith(dtos, 'test-api-key');
     expect(result.success).toBe(true);
     expect(result.count).toBe(1);
   });

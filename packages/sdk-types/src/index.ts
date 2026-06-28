@@ -10,6 +10,7 @@ export interface LynxContext {
   workspaceId?: string;
   agentId?: string;
   sessionId?: string;
+  eventCounts?: Record<string, number>;
 }
 
 /**
@@ -32,6 +33,10 @@ export interface LynxConfig {
   workspaceId?: string;
   agentId?: string;
   apiKey?: string;
+  appVersion?: string;
+  deploymentId?: string;
+  environment?: string;
+  policyVersion?: string;
 
   /**
    * 텔레메트리 전송 샘플링 비율 (0.0 ~ 1.0).
@@ -82,6 +87,44 @@ export interface TokenUsage {
   totalTokens: number;
 }
 
+export type LynxSessionStatus = "COMPLETED" | "FAILED" | "CANCELLED";
+export type LynxBusinessStatus = "SUCCEEDED" | "FAILED" | "PARTIAL" | "UNKNOWN";
+export type LynxRiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+
+export interface LynxOutcomeOptions {
+  status: LynxSessionStatus;
+  businessStatus?: LynxBusinessStatus;
+  reason?: string;
+  userImpact?: LynxRiskLevel;
+  metadata?: Record<string, any>;
+}
+
+export interface LynxToolMetadata {
+  toolVersion?: string;
+  sideEffect?: boolean;
+  riskLevel?: LynxRiskLevel;
+  externalTarget?: string;
+  idempotencyKey?: string;
+  [key: string]: any;
+}
+
+export interface LynxPolicyDecision {
+  allow: boolean;
+  policyId?: string;
+  policyVersion?: string;
+  reason?: string;
+  severity?: LynxRiskLevel;
+  metadata?: Record<string, any>;
+}
+
+export interface LynxGuardToolOptions<TArgs extends any[] = any[]> extends LynxToolMetadata {
+  beforeCall?: (context: {
+    toolName: string;
+    args: TArgs;
+    metadata?: LynxToolMetadata;
+  }) => LynxPolicyDecision | Promise<LynxPolicyDecision>;
+}
+
 /**
  * 특정 LLM 클라이언트를 가로채고 계측하기 위한 커스텀 규칙 인터페이스입니다.
  */
@@ -111,7 +154,23 @@ export interface LlmInstrumentationRule {
 /**
  * Lynx SDK가 추적할 수 있는 이벤트 타입입니다.
  */
-export type LynxEventType = "LLM_REASONING" | "CALL_TOOLS" | "ERROR" | "CONTEXT_ALERT";
+export type LynxEventType =
+  | "USER_INPUT"
+  | "AGENT_DECISION"
+  | "LLM_CALL"
+  | "LLM_REASONING"
+  | "TOOL_CALL"
+  | "TOOL_RESULT"
+  | "CALL_TOOLS"
+  | "MEMORY_ACCESS"
+  | "CONTEXT_RETRIEVAL"
+  | "POLICY_EVALUATION"
+  | "POLICY_VIOLATION"
+  | "GUARDRAIL_ACTIVATED"
+  | "SESSION_OUTCOME"
+  | "LOOP_DETECTED"
+  | "ERROR"
+  | "CONTEXT_ALERT";
 
 /**
  * 추적된 이벤트의 세부 정보를 포함하는 페이로드 DTO 스키마입니다.
@@ -130,6 +189,37 @@ export interface LynxEventPayloadDto {
   latency?: number; // millisecond duration of the execution
   usage?: TokenUsage; // token usage for LLM calls
   cost?: number; // estimated cost in USD
+
+  // Runtime metadata for replay and root-cause analysis
+  provider?: string;
+  model?: string;
+  temperature?: number;
+  topP?: number;
+  maxTokens?: number;
+  seed?: number | string;
+  promptVersion?: string;
+  systemPromptHash?: string;
+  userPromptHash?: string;
+  messageCount?: number;
+  contextLength?: number;
+  sdkVersion?: string;
+  appVersion?: string;
+  deploymentId?: string;
+  environment?: string;
+  policyVersion?: string;
+
+  // Tool execution metadata
+  toolName?: string;
+  toolVersion?: string;
+  args?: any;
+  argsHash?: string;
+  result?: any;
+  resultSummary?: string;
+  sideEffect?: boolean;
+  riskLevel?: LynxRiskLevel;
+  externalTarget?: string;
+  retryCount?: number;
+  idempotencyKey?: string;
   
   // Loop runaway detection metadata
   loopDetected?: boolean;

@@ -42,6 +42,9 @@ const PII_RULES = patternsConfig.piiRules.map((rule) => ({
   replacement: rule.replacement,
 }));
 
+const SENSITIVE_KEY_PATTERN =
+  /(?:api[-_]?key|authorization|auth[-_]?token|bearer|client[-_]?secret|cookie|credential|jwt|password|private[-_]?key|refresh[-_]?token|secret|session[-_]?token|token)/i;
+
 export function maskPIIString(text: string): string {
   let masked = text;
   for (const rule of PII_RULES) {
@@ -61,7 +64,11 @@ export function recursiveMaskPII(obj: any): any {
   if (typeof obj === "object") {
     const res: any = {};
     for (const key of Object.keys(obj)) {
-      res[key] = recursiveMaskPII(obj[key]);
+      if (SENSITIVE_KEY_PATTERN.test(key)) {
+        res[key] = "[MASKED_SECRET]";
+      } else {
+        res[key] = recursiveMaskPII(obj[key]);
+      }
     }
     return res;
   }

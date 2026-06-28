@@ -128,7 +128,7 @@ describe('EventService', () => {
       sessionId: 'sess-1',
     };
 
-    const result = await service.ingestEvent(dto);
+    const result = await service.ingestEvent(dto, 'test-api-key');
     expect(result.success).toBe(true);
 
     // gpt-4o rates: input = 2.50/M, output = 10.00/M
@@ -155,7 +155,7 @@ describe('EventService', () => {
       workspaceId: 'ws-1',
     };
 
-    const result = await service.ingestEvent(dto);
+    const result = await service.ingestEvent(dto, 'test-api-key');
     expect(result.success).toBe(false);
     expect(result.reason).toContain('retention limit');
   });
@@ -184,7 +184,7 @@ describe('EventService', () => {
       },
     ];
 
-    const result = await service.ingestEvents(dtos);
+    const result = await service.ingestEvents(dtos, 'test-api-key');
     expect(result.success).toBe(true);
     expect(result.count).toBe(2);
 
@@ -216,11 +216,8 @@ describe('EventService', () => {
   });
 
   describe('ingestEvent additional scenarios', () => {
-    it('should skip ingestion if no workspace is found', async () => {
-      mockWorkspaceRepository.findOne.mockResolvedValueOnce(null); // By apiKey
-      mockWorkspaceRepository.findOne.mockResolvedValueOnce(null); // By id
-      mockWorkspaceRepository.findOne.mockResolvedValueOnce(null); // By name
-      mockWorkspaceRepository.findOne.mockResolvedValueOnce(null); // Default empty lookup
+    it('should reject ingestion if no workspace is found for the API key', async () => {
+      mockWorkspaceRepository.findOne.mockResolvedValueOnce(null);
 
       const dto: LynxEventDto = {
         clientId: 'client-1',
@@ -233,9 +230,26 @@ describe('EventService', () => {
         workspaceId: 'non-existent-ws',
       };
 
-      const result = await service.ingestEvent(dto);
-      expect(result.success).toBe(false);
-      expect(result.reason).toContain('No workspace found');
+      await expect(service.ingestEvent(dto, 'bad-api-key')).rejects.toThrow(
+        'Invalid API key.',
+      );
+    });
+
+    it('should reject ingestion without an API key', async () => {
+      const dto: LynxEventDto = {
+        clientId: 'client-1',
+        runId: 'trace-1',
+        agentName: 'TestAgent',
+        eventType: 'LLM_REASONING' as LynxEventType,
+        label: 'gpt-4o',
+        payload: {},
+        timestamp: Date.now(),
+        workspaceId: 'ws-1',
+      };
+
+      await expect(service.ingestEvent(dto)).rejects.toThrow(
+        'API key is required.',
+      );
     });
 
     it('should lookup workspace using API key if provided', async () => {
@@ -315,7 +329,7 @@ describe('EventService', () => {
           workspaceId: 'ws-1',
         };
 
-        const result = await service.ingestEvent(dto);
+        const result = await service.ingestEvent(dto, 'test-api-key');
         expect(result.success).toBe(true);
         expect(mockEventRepository.save).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -344,7 +358,7 @@ describe('EventService', () => {
         workspaceId: 'ws-1',
       };
 
-      const result = await service.ingestEvent(dto);
+      const result = await service.ingestEvent(dto, 'test-api-key');
       expect(result.success).toBe(true);
       expect(mockEventRepository.save).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -377,7 +391,7 @@ describe('EventService', () => {
         sessionId: 'new-session-uuid-22222222222222222222',
       };
 
-      const result = await service.ingestEvent(dto);
+      const result = await service.ingestEvent(dto, 'test-api-key');
       expect(result.success).toBe(true);
       expect(mockAgentRepository.create).toHaveBeenCalled();
       expect(mockSessionRepository.create).toHaveBeenCalled();

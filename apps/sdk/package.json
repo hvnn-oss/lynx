@@ -21,7 +21,7 @@
     "obfuscate": "javascript-obfuscator ./dist/index.js --output ./dist/index.js --config obfuscator.config.json && javascript-obfuscator ./dist/index.cjs --output ./dist/index.cjs --config obfuscator.config.json",
     "build:prod": "pnpm build && pnpm obfuscate",
     "check-types": "tsc --noEmit",
-    "test": "echo 'No tests defined'"
+    "test": "pnpm build && node --test test/*.mjs"
   },
   "keywords": [],
   "author": "",

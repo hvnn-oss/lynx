@@ -45,7 +45,7 @@ export class SessionEntity {
   @Column()
   totalCost!: number;
 
-  @ManyToOne(() => WorkspaceEntity, (workspace) => workspace, {
+  @ManyToOne(() => WorkspaceEntity, (workspace) => workspace.sessions, {
     onDelete: "CASCADE",
   })
   workspace!: WorkspaceEntity;

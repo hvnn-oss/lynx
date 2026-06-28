@@ -1,4 +1,10 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength } from "class-validator";
+import {
+  IsBoolean,
+  IsEmail,
+  IsNotEmpty,
+  IsString,
+  MinLength,
+} from "class-validator";
 
 // 로그인 요청 DTO
 export class LoginDto {
@@ -15,8 +21,10 @@ export class LoginDto {
 // 로그인 응답 DTO
 export class LoginResponseDto {
   @IsNotEmpty()
+  @IsBoolean()
   success!: boolean;
 
   @IsNotEmpty()
+  @IsString()
   accessToken!: string;
 }

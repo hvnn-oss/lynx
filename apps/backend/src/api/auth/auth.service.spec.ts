@@ -22,7 +22,6 @@ import {
 } from '@nestjs/common';
 import { LOGIN_PROVIDERS } from '@repo/constants';
 import * as bcrypt from 'bcrypt';
-import * as zlib from 'zlib';
 
 jest.mock('bcrypt', () => ({
   genSalt: jest.fn(() => Promise.resolve('salt')),
@@ -337,7 +336,7 @@ describe('AuthService', () => {
       expect(mockRedis.set).toHaveBeenCalled();
     });
 
-    it('should redirect to SAML entryPoint if SAML is configured', async () => {
+    it('should reject SAML login until signed assertion validation is implemented', async () => {
       mockDomainRepo.findOne.mockResolvedValue({
         organization: {
           id: 'org-id',
@@ -349,7 +348,7 @@ describe('AuthService', () => {
 
       await service.handleSsoLogin('user@saml.com', mockRes);
       expect(mockRes.redirect).toHaveBeenCalledWith(
-        expect.stringContaining('https://saml-entry?SAMLRequest='),
+        'http://frontend/login?error=saml-validation-required',
       );
     });
   });
@@ -411,9 +410,7 @@ describe('AuthService', () => {
       await service.handleOidcCallback('code', 'state', mockRes);
       expect(mockRes.cookie).toHaveBeenCalled();
       expect(mockRes.redirect).toHaveBeenCalledWith(
-        expect.stringContaining(
-          'http://frontend/dashboard?sso_token=mock_token',
-        ),
+        'http://frontend/dashboard?sso=success',
       );
     });
   });
@@ -424,16 +421,16 @@ describe('AuthService', () => {
       send: jest.fn(),
     } as unknown as any;
 
-    it('should return error script if NameID is missing', async () => {
+    it('should reject SAML callback until signed assertion validation is implemented', async () => {
       const invalidResponse = Buffer.from('<xml></xml>').toString('base64');
 
       await service.handleSamlCallback(invalidResponse, mockRes);
       expect(mockRes.send).toHaveBeenCalledWith(
-        expect.stringContaining('error=sso-invalid-saml-response'),
+        expect.stringContaining('error=saml-validation-required'),
       );
     });
 
-    it('should successfully sign in the SAML user', async () => {
+    it('should not sign in a SAML user without assertion validation', async () => {
       const mockAssertion = `<samlp:Response><saml:Assertion><saml:Subject><saml:NameID>user@saml.com</saml:NameID></saml:Subject></saml:Assertion></samlp:Response>`;
       const validResponse = Buffer.from(mockAssertion).toString('base64');
 
@@ -444,9 +441,9 @@ describe('AuthService', () => {
       mockOrgRepo.findOneBy.mockResolvedValue({ id: 'org-id' });
 
       await service.handleSamlCallback(validResponse, mockRes);
-      expect(mockRes.cookie).toHaveBeenCalled();
+      expect(mockRes.cookie).not.toHaveBeenCalled();
       expect(mockRes.send).toHaveBeenCalledWith(
-        expect.stringContaining("localStorage.setItem('_uid', 'mock_token')"),
+        expect.stringContaining('error=saml-validation-required'),
       );
     });
   });
