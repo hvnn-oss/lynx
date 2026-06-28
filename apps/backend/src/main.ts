@@ -4,15 +4,26 @@ import { AppModule } from './app.module';
 import { BadRequestException, ValidationPipe } from '@nestjs/common';
 import { ERROR_CODES } from '@repo/constants';
 import { json, urlencoded } from 'express';
+import { ingestionRateLimit } from './common/middleware/ingestion-rate-limit.middleware';
+import { securityHeaders } from './common/middleware/security-headers.middleware';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const bodyLimit = process.env.JSON_BODY_LIMIT ?? '2mb';
 
-  app.use(json({ limit: process.env.JSON_BODY_LIMIT ?? '10mb' }));
+  app.enableCors({
+    origin:
+      process.env.CORS_ORIGIN?.split(',').map((origin) => origin.trim()) ??
+      true,
+    credentials: true,
+  });
+  app.use(securityHeaders);
+  app.use(ingestionRateLimit());
+  app.use(json({ limit: bodyLimit }));
   app.use(
     urlencoded({
       extended: true,
-      limit: process.env.JSON_BODY_LIMIT ?? '10mb',
+      limit: bodyLimit,
     }),
   );
 

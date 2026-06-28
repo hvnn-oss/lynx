@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ObserveService } from './observe.service';
 import { DataSource } from 'typeorm';
 import { OrganizationUserEntity } from '@repo/database';
+import { WorkspaceAccessService } from '../../common/services/workspace-access.service';
 
 describe('ObserveService', () => {
   let service: ObserveService;
@@ -74,6 +75,7 @@ describe('ObserveService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ObserveService,
+        WorkspaceAccessService,
         { provide: DataSource, useValue: mockDataSource },
       ],
     }).compile();

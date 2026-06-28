@@ -28,7 +28,6 @@ export * from "./entities/organization/user.entity.js";
 export * from "./entities/organization/workspace.entity.js";
 export * from "./entities/organization/filter-policy.entity.js";
 
-
 // prompt
 export * from "./entities/prompt/prompt-block.entity.js";
 export * from "./entities/prompt/prompt-version.entity.js";

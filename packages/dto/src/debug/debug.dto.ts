@@ -105,9 +105,9 @@ export class DebugSessionListQueryDto extends DebugSearchQueryDto {
  * 특정 세션의 실행 타임라인과 원본 payload를 조회할 때 사용하는 요청 DTO입니다.
  */
 export class DebugTimelineQueryDto extends DebugWorkspaceQueryDto {
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
-  sessionId!: string;
+  sessionId?: string;
 
   @IsOptional()
   @Type(() => Boolean)
@@ -222,9 +222,9 @@ export class DebugReproduceRequestDto {
   @IsString()
   workspaceId!: string;
 
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
-  sessionId!: string;
+  sessionId?: string;
 
   @IsOptional()
   @IsString()
@@ -318,6 +318,7 @@ export interface DebugTimelineNodeDto {
   inputPreview?: string;
   outputPreview?: string;
   error?: string;
+  orphaned?: boolean;
   payload?: Record<string, unknown>;
 }
 
@@ -325,6 +326,7 @@ export interface DebugTimelineResponseDto {
   session: DebugSessionSummaryDto;
   nodes: DebugTimelineNodeDto[];
   criticalPath: string[];
+  criticalPathMethod?: "MAX_ACCUMULATED_LATENCY";
   highlightedEventId?: string;
 }
 
@@ -386,6 +388,9 @@ export interface DebugRootCauseResponseDto {
   sessionId: string;
   summary: string;
   candidates: DebugRootCauseCandidateDto[];
+  primaryCandidateId?: string;
+  confidence?: number;
+  analysisMethod?: "HEURISTIC_V1";
   recommendedActions: Array<{
     title: string;
     description: string;
@@ -408,6 +413,7 @@ export interface DebugFailurePatternDto {
     model?: string;
     toolName?: string;
   };
+  signatureVersion?: "SIGNATURE_V1";
   exampleSessionId: string;
 }
 
@@ -420,6 +426,9 @@ export interface DebugReproduceStepDto {
   eventType: LynxEventType;
   label: string;
   status: "MATCHED" | "CHANGED" | "FAILED" | "SKIPPED";
+  order?: number;
+  replayable?: boolean;
+  reason?: string;
   expectedPreview?: string;
   actualPreview?: string;
   diffSummary?: string;
@@ -429,7 +438,15 @@ export interface DebugReproduceResponseDto {
   replayId: string;
   sourceSessionId: string;
   mode: DebugReproduceMode;
-  status: "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+  status:
+    | "READY"
+    | "DRY_RUN_ONLY"
+    | "QUEUED"
+    | "RUNNING"
+    | "COMPLETED"
+    | "FAILED";
+  reproducible?: boolean;
+  limitations?: string[];
   deterministicScore?: number;
   startedAt?: string;
   completedAt?: string;
@@ -466,7 +483,7 @@ export interface DebugLatencyResponseDto {
     avgLatency: number;
     p50: number;
     p95: number;
-    p99: number;
+    p99: number | null;
     slowEventCount: number;
   };
   buckets: DebugLatencyBucketDto[];
@@ -485,13 +502,19 @@ export interface DebugMemoryAccessDto {
 
 export interface DebugMemoryResponseDto {
   accesses: DebugMemoryAccessDto[];
+  hitCount?: number;
+  missCount?: number;
   staleMemoryCount: number;
   memoryMissCount: number;
+  unknownCount?: number;
 }
 
 export interface DebugPolicySimulationResponseDto {
   allow: boolean;
   toolName: string;
+  result?: "ALLOW" | "WARN" | "BLOCK";
+  source?: "RECORDED_POLICY_EVENT" | "POLICY_ENGINE" | "NO_MATCH";
+  actuallyEvaluated?: boolean;
   matchedPolicies: Array<{
     policyId: string;
     name?: string;

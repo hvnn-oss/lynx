@@ -22,6 +22,22 @@ import { ERROR_CODES } from '@repo/constants';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  private getCookie(req: express.Request, name: string): string | undefined {
+    const cookiesStr = req.headers.cookie || '';
+    const raw = cookiesStr
+      .split(';')
+      .map((cookie) => cookie.trim())
+      .find((cookie) => cookie.startsWith(`${name}=`))
+      ?.slice(name.length + 1);
+
+    if (!raw) return undefined;
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  }
+
   // SSO 로그인을 시작하고 IdP의 로그인 페이지로 리다이렉트합니다.
   @Get('/sso/login')
   async ssoLogin(@Query('email') email: string, @Res() res: express.Response) {
@@ -93,12 +109,7 @@ export class AuthController {
     @Req() req: express.Request,
     @Res({ passthrough: true }) res: express.Response,
   ) {
-    const cookiesStr = req.headers.cookie || '';
-    const refreshToken = cookiesStr
-      .split(';')
-      .map((c) => c.trim())
-      .find((c) => c.startsWith('refreshToken='))
-      ?.split('=')[1];
+    const refreshToken = this.getCookie(req, 'refreshToken');
 
     if (!refreshToken) {
       throw new ForbiddenException({
@@ -129,12 +140,7 @@ export class AuthController {
     @Req() req: express.Request,
     @Res({ passthrough: true }) res: express.Response,
   ) {
-    const cookiesStr = req.headers.cookie || '';
-    const refreshToken = cookiesStr
-      .split(';')
-      .map((c) => c.trim())
-      .find((c) => c.startsWith('refreshToken='))
-      ?.split('=')[1];
+    const refreshToken = this.getCookie(req, 'refreshToken');
 
     if (refreshToken) {
       await this.authService.logout(refreshToken);

@@ -1,12 +1,4 @@
-export * from "./event.dto.js";
-
-// auth
-export * from "./auth/verify-email.dto.js";
-export * from "./auth/register.dto.js";
-export * from "./auth/login.dto.js";
-
-// dashboard
-export * from "./dashboard.dto.js";
-
-// debug
-export * from "./debug.dto.js";
+export * from "./event/index.js";
+export * from "./auth/index.js";
+export * from "./dashboard/index.js";
+export * from "./debug/index.js";

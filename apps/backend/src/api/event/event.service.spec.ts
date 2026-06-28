@@ -197,6 +197,59 @@ describe('EventService', () => {
     expect(details[1].result.success).toBe(false); // second one failed retention check
   });
 
+  it('should resolve workspace once and reuse cached agent/session within a batch', async () => {
+    const dtos: LynxEventDto[] = [
+      {
+        clientId: 'client-1',
+        runId: 'trace-1',
+        agentName: 'TestAgent',
+        eventType: 'LLM_REASONING' as LynxEventType,
+        label: 'gpt-4o',
+        payload: {},
+        timestamp: Date.now(),
+        workspaceId: 'ws-1',
+        agentId: 'agent-1',
+        sessionId: 'sess-1',
+      },
+      {
+        clientId: 'client-1',
+        runId: 'trace-1',
+        agentName: 'TestAgent',
+        eventType: 'CONTEXT_ALERT' as LynxEventType,
+        label: 'note',
+        payload: {},
+        timestamp: Date.now(),
+        workspaceId: 'ws-1',
+        agentId: 'agent-1',
+        sessionId: 'sess-1',
+      },
+    ];
+
+    const result = await service.ingestEvents(dtos, 'test-api-key');
+
+    expect(result.success).toBe(true);
+    expect(mockWorkspaceRepository.findOne).toHaveBeenCalledTimes(1);
+    expect(mockAgentRepository.findOne).toHaveBeenCalledTimes(1);
+    expect(mockSessionRepository.findOne).toHaveBeenCalledTimes(1);
+  });
+
+  it('should reject batches over the configured maximum size', async () => {
+    const dtos = Array.from({ length: 101 }, (_, index) => ({
+      clientId: 'client-1',
+      runId: `trace-${index}`,
+      agentName: 'TestAgent',
+      eventType: 'CONTEXT_ALERT' as LynxEventType,
+      label: 'note',
+      payload: {},
+      timestamp: Date.now(),
+      workspaceId: 'ws-1',
+    }));
+
+    await expect(service.ingestEvents(dtos, 'test-api-key')).rejects.toThrow(
+      'Batch size exceeds maximum',
+    );
+  });
+
   describe('cleanExpiredEvents', () => {
     it('should successfully run cleanExpiredEvents and execute delete queries for each tier', async () => {
       mockDeleteQueryBuilder.execute.mockClear();
