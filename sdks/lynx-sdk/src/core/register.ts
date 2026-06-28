@@ -43,4 +43,14 @@ export const lynx = new LynxTracer({
   deploymentId: process.env.LYNX_DEPLOYMENT_ID,
   environment: process.env.LYNX_ENVIRONMENT || process.env.NODE_ENV,
   policyVersion: process.env.LYNX_POLICY_VERSION,
+  flushOnRunEnd: parseBool(process.env.LYNX_FLUSH_ON_RUN_END),
+  requestTimeoutMs: parseNum(process.env.LYNX_REQUEST_TIMEOUT_MS),
+  backgroundOnly: parseBool(process.env.LYNX_BACKGROUND_ONLY),
+  circuitBreakerEnabled: parseBool(process.env.LYNX_CIRCUIT_BREAKER_ENABLED),
+  circuitBreakerFailureThreshold: parseNum(
+    process.env.LYNX_CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+  ),
+  circuitBreakerCooldownMs: parseNum(
+    process.env.LYNX_CIRCUIT_BREAKER_COOLDOWN_MS,
+  ),
 });

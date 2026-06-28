@@ -101,6 +101,8 @@ describe('AuthService', () => {
     get: jest.fn((key) => {
       if (key === 'FRONTEND_URL') return 'http://frontend';
       if (key === 'BACKEND_URL') return 'http://backend';
+      if (key === 'JWT_ACCESS_SECRET') return 'test-access-secret';
+      if (key === 'JWT_REFRESH_SECRET') return 'test-refresh-secret';
       if (key === 'JWT_ACCESS_EXPIRES_IN') return '15m';
       if (key === 'JWT_REFRESH_EXPIRES_IN') return '7d';
       if (key === 'NODE_ENV') return 'test';

@@ -1,6 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { EventEntity, SessionEntity, AgentEntity } from '@repo/database';
+import {
+  EventEntity,
+  SessionEntity,
+  AgentEntity,
+  OrganizationUserEntity,
+} from '@repo/database';
 
 @Injectable()
 export class ObserveService {
@@ -8,8 +13,27 @@ export class ObserveService {
 
   constructor(private readonly dataSource: DataSource) {}
 
+  private async assertWorkspaceAccess(workspaceId: string, userId: string) {
+    const membership = await this.dataSource
+      .getRepository(OrganizationUserEntity)
+      .createQueryBuilder('membership')
+      .innerJoin('membership.organization', 'organization')
+      .innerJoin('organization.workspaces', 'workspace')
+      .where('workspace.id = :workspaceId', { workspaceId })
+      .andWhere('membership.userId = :userId', { userId })
+      .getOne();
+
+    if (!membership) {
+      throw new ForbiddenException({
+        message: 'You do not have access to this workspace.',
+      });
+    }
+  }
+
   // 1. Overview Dashboard Metrics
-  async getOverviewMetrics(workspaceId: string) {
+  async getOverviewMetrics(workspaceId: string, userId: string) {
+    await this.assertWorkspaceAccess(workspaceId, userId);
+
     const sessionRepo = this.dataSource.getRepository(SessionEntity);
     const eventRepo = this.dataSource.getRepository(EventEntity);
 
@@ -64,7 +88,9 @@ export class ObserveService {
   }
 
   // 2. Time-series Usage & Cost Analytics
-  async getAnalytics(workspaceId: string, days = 7) {
+  async getAnalytics(workspaceId: string, userId: string, days = 7) {
+    await this.assertWorkspaceAccess(workspaceId, userId);
+
     const eventRepo = this.dataSource.getRepository(EventEntity);
     const limitDate = new Date();
     limitDate.setDate(limitDate.getDate() - days);
@@ -96,7 +122,9 @@ export class ObserveService {
   }
 
   // 3. Agent Performance and List Stats
-  async getAgentStats(workspaceId: string): Promise<unknown[]> {
+  async getAgentStats(workspaceId: string, userId: string): Promise<unknown[]> {
+    await this.assertWorkspaceAccess(workspaceId, userId);
+
     const agentRepo = this.dataSource.getRepository(AgentEntity);
     const agents = await agentRepo.find({
       where: { workspace: { id: workspaceId } },
@@ -142,7 +170,9 @@ export class ObserveService {
   }
 
   // 4. Session List
-  async getSessions(workspaceId: string, status?: string) {
+  async getSessions(workspaceId: string, userId: string, status?: string) {
+    await this.assertWorkspaceAccess(workspaceId, userId);
+
     const sessionRepo = this.dataSource.getRepository(SessionEntity);
     const query = sessionRepo
       .createQueryBuilder('session')
@@ -158,10 +188,16 @@ export class ObserveService {
   }
 
   // 5. Session details & timeline traceparent tree
-  async getSessionTimeline(sessionId: string) {
+  async getSessionTimeline(
+    workspaceId: string,
+    userId: string,
+    sessionId: string,
+  ) {
+    await this.assertWorkspaceAccess(workspaceId, userId);
+
     const eventRepo = this.dataSource.getRepository(EventEntity);
     const events = await eventRepo.find({
-      where: { session: { id: sessionId } },
+      where: { session: { id: sessionId, workspace: { id: workspaceId } } },
       order: { timestamp: 'ASC' },
     });
 
@@ -185,7 +221,9 @@ export class ObserveService {
   }
 
   // 6. Recent errors log
-  async getRecentErrors(workspaceId: string, limit = 50) {
+  async getRecentErrors(workspaceId: string, userId: string, limit = 50) {
+    await this.assertWorkspaceAccess(workspaceId, userId);
+
     const eventRepo = this.dataSource.getRepository(EventEntity);
     const events = await eventRepo
       .createQueryBuilder('event')

@@ -2,6 +2,7 @@ import {
   CanActivate,
   ExecutionContext,
   Injectable,
+  InternalServerErrorException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -35,7 +36,7 @@ export class JwtAuthGuard implements CanActivate {
       const payload = await this.jwtService.verifyAsync<AccessTokenPayload>(
         token,
         {
-          secret: this.configService.get<string>('JWT_ACCESS_SECRET') || 'abcd',
+          secret: this.getRequiredConfig('JWT_ACCESS_SECRET'),
         },
       );
       Object.assign(request, { user: payload });
@@ -46,5 +47,16 @@ export class JwtAuthGuard implements CanActivate {
         message: 'Token has expired or is invalid.',
       });
     }
+  }
+
+  private getRequiredConfig(key: string): string {
+    const value = this.configService.get<string>(key);
+    if (!value) {
+      throw new InternalServerErrorException({
+        error_code: ERROR_CODES.INVALID_INPUT,
+        message: `Missing required server configuration: ${key}`,
+      });
+    }
+    return value;
   }
 }

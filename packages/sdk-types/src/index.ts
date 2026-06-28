@@ -76,6 +76,44 @@ export interface LynxConfig {
    * 배치 전송 플러시 주기 (기본값: 3000ms)
    */
   flushIntervalMs?: number;
+
+  /**
+   * Whether `run()` should trigger a telemetry flush after the wrapped block
+   * finishes. Defaults to `true` for backwards compatibility.
+   */
+  flushOnRunEnd?: boolean;
+
+  /**
+   * Maximum time to wait for a single telemetry HTTP request, in milliseconds.
+   * Defaults to 5000ms.
+   */
+  requestTimeoutMs?: number;
+
+  /**
+   * When true, telemetry delivery is scheduled in the background and SDK calls
+   * do not wait for network delivery except during `shutdown()`. Defaults to
+   * `false`.
+   */
+  backgroundOnly?: boolean;
+
+  /**
+   * Enables a circuit breaker for telemetry delivery. When the breaker is open,
+   * the SDK skips network sends and keeps events in the retry queue. Defaults to
+   * `true`.
+   */
+  circuitBreakerEnabled?: boolean;
+
+  /**
+   * Number of consecutive failed telemetry sends required to open the circuit
+   * breaker. Defaults to 3.
+   */
+  circuitBreakerFailureThreshold?: number;
+
+  /**
+   * How long an open circuit breaker should wait before allowing another send
+   * attempt, in milliseconds. Defaults to 30000ms.
+   */
+  circuitBreakerCooldownMs?: number;
 }
 
 /**
@@ -117,7 +155,9 @@ export interface LynxPolicyDecision {
   metadata?: Record<string, any>;
 }
 
-export interface LynxGuardToolOptions<TArgs extends any[] = any[]> extends LynxToolMetadata {
+export interface LynxGuardToolOptions<
+  TArgs extends any[] = any[],
+> extends LynxToolMetadata {
   beforeCall?: (context: {
     toolName: string;
     args: TArgs;
@@ -148,7 +188,11 @@ export interface LlmInstrumentationRule {
   /**
    * 가로챈 모델 및 토큰 사용량에 대한 비용을 추정합니다.
    */
-  estimateCost?: (model: string, promptTokens: number, completionTokens: number) => number;
+  estimateCost?: (
+    model: string,
+    promptTokens: number,
+    completionTokens: number,
+  ) => number;
 }
 
 /**
@@ -180,11 +224,11 @@ export interface LynxEventPayloadDto {
   output?: any;
   error?: string;
   arguments?: any;
-  
+
   // Span Hierarchical Tracking
   spanId?: string;
   parentSpanId?: string;
-  
+
   // Performance and Cost Analytics
   latency?: number; // millisecond duration of the execution
   usage?: TokenUsage; // token usage for LLM calls
@@ -220,12 +264,12 @@ export interface LynxEventPayloadDto {
   externalTarget?: string;
   retryCount?: number;
   idempotencyKey?: string;
-  
+
   // Loop runaway detection metadata
   loopDetected?: boolean;
   loopCount?: number;
   repeatedLabel?: string;
-  
+
   // Prompt injection & pollution alert metadata
   isPolluted?: boolean;
   pollutionReason?: string;

@@ -1,4 +1,4 @@
-import { AsyncLocalStorage } from "async_hooks";
+﻿import { AsyncLocalStorage } from "async_hooks";
 import {
   LynxConfig,
   LynxContext,
@@ -57,6 +57,9 @@ export class LynxTracer {
   private backoffDelayMs = 1000;
   private flushTimer: NodeJS.Timeout | null = null;
   private isShuttingDown = false;
+  private isFlushInProgress = false;
+  private consecutiveFlushFailures = 0;
+  private circuitOpenedAt = 0;
 
   /**
    * Creates a tracer with the provided Lynx telemetry configuration.
@@ -73,15 +76,14 @@ export class LynxTracer {
     this.flushTimer = setInterval(() => {
       void this.flush();
     }, interval);
-
-    // Node.js 프로세스가 타이머 때문에 강제로 켜져 있지 않도록 설정
+    // Do not keep the Node.js process alive only for telemetry flushing.
     if (this.flushTimer && typeof this.flushTimer.unref === "function") {
       this.flushTimer.unref();
     }
 
-    // 프로세스 종료 시 잔여 큐 플러시
+    // Flush remaining telemetry once when the process is about to exit.
     if (typeof process !== "undefined") {
-      process.on("beforeExit", () => {
+      process.once("beforeExit", () => {
         void this.shutdown();
       });
     }
@@ -114,8 +116,17 @@ export class LynxTracer {
       return;
     }
 
-    // 백오프 대기 시간 검사
-    if (this.lastFailureTime > 0 && Date.now() - this.lastFailureTime < this.backoffDelayMs) {
+    if (this.isFlushInProgress) {
+      return;
+    }
+    if (this.isCircuitOpen()) {
+      return;
+    }
+
+    if (
+      this.lastFailureTime > 0 &&
+      Date.now() - this.lastFailureTime < this.backoffDelayMs
+    ) {
       return;
     }
 
@@ -127,9 +138,12 @@ export class LynxTracer {
       return;
     }
 
+    this.isFlushInProgress = true;
     const url = `${this.config.lynxCloudUrl}/openapi/v1/events/batch`;
-    console.log(`[LynxTracer] flushing ${eventsToFlush.length} events to: ${url}`);
-    
+    console.log(
+      `[LynxTracer] flushing ${eventsToFlush.length} events to: ${url}`,
+    );
+
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
@@ -142,29 +156,42 @@ export class LynxTracer {
       method: "POST",
       headers,
       body: JSON.stringify(eventsToFlush),
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(this.config.requestTimeoutMs ?? 5000),
     })
       .then(async (res) => {
         if (!res.ok) {
           const text = await res.text();
-          console.error(`[LynxTracer] telemetry batch flush failed with status ${res.status}: ${text}`);
-          this.handleFailedEvents(eventsToFlush);
+          console.error(
+            `[LynxTracer] telemetry batch flush failed with status ${res.status}: ${text}`,
+          );
+          this.handleFailedEvents(eventsToFlush, "http_error");
         } else {
-          // 전송 성공 시 백오프 리셋
-          this.lastFailureTime = 0;
-          this.backoffDelayMs = 1000;
+          const result = await res.json().catch(() => ({ success: true }));
+          if (result && result.success === false) {
+            console.error(
+              "[LynxTracer] telemetry batch flush returned failed details:",
+              result,
+            );
+            this.handleFailedEvents(eventsToFlush, "batch_failed");
+          } else {
+            // ?꾩넚 ?깃났 ??諛깆삤??由ъ뀑
+            this.handleSuccessfulFlush();
+          }
         }
       })
       .catch((err) => {
         console.error("LynxTracer telemetry batch flush failed:", err);
-        this.handleFailedEvents(eventsToFlush);
+        this.handleFailedEvents(eventsToFlush, "network_error");
       })
       .finally(() => {
         this.pendingPromises.delete(promise);
+        this.isFlushInProgress = false;
       });
 
     this.pendingPromises.add(promise);
-    await promise;
+    if (!this.config.backgroundOnly || this.isShuttingDown) {
+      await promise;
+    }
   }
 
   /**
@@ -189,24 +216,56 @@ export class LynxTracer {
     if (this.pendingPromises.size > 0) {
       await Promise.allSettled(Array.from(this.pendingPromises));
     }
-    this.isShuttingDown = false;
   }
 
-  private handleFailedEvents(events: LynxEventDto[]): void {
+  private isCircuitBreakerEnabled(): boolean {
+    return this.config.circuitBreakerEnabled !== false;
+  }
+
+  private isCircuitOpen(): boolean {
+    if (!this.isCircuitBreakerEnabled() || this.circuitOpenedAt === 0) {
+      return false;
+    }
+
+    return (
+      Date.now() - this.circuitOpenedAt <
+      (this.config.circuitBreakerCooldownMs ?? 30000)
+    );
+  }
+
+  private handleSuccessfulFlush(): void {
+    this.lastFailureTime = 0;
+    this.backoffDelayMs = 1000;
+    this.consecutiveFlushFailures = 0;
+    this.circuitOpenedAt = 0;
+  }
+
+  private handleFailedEvents(events: LynxEventDto[], reason: string): void {
     this.lastFailureTime = Date.now();
-    
+    this.consecutiveFlushFailures += 1;
+
+    if (
+      this.isCircuitBreakerEnabled() &&
+      this.consecutiveFlushFailures >=
+        (this.config.circuitBreakerFailureThreshold ?? 3)
+    ) {
+      this.circuitOpenedAt = Date.now();
+      console.warn(
+        `[LynxTracer] Telemetry circuit breaker opened after ${this.consecutiveFlushFailures} consecutive failures. Reason: ${reason}.`,
+      );
+    }
+
     const maxBufferSize = 1000;
     const totalCount = this.retryQueue.length + events.length;
     if (totalCount > maxBufferSize) {
       const discardCount = totalCount - maxBufferSize;
-      this.retryQueue.splice(0, discardCount); // OOM 방지를 위해 오래된 실패 이벤트 삭제
+      this.retryQueue.splice(0, discardCount); // OOM 諛⑹?瑜??꾪빐 ?ㅻ옒???ㅽ뙣 ?대깽????젣
     }
     this.retryQueue.push(...events);
-    
-    // 최대 1분 한도로 지수 백오프
-    this.backoffDelayMs = Math.min(this.backoffDelayMs * 2, 60000);
+
+    // 理쒕? 1遺??쒕룄濡?吏??諛깆삤??    this.backoffDelayMs = Math.min(this.backoffDelayMs * 2, 60000);
     console.warn(
-      `[LynxTracer] Offline retry buffer saved ${events.length} events. Total size: ${this.retryQueue.length}. Backing off for ${this.backoffDelayMs}ms.`
+      `[LynxTracer] Offline retry buffer saved ${events.length} events. Total size: ${this.retryQueue.length}. Backing off for ${this.backoffDelayMs}ms.`,
     );
   }
 
@@ -235,23 +294,41 @@ export class LynxTracer {
     optionsOrAgentName: string | LynxRunOptions,
     executionBlock: () => Promise<T> | T,
   ): Promise<T> {
-    const options = typeof optionsOrAgentName === "string"
-      ? { agentName: optionsOrAgentName }
-      : optionsOrAgentName;
+    const options =
+      typeof optionsOrAgentName === "string"
+        ? { agentName: optionsOrAgentName }
+        : optionsOrAgentName;
 
     const agentName = options.agentName;
     const parentContext = LynxTracer.storage.getStore();
-    const runId = options.runId ?? (parentContext ? parentContext.runId : generateTraceId());
+    const runId =
+      options.runId ??
+      (parentContext ? parentContext.runId : generateTraceId());
     const parentSpanId = parentContext ? parentContext.spanId : undefined;
     const spanId = generateSpanId();
 
-    const workspaceId = options.workspaceId ?? parentContext?.workspaceId ?? this.config.workspaceId ?? process.env.LYNX_WORKSPACE_ID ?? "Default Workspace";
-    const agentId = options.agentId ?? parentContext?.agentId ?? this.config.agentId ?? process.env.LYNX_AGENT_ID ?? agentName;
-    const sessionId = options.sessionId ?? parentContext?.sessionId ?? process.env.LYNX_SESSION_ID ?? `session_${runId}`;
+    const workspaceId =
+      options.workspaceId ??
+      parentContext?.workspaceId ??
+      this.config.workspaceId ??
+      process.env.LYNX_WORKSPACE_ID;
+    const agentId =
+      options.agentId ??
+      parentContext?.agentId ??
+      this.config.agentId ??
+      process.env.LYNX_AGENT_ID ??
+      agentName;
+    const sessionId =
+      options.sessionId ??
+      parentContext?.sessionId ??
+      process.env.LYNX_SESSION_ID ??
+      `session_${runId}`;
 
     const sampled = parentContext
       ? (parentContext.sampled ?? true)
-      : (this.config.sampleRate !== undefined ? Math.random() < this.config.sampleRate : true);
+      : this.config.sampleRate !== undefined
+        ? Math.random() < this.config.sampleRate
+        : true;
 
     const currentContext: LynxContext = {
       runId,
@@ -265,14 +342,21 @@ export class LynxTracer {
       eventCounts: parentContext?.eventCounts ?? {},
     };
 
-    console.log(`[LynxTracer] run started for agent: ${agentName}, runId: ${runId}, spanId: ${spanId}, parentSpanId: ${parentSpanId}`);
-    
-    this.captureInternal("CONTEXT_ALERT", `run.start:${agentName}`, {
-      message: `Agent execution thread started`,
-      phase: "start",
-      spanId,
-      parentSpanId
-    }, currentContext);
+    console.log(
+      `[LynxTracer] run started for agent: ${agentName}, runId: ${runId}, spanId: ${spanId}, parentSpanId: ${parentSpanId}`,
+    );
+
+    this.captureInternal(
+      "CONTEXT_ALERT",
+      `run.start:${agentName}`,
+      {
+        message: `Agent execution thread started`,
+        phase: "start",
+        spanId,
+        parentSpanId,
+      },
+      currentContext,
+    );
 
     const startTime = Date.now();
 
@@ -280,33 +364,49 @@ export class LynxTracer {
       try {
         const result = await executionBlock();
         const latency = Date.now() - startTime;
-        
-        this.captureInternal("CONTEXT_ALERT", `run.end:${agentName}`, {
-          message: `Agent execution thread succeeded`,
-          phase: "end",
-          spanId,
-          parentSpanId,
-          latency
-        }, currentContext);
+
+        this.captureInternal(
+          "CONTEXT_ALERT",
+          `run.end:${agentName}`,
+          {
+            message: `Agent execution thread succeeded`,
+            phase: "end",
+            spanId,
+            parentSpanId,
+            latency,
+          },
+          currentContext,
+        );
 
         return result;
       } catch (err: any) {
         const latency = Date.now() - startTime;
-        this.captureInternal("ERROR", `run.error:${agentName}`, {
-          error: err.message,
-          phase: "error",
-          spanId,
-          parentSpanId,
-          latency
-        }, currentContext);
+        this.captureInternal(
+          "ERROR",
+          `run.error:${agentName}`,
+          {
+            error: err.message,
+            phase: "error",
+            spanId,
+            parentSpanId,
+            latency,
+          },
+          currentContext,
+        );
         throw err;
       } finally {
-        await this.flush();
-        if (this.pendingPromises.size > 0) {
-          console.log(`[LynxTracer] awaiting ${this.pendingPromises.size} pending telemetry transmissions...`);
+        if (this.config.flushOnRunEnd !== false) {
+          await this.flush();
+        }
+        if (!this.config.backgroundOnly && this.pendingPromises.size > 0) {
+          console.log(
+            `[LynxTracer] awaiting ${this.pendingPromises.size} pending telemetry transmissions...`,
+          );
           await Promise.all(Array.from(this.pendingPromises));
         }
-        console.log(`[LynxTracer] run finished for agent: ${agentName}, runId: ${runId}`);
+        console.log(
+          `[LynxTracer] run finished for agent: ${agentName}, runId: ${runId}`,
+        );
       }
     });
   }
@@ -326,7 +426,9 @@ export class LynxTracer {
     if (context) {
       this.captureInternal("CONTEXT_ALERT", label, payload, context);
     } else {
-      console.warn("[LynxTracer] Log was called outside a running context. Event ignored.");
+      console.warn(
+        "[LynxTracer] Log was called outside a running context. Event ignored.",
+      );
     }
   }
 
@@ -384,7 +486,11 @@ export class LynxTracer {
    * @param data Memory key/value, query result, or a safe summary.
    * @param metadata Optional metadata such as hit/miss, store name, or freshness.
    */
-  memory(operation: string, data: any, metadata: Record<string, any> = {}): void {
+  memory(
+    operation: string,
+    data: any,
+    metadata: Record<string, any> = {},
+  ): void {
     this.capture("MEMORY_ACCESS", `memory.${operation}`, {
       operation,
       data,
@@ -419,7 +525,7 @@ export class LynxTracer {
   }
 
   /**
-   * 추적 이벤트를 캡처하여 컨트롤 플레인으로 전송합니다.
+   * 異붿쟻 ?대깽?몃? 罹≪쿂?섏뿬 而⑦듃濡??뚮젅?몄쑝濡??꾩넚?⑸땲??
    */
   private capture(
     eventType: LynxEventDto["eventType"],
@@ -428,7 +534,9 @@ export class LynxTracer {
   ): void {
     const context = LynxTracer.storage.getStore();
     if (!context) {
-      console.warn(`[LynxTracer] Warning: event ${eventType} was captured outside a LynxTracer context!`);
+      console.warn(
+        `[LynxTracer] Warning: event ${eventType} was captured outside a LynxTracer context!`,
+      );
       return;
     }
     this.captureInternal(eventType, label, payload, context);
@@ -455,22 +563,27 @@ export class LynxTracer {
     context: LynxContext,
   ): void {
     // Tail-based/Adaptive sampling fallback:
-    // 에러 관련 이벤트인 경우 샘플링 여부(sampled === false)와 관계없이 강제 수집함.
-    const isError = eventType === "ERROR" || (payload && (payload.error || "error" in payload));
+    // ?먮윭 愿???대깽?몄씤 寃쎌슦 ?섑뵆留??щ?(sampled === false)? 愿怨꾩뾾??媛뺤젣 ?섏쭛??
+    const isError =
+      eventType === "ERROR" ||
+      (payload && (payload.error || "error" in payload));
     if (context.sampled === false && !isError) {
       return;
     }
 
     const loopPayload = this.detectLoop(eventType, label, payload, context);
-    const processedPayload = processPayload({
-      ...payload,
-      ...loopPayload,
-      sdkVersion: SDK_VERSION,
-      appVersion: payload?.appVersion ?? this.config.appVersion,
-      deploymentId: payload?.deploymentId ?? this.config.deploymentId,
-      environment: payload?.environment ?? this.config.environment,
-      policyVersion: payload?.policyVersion ?? this.config.policyVersion,
-    }, this.config);
+    const processedPayload = processPayload(
+      {
+        ...payload,
+        ...loopPayload,
+        sdkVersion: SDK_VERSION,
+        appVersion: payload?.appVersion ?? this.config.appVersion,
+        deploymentId: payload?.deploymentId ?? this.config.deploymentId,
+        environment: payload?.environment ?? this.config.environment,
+        policyVersion: payload?.policyVersion ?? this.config.policyVersion,
+      },
+      this.config,
+    );
 
     const eventPayload = {
       ...processedPayload,
@@ -489,17 +602,22 @@ export class LynxTracer {
       workspaceId: context.workspaceId,
       agentId: context.agentId,
       sessionId: context.sessionId,
-      schemaVersion: "1", // 스키마 버저닝 추가
+      schemaVersion: "1", // ?ㅽ궎留?踰꾩???異붽?
     };
 
     this.eventQueue.push(eventDto);
 
     if (loopPayload.loopDetected && eventType !== "LOOP_DETECTED") {
-      this.captureInternal("LOOP_DETECTED", `loop:${label}`, {
-        repeatedLabel: label,
-        loopCount: loopPayload.loopCount,
-        argsHash: loopPayload.argsHash,
-      }, context);
+      this.captureInternal(
+        "LOOP_DETECTED",
+        `loop:${label}`,
+        {
+          repeatedLabel: label,
+          loopCount: loopPayload.loopCount,
+          argsHash: loopPayload.argsHash,
+        },
+        context,
+      );
     }
 
     const maxBatchSize = this.config.batchSize ?? 50;
@@ -525,10 +643,12 @@ export class LynxTracer {
    */
   instrumentLLM<T extends object>(
     instance: T,
-    optionsOrLabel: string | {
-      modelLabel?: string;
-      customRule?: Partial<LlmInstrumentationRule>;
-    } = "llm.inference"
+    optionsOrLabel:
+      | string
+      | {
+          modelLabel?: string;
+          customRule?: Partial<LlmInstrumentationRule>;
+        } = "llm.inference",
   ): T {
     return instrumentLLM(this, instance, optionsOrLabel);
   }
@@ -586,7 +706,10 @@ export class LynxTracer {
         argsHash: stableHash(args[0]),
         allow: decision.allow,
         policyId: decision.policyId,
-        policyVersion: decision.policyVersion ?? options.policyVersion ?? this.config.policyVersion,
+        policyVersion:
+          decision.policyVersion ??
+          options.policyVersion ??
+          this.config.policyVersion,
         reason: decision.reason,
         severity: decision.severity,
         metadata: decision.metadata,
@@ -598,7 +721,10 @@ export class LynxTracer {
           args: args[0],
           argsHash: stableHash(args[0]),
           policyId: decision.policyId,
-          policyVersion: decision.policyVersion ?? options.policyVersion ?? this.config.policyVersion,
+          policyVersion:
+            decision.policyVersion ??
+            options.policyVersion ??
+            this.config.policyVersion,
           reason: decision.reason,
           severity: decision.severity ?? options.riskLevel,
         });
@@ -608,7 +734,9 @@ export class LynxTracer {
           reason: decision.reason,
           riskLevel: decision.severity ?? options.riskLevel,
         });
-        throw new Error(decision.reason || `Lynx guard blocked tool call: ${toolName}`);
+        throw new Error(
+          decision.reason || `Lynx guard blocked tool call: ${toolName}`,
+        );
       }
 
       const instrumented = this.instrumentTool(toolName, fn, options);
@@ -624,7 +752,11 @@ export class LynxTracer {
     payload: any,
     context: LynxContext,
   ): Partial<LynxEventDto["payload"]> {
-    if (eventType !== "TOOL_CALL" && eventType !== "CALL_TOOLS" && eventType !== "LLM_CALL") {
+    if (
+      eventType !== "TOOL_CALL" &&
+      eventType !== "CALL_TOOLS" &&
+      eventType !== "LLM_CALL"
+    ) {
       return {};
     }
 
@@ -633,7 +765,9 @@ export class LynxTracer {
       return {};
     }
 
-    const argsHash = stableHash(payload?.args ?? payload?.input ?? payload?.model ?? label);
+    const argsHash = stableHash(
+      payload?.args ?? payload?.input ?? payload?.model ?? label,
+    );
     const key = `${eventType}:${label}:${argsHash}`;
     context.eventCounts ??= {};
     const loopCount = (context.eventCounts[key] ?? 0) + 1;

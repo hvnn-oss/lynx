@@ -14,6 +14,15 @@ import { EventModule } from './api/event/event.module';
 import { ObserveModule } from './api/observe/observe.module';
 import { DashboardModule } from './api/dashboard/dashboard.module';
 
+function parseBooleanEnv(
+  value: string | boolean | undefined,
+  fallback = false,
+) {
+  if (typeof value === 'boolean') return value;
+  if (value === undefined) return fallback;
+  return value.toLowerCase() === 'true';
+}
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -44,8 +53,11 @@ import { DashboardModule } from './api/dashboard/dashboard.module';
             ? configService.get<string>('DB_DATABASE')
             : undefined,
           autoLoadEntities: false,
-          synchronize: configService.get<boolean>('DB_SYNCHRONIZE'),
-          logging: configService.get<boolean>('DB_LOGGING'),
+          synchronize:
+            configService.get<string>('NODE_ENV') === 'production'
+              ? false
+              : parseBooleanEnv(configService.get<string>('DB_SYNCHRONIZE')),
+          logging: parseBooleanEnv(configService.get<string>('DB_LOGGING')),
         };
       },
     }),

@@ -185,7 +185,7 @@ describe('EventService', () => {
     ];
 
     const result = await service.ingestEvents(dtos, 'test-api-key');
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
     expect(result.count).toBe(2);
 
     const details = result.details as Array<{
@@ -193,19 +193,19 @@ describe('EventService', () => {
       result: { success: boolean; reason?: string };
     }>;
     expect(details[0].success).toBe(true);
-    expect(details[1].success).toBe(true); // returns success/failure within details
+    expect(details[1].success).toBe(false);
     expect(details[1].result.success).toBe(false); // second one failed retention check
   });
 
   describe('cleanExpiredEvents', () => {
     it('should successfully run cleanExpiredEvents and execute delete queries for each tier', async () => {
       mockDeleteQueryBuilder.execute.mockClear();
-      mockConfigService.get.mockImplementation((key: string) => {
+      mockConfigService.get.mockImplementation(((key: string) => {
         if (key === 'RETENTION_DAYS_FREE') return 5;
         if (key === 'RETENTION_DAYS_PRO') return 15;
         if (key === 'RETENTION_DAYS_ENTERPRISE') return 100;
         return undefined;
-      });
+      }) as any);
 
       await service.cleanExpiredEvents();
 
@@ -217,7 +217,7 @@ describe('EventService', () => {
 
   describe('ingestEvent additional scenarios', () => {
     it('should reject ingestion if no workspace is found for the API key', async () => {
-      mockWorkspaceRepository.findOne.mockResolvedValueOnce(null);
+      mockWorkspaceRepository.findOne.mockResolvedValueOnce(null as any);
 
       const dto: LynxEventDto = {
         clientId: 'client-1',
@@ -323,6 +323,7 @@ describe('EventService', () => {
             usage: {
               promptTokens: t.prompt,
               completionTokens: t.completion,
+              totalTokens: t.prompt + t.completion,
             },
           },
           timestamp: Date.now(),
@@ -352,6 +353,7 @@ describe('EventService', () => {
           usage: {
             promptTokens: 1000,
             completionTokens: 1000,
+            totalTokens: 2000,
           },
         },
         timestamp: Date.now(),
@@ -369,11 +371,11 @@ describe('EventService', () => {
 
     it('should create new agent and session if they are not found', async () => {
       mockAgentRepository.findOne
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(null);
+        .mockResolvedValueOnce(null as any)
+        .mockResolvedValueOnce(null as any);
       mockSessionRepository.findOne
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(null);
+        .mockResolvedValueOnce(null as any)
+        .mockResolvedValueOnce(null as any);
 
       mockAgentRepository.create.mockClear();
       mockSessionRepository.create.mockClear();

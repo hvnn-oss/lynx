@@ -18,6 +18,7 @@ describe('ObserveController', () => {
     getSessionTimeline: jest.fn(() => Promise.resolve([])),
     getRecentErrors: jest.fn(() => Promise.resolve([])),
   };
+  const mockReq = { user: { sub: 'user-1' } } as any;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -42,29 +43,37 @@ describe('ObserveController', () => {
   });
 
   it('should get overview metrics', async () => {
-    const result = await controller.getOverviewMetrics('ws-1');
-    expect(service.getOverviewMetrics).toHaveBeenCalledWith('ws-1');
+    const result = await controller.getOverviewMetrics('ws-1', mockReq);
+    expect(service.getOverviewMetrics).toHaveBeenCalledWith('ws-1', 'user-1');
     expect(result).toEqual({ totalSessions: 1, totalCost: 0.1 });
   });
 
   it('should get analytics', async () => {
-    const result = await controller.getAnalytics('ws-1', '5');
-    expect(service.getAnalytics).toHaveBeenCalledWith('ws-1', 5);
+    const result = await controller.getAnalytics('ws-1', '5', mockReq);
+    expect(service.getAnalytics).toHaveBeenCalledWith('ws-1', 'user-1', 5);
     expect(result).toEqual({ analytics: [] });
   });
 
   it('should get sessions list', async () => {
-    await controller.getSessions('ws-1', 'RUNNING');
-    expect(service.getSessions).toHaveBeenCalledWith('ws-1', 'RUNNING');
+    await controller.getSessions('ws-1', 'RUNNING', mockReq);
+    expect(service.getSessions).toHaveBeenCalledWith(
+      'ws-1',
+      'user-1',
+      'RUNNING',
+    );
   });
 
   it('should get timeline details', async () => {
-    await controller.getSessionTimeline('sess-1');
-    expect(service.getSessionTimeline).toHaveBeenCalledWith('sess-1');
+    await controller.getSessionTimeline('sess-1', 'ws-1', mockReq);
+    expect(service.getSessionTimeline).toHaveBeenCalledWith(
+      'ws-1',
+      'user-1',
+      'sess-1',
+    );
   });
 
   it('should get recent errors', async () => {
-    await controller.getRecentErrors('ws-1', '10');
-    expect(service.getRecentErrors).toHaveBeenCalledWith('ws-1', 10);
+    await controller.getRecentErrors('ws-1', '10', mockReq);
+    expect(service.getRecentErrors).toHaveBeenCalledWith('ws-1', 'user-1', 10);
   });
 });

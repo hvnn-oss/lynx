@@ -3,9 +3,18 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { BadRequestException, ValidationPipe } from '@nestjs/common';
 import { ERROR_CODES } from '@repo/constants';
+import { json, urlencoded } from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  app.use(json({ limit: process.env.JSON_BODY_LIMIT ?? '10mb' }));
+  app.use(
+    urlencoded({
+      extended: true,
+      limit: process.env.JSON_BODY_LIMIT ?? '10mb',
+    }),
+  );
 
   app.useGlobalPipes(
     new ValidationPipe({

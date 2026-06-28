@@ -100,11 +100,11 @@ export class EventService {
 
     // 3. 에이전트 조회/생성
     let agent = await agentRepository.findOne({
-      where: { id: agentId },
+      where: { id: agentId, workspace: { id: workspace.id } },
     });
     if (!agent && agentId) {
       agent = await agentRepository.findOne({
-        where: { name: agentId },
+        where: { name: agentId, workspace: { id: workspace.id } },
       });
     }
     if (!agent) {
@@ -119,11 +119,14 @@ export class EventService {
 
     // 4. 세션 조회/생성
     let session = await sessionRepository.findOne({
-      where: { id: sessionId },
+      where: { id: sessionId, workspace: { id: workspace.id } },
     });
     if (!session && sessionId) {
       session = await sessionRepository.findOne({
-        where: [{ id: sessionId }, { name: sessionId }],
+        where: [
+          { id: sessionId, workspace: { id: workspace.id } },
+          { name: sessionId, workspace: { id: workspace.id } },
+        ],
       });
     }
     if (!session) {
@@ -199,7 +202,7 @@ export class EventService {
       try {
         const res = await this.ingestEvent(dto, apiKey);
         results.push({
-          success: true,
+          success: res.success !== false,
           runId: dto.runId,
           eventType: dto.eventType,
           label: dto.label,
@@ -218,7 +221,8 @@ export class EventService {
         });
       }
     }
-    return { success: true, count: results.length, details: results };
+    const success = results.every((item) => item.success === true);
+    return { success, count: results.length, details: results };
   }
 
   private estimateLlmCost(

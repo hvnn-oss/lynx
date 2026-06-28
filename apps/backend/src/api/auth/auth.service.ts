@@ -393,8 +393,7 @@ export class AuthService {
       const payload = await this.jwtService.verifyAsync<RefreshTokenPayload>(
         refreshToken,
         {
-          secret:
-            this.configService.get<string>('JWT_REFRESH_SECRET') || 'efgh',
+          secret: this.getRequiredConfig('JWT_REFRESH_SECRET'),
         },
       );
 
@@ -435,8 +434,7 @@ export class AuthService {
       const payload = await this.jwtService.verifyAsync<RefreshTokenPayload>(
         refreshToken,
         {
-          secret:
-            this.configService.get<string>('JWT_REFRESH_SECRET') || 'efgh',
+          secret: this.getRequiredConfig('JWT_REFRESH_SECRET'),
         },
       );
       const userId = payload.sub;
@@ -450,6 +448,17 @@ export class AuthService {
   // =====================================================
   // 토큰 관리
   // =====================================================
+  private getRequiredConfig(key: string): string {
+    const value = this.configService.get<string>(key);
+    if (!value) {
+      throw new InternalServerErrorException({
+        error_code: ERROR_CODES.INVALID_INPUT,
+        message: `Missing required server configuration: ${key}`,
+      });
+    }
+    return value;
+  }
+
   async generateAccessToken(userId: string) {
     const exp_time = this.configService.get<string>('JWT_ACCESS_EXPIRES_IN');
     if (!exp_time) throw new InternalServerErrorException();
@@ -462,7 +471,7 @@ export class AuthService {
       exp: expInSeconds,
     };
     const newToken = await this.jwtService.signAsync(payload, {
-      secret: this.configService.get<string>('JWT_ACCESS_SECRET') || 'abcd',
+      secret: this.getRequiredConfig('JWT_ACCESS_SECRET'),
     });
     return newToken;
   }
@@ -480,7 +489,7 @@ export class AuthService {
       exp: expInSeconds,
     };
     const newToken = await this.jwtService.signAsync(payload, {
-      secret: this.configService.get<string>('JWT_REFRESH_SECRET') || 'efgh',
+      secret: this.getRequiredConfig('JWT_REFRESH_SECRET'),
     });
     const expireSeconds = Math.floor(ms(exp_time as StringValue) / 1000);
     await this.redis.set(`refresh:${userId}`, jti, 'EX', expireSeconds);
@@ -672,7 +681,6 @@ export class AuthService {
           window.location.href = '${this.configService.get('FRONTEND_URL')}/login?error=saml-validation-required';
         </script>
       `);
-
     } catch (err) {
       this.logger.error('Failed to handle SAML callback', err);
       return res.send(`

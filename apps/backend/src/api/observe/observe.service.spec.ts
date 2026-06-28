@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ObserveService } from './observe.service';
 import { DataSource } from 'typeorm';
+import { OrganizationUserEntity } from '@repo/database';
 
 describe('ObserveService', () => {
   let service: ObserveService;
@@ -46,8 +47,21 @@ describe('ObserveService', () => {
     find: jest.fn(() => Promise.resolve([])),
   };
 
+  const mockMembershipQueryBuilder = {
+    innerJoin: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    getOne: jest.fn(() => Promise.resolve({ id: 'membership-1' })),
+  };
+
+  const mockOrganizationUserRepository = {
+    createQueryBuilder: jest.fn(() => mockMembershipQueryBuilder),
+  };
+
   const mockDataSource = {
     getRepository: jest.fn((entity: { name: string }) => {
+      if (entity === OrganizationUserEntity)
+        return mockOrganizationUserRepository;
       const name = entity.name;
       if (name === 'SessionEntity') return mockSessionRepository;
       if (name === 'EventEntity') return mockEventRepository;
@@ -85,6 +99,7 @@ describe('ObserveService', () => {
     }));
 
     jest.clearAllMocks();
+    mockMembershipQueryBuilder.getOne.mockResolvedValue({ id: 'membership-1' });
   });
 
   it('should be defined', () => {
@@ -92,7 +107,7 @@ describe('ObserveService', () => {
   });
 
   it('should calculate overview metrics', async () => {
-    const result = await service.getOverviewMetrics('ws-1');
+    const result = await service.getOverviewMetrics('ws-1', 'user-1');
     expect(result.totalSessions).toBe(2);
     expect(result.totalCost).toBeCloseTo(0.3);
     expect(result.totalTokens).toBe(300);
@@ -100,14 +115,14 @@ describe('ObserveService', () => {
   });
 
   it('should retrieve time-series analytics', async () => {
-    const result = await service.getAnalytics('ws-1', 7);
+    const result = await service.getAnalytics('ws-1', 'user-1', 7);
     expect(result.analytics.length).toBe(1);
     expect(result.analytics[0].cost).toBe(0.3);
     expect(result.analytics[0].calls).toBe(10);
   });
 
   it('should retrieve sessions list', async () => {
-    const result = await service.getSessions('ws-1', 'RUNNING');
+    const result = await service.getSessions('ws-1', 'user-1', 'RUNNING');
     expect(result.length).toBe(2);
   });
 
@@ -122,7 +137,7 @@ describe('ObserveService', () => {
       getCount: jest.fn().mockResolvedValue(0),
     } as any);
 
-    const result = await service.getOverviewMetrics('ws-1');
+    const result = await service.getOverviewMetrics('ws-1', 'user-1');
     expect(result.totalSessions).toBe(0);
     expect(result.totalCost).toBe(0);
     expect(result.totalTokens).toBe(0);
@@ -146,7 +161,7 @@ describe('ObserveService', () => {
         sessions: [],
       },
     ];
-    mockAgentRepository.find.mockResolvedValueOnce(mockAgents);
+    mockAgentRepository.find.mockResolvedValueOnce(mockAgents as any);
 
     interface AgentStatResult {
       id: string;
@@ -159,6 +174,7 @@ describe('ObserveService', () => {
 
     const result = (await service.getAgentStats(
       'ws-1',
+      'user-1',
     )) as unknown as AgentStatResult[];
     expect(result.length).toBe(2);
     expect(result[0].id).toBe('agent-1');
@@ -206,9 +222,9 @@ describe('ObserveService', () => {
         },
       },
     ];
-    mockEventRepository.find.mockResolvedValueOnce(mockEvents);
+    mockEventRepository.find.mockResolvedValueOnce(mockEvents as any);
 
-    const result = await service.getSessionTimeline('sess-1');
+    const result = await service.getSessionTimeline('ws-1', 'user-1', 'sess-1');
     expect(result.length).toBe(2);
     expect(result[0].id).toBe('evt-1');
     expect(result[0].eventType).toBe('LLM_REASONING');
@@ -227,7 +243,7 @@ describe('ObserveService', () => {
   });
 
   it('should retrieve recent errors log', async () => {
-    const result = await service.getRecentErrors('ws-1', 5);
+    const result = await service.getRecentErrors('ws-1', 'user-1', 5);
     expect(result).toEqual([]);
   });
 });

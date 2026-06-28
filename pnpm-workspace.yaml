@@ -1,10 +1,11 @@
 packages:
   - "apps/*"
   - "packages/*"
+  - "sdks/*"
 allowBuilds:
-  '@nestjs/core': false
-  '@parcel/watcher': false
-  '@swc/core': false
+  "@nestjs/core": false
+  "@parcel/watcher": false
+  "@swc/core": false
   bcrypt: false
   esbuild: false
   msw: false

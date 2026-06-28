@@ -8,9 +8,19 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
   imports: [
     JwtModule.registerAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET') || 'abcd',
-      }),
+      useFactory: (configService: ConfigService) => {
+        const secret =
+          configService.get<string>('JWT_SECRET') ??
+          configService.get<string>('JWT_ACCESS_SECRET');
+
+        if (!secret) {
+          throw new Error(
+            'JWT_SECRET or JWT_ACCESS_SECRET must be configured.',
+          );
+        }
+
+        return { secret };
+      },
       inject: [ConfigService],
       global: true,
     }),
