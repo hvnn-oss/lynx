@@ -1,31 +1,50 @@
-# Next.js Product Landing & Developer Hub
+# Lynx Landing
 
-Lynx 플랫폼의 **소개 랜딩 페이지 및 개발자 온보딩 포털**입니다. 
+Lynx Landing은 제품 소개와 개발자 온보딩을 위한 Next.js 앱입니다.
 
-잠재 기업 고객사 및 개발자들에게 Lynx 에이전트 모니터링 시스템의 핵심 매력(PII 마스킹, 실시간 비용 차트, W3C 트레이싱)을 어필하고, 회원가입과 데모 대시보드 진입을 안내하는 홍보/안내 레이아웃을 담당합니다.
+주요 목적:
 
----
+- Lynx가 해결하는 문제를 설명합니다.
+- SDK 설치와 기본 사용 흐름을 보여줍니다.
+- 대시보드와 회원가입 진입점을 제공합니다.
 
-## 🎨 주요 섹션 구조
+## 실행
 
-1. **영웅(Hero) 배너**: 
-   * "DDoS 없는 초고속 에이전트 텔레메트리 스트리밍" 등의 헤드카피와 함께 대시보드 작동 실사 데모 그래픽을 표기합니다.
-2. **SDK 사용 가이드**:
-   * 대시보드 연동을 위한 간단한 코드 스니펫(`lynx.run`, `instrumentLLM`)을 보여주어 연동 난이도가 극히 낮음을 증명합니다.
-3. **요금제 비교 테이블 (Free / Pro / Enterprise)**:
-   * 워크스페이스별 기능 제공 범위와 데이터 저장 만료기한(3일 / 30일 / 365일) 및 보안 필터링 탑재 여부를 도표로 표시해 Pro/Enterprise 요금제 업그레이드를 유도합니다.
-4. **엔터프라이즈 SSO 로그인 진입**:
-   * 각 기업 도메인 맞춤 OIDC / SAML 2.0 기반 SSO 간편 로그인 링크를 제공하여 회원 유입을 지원합니다.
-
----
-
-## 🚀 로컬 실행
+레포 루트에서 실행합니다.
 
 ```bash
-# 개발 서버 시작
+pnpm install
 pnpm --filter lynx-landing dev
+```
 
-# 빌드 검증
+기본 주소:
+
+```text
+http://localhost:3001
+```
+
+빌드:
+
+```bash
 pnpm --filter lynx-landing build
 ```
-* **프론트엔드 스타일링**: Vanilla CSS와 깔끔하고 미니멀한 UI 구조를 채택하여 첫인상의 높은 완성도를 보장합니다.
+
+## SDK 예시 기준
+
+랜딩 페이지에서 SDK 예시를 보여줄 때는 현재 API를 기준으로 작성합니다.
+
+```ts
+const lynx = new LynxTracer({
+  clientId: "support-api",
+  endpoint: "https://lynx.example.com",
+  apiKey: process.env.LYNX_API_KEY,
+});
+```
+
+문서와 예시는 현재 SDK API인 `endpoint`, `delivery`, `circuitBreaker` 구조를 기준으로 작성합니다.
+
+## 관련 패키지
+
+- `@repo/ui`: 공통 UI 컴포넌트
+- `@repo/tailwind-config`: 공통 Tailwind 설정
+- `@repo/typescript-config`: 공통 TypeScript 설정

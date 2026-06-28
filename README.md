@@ -1,77 +1,114 @@
-# Lynx: Enterprise-Grade LLM & AI Agent Observability Platform
+# Lynx
 
-**Lynx**는 대규모 상용 서비스 환경에서 LLM 및 AI 에이전트의 작동 흐름을 디버깅하고 성능 지표를 분석하는 **엔터프라이즈 모니터링/텔레메트리 플랫폼**입니다. 
+Lynx는 AI 에이전트가 왜 특정 행동을 했는지 추적하고, 문제가 생겼을 때 원인을 빠르게 분석하기 위한 관측성 플랫폼입니다.
 
-단순히 "무슨 일이 일어났는가"에 대한 데이터 로깅을 넘어, W3C 분산 추적 규격을 기반으로 여러 LLM과 도구들이 얽혀 돌아가는 복잡한 에이전트의 흐름을 분석하고 **"왜 문제가 일어났는가" (Root Cause Analysis - RCA)**에 대한 명확한 해답을 개발자에게 보여줍니다.
+SDK는 AI 서비스 안에서 실행 컨텍스트, LLM 호출, 도구 호출, 정책 판단, 결과 상태를 수집합니다. 백엔드는 이벤트를 수집하고 저장하며, 대시보드는 세션 타임라인과 지표를 통해 디버깅 흐름을 제공합니다.
 
----
+## 프로젝트 구조
 
-## 🏗️ 모노레포 구조 및 에코시스템
-
-이 프로젝트는 **Turborepo** 및 **pnpm workspaces**를 활용해 전체 시스템을 단일 레포지토리로 안전하게 통합 관리합니다.
-
-```bash
+```text
 lynx/
-├── apps/
-│   ├── sdk/                 # @repo/sdk: 클라이언트용 텔레메트리 전송 라이브러리
-│   ├── backend/             # backend: NestJS 기반 수집 제어반(Control Plane) API 서버
-│   ├── lynx-dashboard/      # lynx-dashboard: 통계, 스팬 트리, 위협 탐지 분석용 개발자 대시보드 (Next.js)
-│   └── lynx-landing/        # lynx-landing: 제품 가이드 및 회원 가입 온보딩 랜딩 페이지 (Next.js)
-└── packages/
-    ├── sdk-types/           # SDK 및 백엔드 간 통신을 위한 규격/DTO 통합 인터페이스
-    ├── database/            # PostgreSQL, Redis 연동을 위한 TypeORM 공용 엔티티 및 스키마
-    ├── dto/                 # 백엔드 API 유효성 검증용 데이터 전송 객체
-    ├── eslint-config/       # 프로젝트 공통 린트 룰셋
-    └── typescript-config/   # 프로젝트 공통 TypeScript 컴파일 설정
+├─ apps/
+│  ├─ backend/          # NestJS API, 이벤트 수집, 인증, 관측 API
+│  ├─ lynx-dashboard/   # Next.js 대시보드
+│  └─ lynx-landing/     # Next.js 제품 소개/개발자 허브
+├─ sdks/
+│  └─ lynx-sdk/         # AI 서비스에 설치하는 TypeScript SDK
+└─ packages/
+   ├─ constants/        # 공통 상수
+   ├─ database/         # TypeORM 엔티티와 DB 설정
+   ├─ dto/              # 백엔드 API 요청/응답 DTO
+   ├─ eslint-config/    # 공통 ESLint 설정
+   ├─ sdk-types/        # SDK와 백엔드가 공유하는 이벤트 타입
+   ├─ tailwind-config/  # 공통 Tailwind 설정
+   ├─ typescript-config/# 공통 TypeScript 설정
+   └─ ui/               # 공통 UI 컴포넌트
 ```
 
----
+## 핵심 구성
 
-## ⚡ 핵심 제품 가치 및 해결 영역
+- `@repo/sdk`: AI 서비스에 설치하는 SDK입니다. 기본적으로 백그라운드 전송, 짧은 timeout, circuit breaker, 큐 overflow 정책을 사용합니다.
+- `backend`: SDK가 보내는 `/openapi/v1/events`와 `/openapi/v1/events/batch` 이벤트를 수집합니다.
+- `@repo/sdk-types`: SDK 이벤트 스키마를 백엔드와 공유합니다.
+- `@repo/dto`: 대시보드, 관측, 디버깅 API의 요청/응답 DTO를 제공합니다.
+- `lynx-dashboard`: 수집된 세션, 이벤트, 비용, 병목, 정책 이벤트를 확인하는 콘솔입니다.
+- `lynx-landing`: 제품 소개와 SDK 사용 흐름을 보여주는 페이지입니다.
 
-1. **에이전트 트래픽 백프레셔 완화**
-   * 에이전트의 폭발적인 도구/LLM 호출 트래픽이 모니터링 서버를 마비시키는 DDoS 현상을 막고자, SDK 단에 **메모리 버퍼 배치 큐**를 장착하고 백엔드에 **벌크 삽입 API**를 도입해 가용성을 보장합니다.
-2. **500 에러 및 유실 극복**
-   * 임시 서버 장애 발생 시 데이터를 손실 없이 복구하기 위해 SDK에 **exponential backoff retry** 및 **오프라인 디스크/메모리 버퍼** 레이어를 두었습니다.
-3. **Tail-Based Adaptive Sampling**
-   * 정상 호출은 비용 절감을 위해 1% 내외로 필터링 수집하고, **에러가 감지되거나 비정상 상황이 감지되는 즉시 해당 세션의 전체 트랜잭션을 100% 강제 추적**하여 디버깅 효율을 극대화합니다.
-4. **로컬 PII 마스킹 (GDPR/ISMS 대비)**
-   * 개인정보(주민번호, 전화번호, 이메일) 및 시스템 자격증명(Bearer, API Key, JWT) 정보가 네트워크 경계를 넘기 전, SDK 단에서 자체적으로 안전하게 가리는 마스킹 레이어를 제공합니다.
-5. **서버 측 일관된 비용 집계**
-   * LLM 요금 정책은 수시로 바뀝니다. 단가 계산을 클라이언트 SDK에서 처리하는 오버헤드를 막고, 수집 서버 측에서 집중 연산하여 일치성을 보장합니다.
+## 요구 사항
 
----
+- Node.js `>=18`
+- pnpm `11.9.0`
+- PostgreSQL
+- Redis
 
-## 🚀 로컬 빌드 및 구동 가이드
+## 시작하기
 
-### 1. 사전 요구사항
-* Node.js >= 18
-* pnpm 설치
-* PostgreSQL 데이터베이스 및 Redis 기동
-
-### 2. 의존성 설치 및 빌드
 ```bash
-# 전체 의존성 설치
 pnpm install
-
-# 전체 패키지 컴파일 및 빌드
 pnpm build
 ```
 
-### 3. 개발 서버 시작 (일괄 가동)
+개발 서버를 모두 실행하려면:
+
 ```bash
 pnpm dev
 ```
-* 로컬 개발 서버 기동 시 다음 서비스들이 동시 핫리로딩 모드로 실행됩니다:
-  * 백엔드 API 서버: `http://localhost:4000`
-  * 개발자 랜딩 페이지: `http://localhost:3000`
-  * 메인 통계 대시보드: `http://localhost:3001` (백엔드 프록시 연동)
 
-### 4. 테스트 코드 및 린트 실행
+개별 앱 실행:
+
 ```bash
-# 52개의 컨트롤러 및 서비스 모의 테스트 일괄 수행
-pnpm test
-
-# 모노레포 린터 검증
-pnpm lint
+pnpm --filter backend dev
+pnpm --filter lynx-dashboard dev
+pnpm --filter lynx-landing dev
 ```
+
+기본 포트:
+
+- backend: `http://localhost:4000` 또는 `.env`의 `PORT`
+- lynx-dashboard: `http://localhost:3000`
+- lynx-landing: `http://localhost:3001`
+
+## SDK 빠른 예시
+
+```ts
+import { LynxTracer } from "@repo/sdk";
+
+const lynx = new LynxTracer({
+  clientId: "support-api",
+  endpoint: "http://localhost:4000",
+  apiKey: process.env.LYNX_API_KEY,
+});
+
+await lynx.run("SupportAgent", async () => {
+  lynx.userInput("환불하고 싶어요");
+  lynx.decision("refund workflow selected");
+});
+```
+
+SDK 기본값은 프로덕션 서비스가 Lynx 서버 장애에 끌려가지 않도록 잡혀 있습니다.
+
+- `delivery.mode`: `"BACKGROUND"`
+- `delivery.flushOnRunEnd`: `false`
+- `delivery.timeoutMs`: `1000`
+- `circuitBreaker.enabled`: `true`
+
+자세한 내용은 [SDK README](sdks/lynx-sdk/README.md)를 보세요.
+
+## 검증
+
+```bash
+pnpm check-types
+pnpm lint
+pnpm test
+```
+
+SDK만 검증하려면:
+
+```bash
+pnpm --filter @repo/sdk build
+pnpm --filter @repo/sdk test
+```
+
+## 현재 개발 메모
+
+아직 배포 전 단계이므로 이전 SDK 옵션과의 호환성은 유지하지 않습니다. 문서와 코드는 현재 API인 `endpoint`, `delivery`, `circuitBreaker` 구조를 기준으로 맞춥니다.

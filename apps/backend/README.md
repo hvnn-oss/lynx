@@ -1,84 +1,95 @@
-# NestJS API Backend (Control Plane & Ingestion Node)
+# Lynx Backend
 
-이 서비스는 Lynx 모니터링 플랫폼의 핵심 **컨트롤 플레인(Control Plane)**이자 **배치 텔레메트리 수집 노드**입니다.
+Lynx 백엔드는 SDK 이벤트를 수집하고, 인증/조직/관측 API를 제공하는 NestJS 서비스입니다.
 
-TypeScript SDK(`@repo/sdk`)가 메모리 버퍼 큐에서 내보내는 배치 로그 데이터를 수집하고, 실시간 스트림 분석, 서버 사이드 LLM 단가 비용 집계, 요금제별 데이터 보존(Retention) 라이프사이클 관리 및 대시보드 통계용 Observe API 서빙을 전담합니다.
+주요 역할:
 
----
+- SDK 이벤트 단건 수집: `POST /openapi/v1/events`
+- SDK 이벤트 배치 수집: `POST /openapi/v1/events/batch`
+- 이벤트 저장과 retention 처리
+- 대시보드/관측 API 제공
+- 회원가입, 로그인, 이메일 인증, 조직 설정 API 제공
 
-## ⚙️ 실행 및 배포 환경 설정 (.env)
+## 실행
 
-프로젝트 루트 또는 `apps/backend/` 아래에 `.env.local` 혹은 `.env` 파일을 복사하여 다음과 같이 환경을 구축합니다:
+레포 루트에서 실행합니다.
+
+```bash
+pnpm install
+pnpm --filter backend dev
+```
+
+프로덕션 빌드:
+
+```bash
+pnpm --filter backend build
+pnpm --filter backend start:prod
+```
+
+테스트:
+
+```bash
+pnpm --filter backend test
+pnpm --filter backend test:e2e
+```
+
+## 환경 변수
+
+`.env` 또는 `.env.local`에 설정합니다.
 
 ```env
-# ==============================================================================
-# APP CONFIGURATION
-# ==============================================================================
 NODE_ENV=development
-PORT=3000
+PORT=4000
 APP_VERSION=1.0.0
-BACKEND_URL=http://example.com/
-FRONTEND_URL=http://api.example.com/
+BACKEND_URL=http://localhost:4000
+FRONTEND_URL=http://localhost:3000
 
-# ==============================================================================
-# JWT CONFIGURATION
-# ==============================================================================
-# Access Token
-JWT_ACCESS_SECRET=your_access_token_secret_very_long_string_123!
+JWT_ACCESS_SECRET=change-me-access-secret
 JWT_ACCESS_EXPIRES_IN=15m
-
-# Refresh Token
-JWT_REFRESH_SECRET=your_refresh_token_secret_another_long_string_456@
+JWT_REFRESH_SECRET=change-me-refresh-secret
 JWT_REFRESH_EXPIRES_IN=7d
 
-# ==============================================================================
-# POSTGRESQL DATABASE CONFIGURATION (RDBMS)
-# ==============================================================================
 DB_HOST=localhost
 DB_PORT=5432
 DB_USERNAME=postgres
-DB_PASSWORD=your_postgres_password_here
-DB_DATABASE=your_database_name
+DB_PASSWORD=postgres
+DB_DATABASE=lynx
 DB_SYNCHRONIZE=true
 DB_LOGGING=true
 
-# ==============================================================================
-# REDIS CONFIGURATION (Cache & Session)
-# ==============================================================================
 REDIS_HOST=localhost
 REDIS_PORT=6379
-REDIS_PASSWORD=your_redis_password_here_if_applicable
+REDIS_PASSWORD=
 REDIS_TTL=3600
 
-
-# ==============================================================================
-# SMTP CONFIGURATION (MAILING)
-# ==============================================================================
-SMTP_HOST=your-smtp-host.example.com
-SMTP_PORT=123
-SMTP_USERNAME=your_smtp_username
-SMTP_PASSWORD=your_smtp_password_here
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USERNAME=
+SMTP_PASSWORD=
 SMTP_SECURE=false
-SMTP_FROM_EMAIL=noreply@yourdomain.com
+SMTP_FROM_EMAIL=noreply@example.com
 
-# ==============================================================================
-# TELEMETRY EVENT RETENTION CONFIGURATION (DAYS)
-# ==============================================================================
 RETENTION_DAYS_FREE=3
 RETENTION_DAYS_PRO=30
 RETENTION_DAYS_ENTERPRISE=365
 ```
 
-### 실행 명령어
+## SDK 연동
 
-```bash
-# 의존성 설치 (모노레포 루트에서)
-pnpm install
+SDK의 `endpoint`는 백엔드 주소를 가리켜야 합니다.
 
-# 백엔드 단독 시작 (개발 핫리로딩 모드)
-pnpm --filter backend dev
-
-# 프로덕션 빌드 및 가동
-pnpm --filter backend build
-pnpm --filter backend start:prod
+```ts
+const lynx = new LynxTracer({
+  clientId: 'support-api',
+  endpoint: 'http://localhost:4000',
+  apiKey: process.env.LYNX_API_KEY,
+});
 ```
+
+SDK는 배치 이벤트를 `/openapi/v1/events/batch`로 전송합니다. 백엔드는 `x-api-key` 또는 `Authorization: Bearer ...` 헤더를 읽어 수집 요청을 처리합니다.
+
+## 관련 패키지
+
+- `@repo/database`: `EventEntity`, `SessionEntity` 등 저장 모델
+- `@repo/dto`: API 요청/응답 DTO
+- `@repo/sdk-types`: SDK 이벤트 타입
