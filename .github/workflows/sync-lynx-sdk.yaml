@@ -24,6 +24,9 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    env:
+      SDK_APP_ID: ${{ vars.SDK_APP_ID || secrets.SDK_APP_ID }}
+      SDK_APP_PRIVATE_KEY: ${{ secrets.SDK_APP_PRIVATE_KEY }}
 
     steps:
       - name: Checkout monorepo
@@ -45,12 +48,25 @@ jobs:
           pnpm --filter @repo/sdk-types build
           pnpm --filter @repo/sdk test
 
+      - name: Validate SDK sync credentials
+        shell: bash
+        run: |
+          if [ -z "$SDK_APP_ID" ]; then
+            echo "::error::Missing SDK GitHub App id. Set repository variable SDK_APP_ID or repository secret SDK_APP_ID."
+            exit 1
+          fi
+
+          if [ -z "$SDK_APP_PRIVATE_KEY" ]; then
+            echo "::error::Missing SDK GitHub App private key. Set repository secret SDK_APP_PRIVATE_KEY."
+            exit 1
+          fi
+
       - name: Generate GitHub App Token
         id: get_workflow_token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ secrets.SDK_APP_ID }}
-          private-key: ${{ secrets.SDK_APP_PRIVATE_KEY }}
+          app-id: ${{ env.SDK_APP_ID }}
+          private-key: ${{ env.SDK_APP_PRIVATE_KEY }}
           owner: hvnn-oss
           repositories: lynx-sdk
 
