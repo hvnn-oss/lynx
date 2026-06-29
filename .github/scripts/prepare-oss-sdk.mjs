@@ -106,7 +106,12 @@ writeFileSync(
   join(sdkRepoPath, ".gitignore"),
   ["node_modules", "dist", ".turbo", "*.log", ".env", ".env.*", ""].join("\n"),
 );
-writeFileSync(join(sdkRepoPath, "pnpm-workspace.yaml"), "packages:\n  - .\n");
+writeFileSync(
+  join(sdkRepoPath, "pnpm-workspace.yaml"),
+  ["packages:", "  - .", "onlyBuiltDependencies:", "  - esbuild", ""].join(
+    "\n",
+  ),
+);
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
