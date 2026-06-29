@@ -108,9 +108,7 @@ writeFileSync(
 );
 writeFileSync(
   join(sdkRepoPath, "pnpm-workspace.yaml"),
-  ["packages:", "  - .", "onlyBuiltDependencies:", "  - esbuild", ""].join(
-    "\n",
-  ),
+  ["packages:", "  - .", "allowBuilds:", "  esbuild: true", ""].join("\n"),
 );
 
 function readJson(path) {
