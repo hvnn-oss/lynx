@@ -1,4 +1,4 @@
-import {
+﻿import {
   Column,
   Entity,
   Index,
@@ -26,7 +26,7 @@ export class OidcAccountEntity {
   @Column({ nullable: true })
   refreshToken?: string;
 
-  @OneToOne(() => UserAccountEntity, (account) => account)
+  @OneToOne(() => UserAccountEntity, (account: UserAccountEntity) => account)
   @JoinColumn()
   userAccount!: UserAccountEntity;
 }

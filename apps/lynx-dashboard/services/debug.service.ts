@@ -3,7 +3,10 @@ import type {
   DebugBottleneckResponseDto,
   DebugEventLogQueryDto,
   DebugEventLogResponseDto,
+  DebugErrorGroupListResponseDto,
+  DebugFailurePatternResponseDto,
   DebugLatencyResponseDto,
+  DebugLlmCallListResponseDto,
   DebugMemoryResponseDto,
   DebugPolicySimulationRequestDto,
   DebugPolicySimulationResponseDto,
@@ -14,6 +17,7 @@ import type {
   DebugSessionListResponseDto,
   DebugTimelineQueryDto,
   DebugTimelineResponseDto,
+  DebugToolCallListResponseDto,
 } from "@repo/dto";
 import { getJson, postJson, type QueryParams } from "@/lib/api";
 
@@ -22,6 +26,34 @@ const debugBasePath = "/api/v1/debug";
 export function getDebugSessions(query: DebugSessionListQueryDto) {
   return getJson<DebugSessionListResponseDto>(
     `${debugBasePath}/sessions`,
+    query as QueryParams,
+  );
+}
+
+export function getDebugLogs(query: DebugEventLogQueryDto) {
+  return getJson<DebugEventLogResponseDto>(
+    `${debugBasePath}/logs`,
+    query as QueryParams,
+  );
+}
+
+export function getDebugToolCalls(query: DebugEventLogQueryDto) {
+  return getJson<DebugToolCallListResponseDto>(
+    `${debugBasePath}/tool-calls`,
+    query as QueryParams,
+  );
+}
+
+export function getDebugLlmCalls(query: DebugEventLogQueryDto) {
+  return getJson<DebugLlmCallListResponseDto>(
+    `${debugBasePath}/llm-io`,
+    query as QueryParams,
+  );
+}
+
+export function getDebugErrors(query: DebugEventLogQueryDto) {
+  return getJson<DebugErrorGroupListResponseDto>(
+    `${debugBasePath}/errors`,
     query as QueryParams,
   );
 }
@@ -56,7 +88,10 @@ export function getDebugRootCause(
   );
 }
 
-export function getDebugMemory(sessionId: string, query: DebugTimelineQueryDto) {
+export function getDebugMemory(
+  sessionId: string,
+  query: DebugTimelineQueryDto,
+) {
   return getJson<DebugMemoryResponseDto>(
     `${debugBasePath}/sessions/${sessionId}/memory`,
     query as QueryParams,
@@ -64,7 +99,10 @@ export function getDebugMemory(sessionId: string, query: DebugTimelineQueryDto) 
 }
 
 export function getDebugPatterns(query: DebugAnalysisQueryDto) {
-  return getJson(`${debugBasePath}/patterns`, query as QueryParams);
+  return getJson<DebugFailurePatternResponseDto>(
+    `${debugBasePath}/patterns`,
+    query as QueryParams,
+  );
 }
 
 export function getDebugBottlenecks(query: DebugAnalysisQueryDto) {

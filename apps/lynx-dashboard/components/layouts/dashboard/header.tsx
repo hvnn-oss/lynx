@@ -4,11 +4,6 @@ import { Button, buttonVariants } from "@repo/ui/components/ui/button";
 import { Search } from "lucide-react";
 import Link from "next/link";
 import {
-  Avatar,
-  AvatarImage,
-  AvatarFallback,
-} from "@repo/ui/components/ui/avatar";
-import {
   Breadcrumb,
   BreadcrumbList,
   BreadcrumbItem,

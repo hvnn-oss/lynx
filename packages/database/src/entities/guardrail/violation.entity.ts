@@ -1,4 +1,4 @@
-import { type GuardrailActions } from "@repo/constants";
+﻿import { type GuardrailActions } from "@repo/constants";
 import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
 import { SessionEntity } from "../session/session.entity";
 import { AgentEntity } from "../agent/agent.entity";
@@ -15,14 +15,14 @@ export class GuardrailViolationEntity {
   @Column()
   createdAt!: Date;
 
-  @ManyToOne(() => GuardrailPolicyEntity, (reason) => reason.blocked)
+  @ManyToOne(() => GuardrailPolicyEntity, (reason: GuardrailPolicyEntity) => reason.blocked)
   reason!: GuardrailPolicyEntity;
 
-  @ManyToOne(() => SessionEntity, (session) => session.blocked, {
+  @ManyToOne(() => SessionEntity, (session: SessionEntity) => session.blocked, {
     onDelete: "CASCADE",
   })
   session!: SessionEntity;
 
-  @ManyToOne(() => AgentEntity, (agent) => agent.blocked)
+  @ManyToOne(() => AgentEntity, (agent: AgentEntity) => agent.blocked)
   agent!: AgentEntity;
 }

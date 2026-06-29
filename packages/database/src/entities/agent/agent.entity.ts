@@ -5,9 +5,9 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
 } from "typeorm";
+import { GuardrailViolationEntity } from "../guardrail/violation.entity";
 import { WorkspaceEntity } from "../organization/workspace.entity";
 import { SessionEntity } from "../session/session.entity";
-import { GuardrailViolationEntity } from "../guardrail/violation.entity";
 
 @Entity("agent")
 export class AgentEntity {
@@ -23,14 +23,21 @@ export class AgentEntity {
   @Column()
   defaultModel!: string;
 
-  @ManyToOne(() => WorkspaceEntity, (workspace) => workspace.agents, {
-    onDelete: "CASCADE",
-  })
+  @ManyToOne(
+    () => WorkspaceEntity,
+    (workspace: WorkspaceEntity) => workspace.agents,
+    {
+      onDelete: "CASCADE",
+    },
+  )
   workspace!: WorkspaceEntity;
 
-  @OneToMany(() => SessionEntity, (session) => session.agent)
+  @OneToMany(() => SessionEntity, (session: SessionEntity) => session.agent)
   sessions!: SessionEntity[];
 
-  @OneToMany(() => GuardrailViolationEntity, (blocked) => blocked.agent)
+  @OneToMany(
+    () => GuardrailViolationEntity,
+    (blocked: GuardrailViolationEntity) => blocked.agent,
+  )
   blocked!: GuardrailViolationEntity[];
 }

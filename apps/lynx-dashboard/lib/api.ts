@@ -1,18 +1,76 @@
 import axios from "axios";
 import { ERROR_CODES } from "@repo/constants";
 
+const ACCESS_TOKEN_STORAGE_KEY = "_uid";
+const TOKEN_REFRESH_BUFFER_SECONDS = 30;
+
+let refreshPromise: Promise<string> | null = null;
+
 const api = axios.create({
   baseURL: "/api",
+  withCredentials: true,
   headers: {
     "Content-Type": "application/json",
   },
 });
 
-// api 요청 시 헤더에 액세스 토큰 추가
+interface RetryableRequestConfig {
+  _retry?: boolean;
+  headers?: Record<string, string>;
+}
+
+export function getStoredAccessToken() {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY);
+}
+
+export function setStoredAccessToken(accessToken: string) {
+  localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, accessToken);
+}
+
+export function clearStoredAccessToken() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+}
+
+export function isAccessTokenExpired(accessToken: string) {
+  const payload = decodeJwtPayload(accessToken);
+  if (!payload?.exp) return true;
+
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  return payload.exp <= nowSeconds + TOKEN_REFRESH_BUFFER_SECONDS;
+}
+
+export async function refreshAccessToken() {
+  if (!refreshPromise) {
+    refreshPromise = axios
+      .post(
+        "/api/auth/refresh",
+        {},
+        {
+          withCredentials: true,
+        },
+      )
+      .then((res) => {
+        if (!res.data?.success || !res.data?.accessToken) {
+          throw new Error("Could not refresh access token.");
+        }
+
+        setStoredAccessToken(res.data.accessToken);
+        return res.data.accessToken as string;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+
+  return refreshPromise;
+}
+
+// API 요청 헤더에 access token을 추가합니다.
 api.interceptors.request.use(
   (config) => {
-    const token =
-      typeof window !== "undefined" ? localStorage.getItem("_uid") : null;
+    const token = getStoredAccessToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -21,43 +79,43 @@ api.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
-// 액세스 토큰 만료 시 재발급
+// access token이 만료되면 refresh token으로 한 번만 재발급을 시도합니다.
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalReq = error.config;
+    const originalReq = error.config as
+      | (typeof error.config & RetryableRequestConfig)
+      | undefined;
     const errorResponse = error.response;
-    const errCode = errorResponse?.data?.error_code || (errorResponse?.data?.errors && errorResponse?.data?.errors[0]?.error_code);
-    
+    const errCode =
+      errorResponse?.data?.error_code ||
+      (errorResponse?.data?.errors && errorResponse.data.errors[0]?.error_code);
+
     if (
+      originalReq &&
       errorResponse &&
       (errorResponse.status === 401 || errorResponse.status === 403) &&
       errCode === ERROR_CODES.TOKEN_EXPIRED &&
       !originalReq._retry
     ) {
       originalReq._retry = true;
+
       try {
-        const res = await axios.post(
-          `/api/auth/refresh`,
-          {},
-          {
-            withCredentials: true,
-          }
-        );
-        if (res.data.success && res.data.accessToken) {
-          localStorage.setItem("_uid", res.data.accessToken);
-          originalReq.headers.Authorization = `Bearer ${res.data.accessToken}`;
-          return api(originalReq);
-        }
+        const accessToken = await refreshAccessToken();
+        originalReq.headers = {
+          ...originalReq.headers,
+          Authorization: `Bearer ${accessToken}`,
+        };
+        return api(originalReq);
       } catch (refreshError) {
-        // 리프레시 토큰 만료/오류 시 세션 만료 처리 및 로그인 페이지 이동
-        localStorage.removeItem("_uid");
+        clearStoredAccessToken();
         if (typeof window !== "undefined") {
           window.location.href = "/login";
         }
         return Promise.reject(refreshError);
       }
     }
+
     return Promise.reject(error);
   },
 );
@@ -90,4 +148,21 @@ function cleanParams(
   return Object.fromEntries(
     Object.entries(params).filter(([, value]) => value !== undefined),
   );
+}
+
+function decodeJwtPayload(accessToken: string): { exp?: number } | null {
+  try {
+    const [, payload] = accessToken.split(".");
+    if (!payload) return null;
+
+    const normalizedPayload = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const paddedPayload = normalizedPayload.padEnd(
+      normalizedPayload.length + ((4 - (normalizedPayload.length % 4)) % 4),
+      "=",
+    );
+
+    return JSON.parse(window.atob(paddedPayload)) as { exp?: number };
+  } catch {
+    return null;
+  }
 }

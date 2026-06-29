@@ -1,6 +1,7 @@
 import { EventEntity } from '@repo/database';
 import {
   calculateDepth,
+  createFailureSignature,
   createPreview,
   deriveIssues,
   percentile,
@@ -87,5 +88,24 @@ describe('debug utils', () => {
 
     const depth = calculateDepth(event, new Map());
     expect(depth).toEqual({ depth: 0, orphaned: true });
+  });
+
+  it('creates stable failure signatures for equivalent payloads', () => {
+    const first = createFailureSignature({
+      eventType: 'TOOL_RESULT',
+      label: 'Slack API Timeout 504',
+      toolName: 'Slack',
+      payload: { status: 'FAILED', code: 504, sideEffect: false },
+      error: 'Slack request 504 for run 123',
+    });
+    const second = createFailureSignature({
+      eventType: 'TOOL_RESULT',
+      label: 'Slack API Timeout 503',
+      toolName: 'Slack',
+      payload: { sideEffect: false, code: 504, status: 'FAILED' },
+      error: 'Slack request 504 for run 456',
+    });
+
+    expect(first).toBe(second);
   });
 });

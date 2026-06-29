@@ -1,4 +1,4 @@
-import {
+﻿import {
   Column,
   CreateDateColumn,
   Entity,
@@ -23,9 +23,9 @@ export class UserEntity {
   @CreateDateColumn()
   createdAt!: Date;
 
-  @OneToMany(() => UserAccountEntity, (account) => account.user)
+  @OneToMany(() => UserAccountEntity, (account: UserAccountEntity) => account.user)
   accounts!: UserAccountEntity[];
 
-  @OneToMany(() => OrganizationUserEntity, (organization) => organization.user)
+  @OneToMany(() => OrganizationUserEntity, (organization: OrganizationUserEntity) => organization.user)
   organizations!: OrganizationEntity[];
 }

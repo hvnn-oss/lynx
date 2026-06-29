@@ -45,7 +45,7 @@ export const useDashboardUiStore = create<DashboardUiState>()(
       activeSection: "home",
       panelMetrics: {},
       setSelectedWorkspaceId: (workspaceId) =>
-        set({ selectedWorkspaceId: workspaceId }),
+        set({ selectedWorkspaceId: normalizeWorkspaceId(workspaceId) }),
       setActiveSection: (activeSection) => set({ activeSection }),
       markPanelRendered: (panelId, renderedAt = Date.now()) =>
         set((state) => {

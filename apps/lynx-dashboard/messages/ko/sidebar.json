@@ -20,8 +20,8 @@
       },
       "live-monitoring": {
         "title": "실시간 분석",
-        "live": "실시간 탐지",
-        "live-agents": "활성화된 에이전트",
+        "live": "실시간 감지",
+        "live-agents": "활성 에이전트",
         "alerts": "경고"
       }
     }
@@ -32,8 +32,8 @@
       "management": {
         "title": "에이전트 관리",
         "overview": "에이전트 개요",
-        "active": "활동 중",
-        "inactive": "비활성화됨",
+        "active": "활성 에이전트",
+        "inactive": "비활성 에이전트",
         "groups": "그룹 관리"
       },
       "behavior": {
@@ -61,14 +61,14 @@
         "live": "진행 중",
         "completed": "완료",
         "failed": "실패",
-        "anomaly": "이상 감지됨"
+        "anomaly": "이상 감지"
       },
       "analysis": {
         "title": "상세 분석",
         "timeline": "타임라인 뷰어",
         "replay": "세션 리플레이",
         "multi-agent": "멀티 에이전트 뷰",
-        "context": "컨텍스트 스냅샷"
+        "context": "컨텍스트 탐색기"
       },
       "usage": {
         "title": "사용량",

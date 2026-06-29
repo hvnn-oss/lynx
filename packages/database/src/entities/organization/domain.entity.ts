@@ -1,4 +1,4 @@
-import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
+﻿import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
 import { OrganizationEntity } from "./organization.entity";
 
 @Entity("organization-domain")
@@ -9,6 +9,9 @@ export class OrganizationDomainEntity {
   @Column()
   domain!: string;
 
-  @ManyToOne(() => OrganizationEntity, (organization) => organization.domains)
+  @ManyToOne(
+    () => OrganizationEntity,
+    (organization: OrganizationEntity) => organization.domains,
+  )
   organization!: OrganizationEntity;
 }

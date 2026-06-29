@@ -21,3 +21,14 @@ export function generateSpanId(): string {
     return randomUUID().replace(/-/g, "").slice(0, 16);
   }
 }
+
+/**
+ * Creates a stable per-event identifier used by the backend for idempotency.
+ */
+export function generateEventId(): string {
+  try {
+    return randomBytes(16).toString("hex");
+  } catch {
+    return randomUUID().replace(/-/g, "").slice(0, 32);
+  }
+}

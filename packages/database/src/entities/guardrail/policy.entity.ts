@@ -1,4 +1,4 @@
-import {
+﻿import {
   GUARDRAIL_ACTIONS,
   GUARDRAIL_SERVERITY,
   type GuardrailActions,
@@ -11,8 +11,8 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
 } from "typeorm";
-import { GuardrailViolationEntity } from "./violation.entity";
 import { WorkspaceEntity } from "../organization/workspace.entity";
+import { GuardrailViolationEntity } from "./violation.entity";
 
 @Entity("guardrail-policy")
 export class GuardrailPolicyEntity {
@@ -43,13 +43,15 @@ export class GuardrailPolicyEntity {
   @Column()
   updatedAt!: Date;
 
-  @Column()
   @Column({ default: false })
   activated!: boolean;
 
-  @ManyToOne(() => WorkspaceEntity, (workspace) => workspace)
+  @ManyToOne(() => WorkspaceEntity, (workspace: WorkspaceEntity) => workspace)
   workspace!: WorkspaceEntity;
 
-  @OneToMany(() => GuardrailViolationEntity, (blocked) => blocked.reason)
+  @OneToMany(
+    () => GuardrailViolationEntity,
+    (blocked: GuardrailViolationEntity) => blocked.reason,
+  )
   blocked!: GuardrailViolationEntity[];
 }

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { SessionEntity, EventEntity } from '@repo/database';
+import { EventEntity, SessionEntity } from '@repo/database';
 import {
   DashboardHomeMetricsDto,
   DashboardStatusMetricsDto,
@@ -9,6 +9,7 @@ import {
   DashboardCostMetricsDto,
   DashboardInsightsDto,
 } from '@repo/dto';
+import { WorkspaceAccessService } from '../../common/services/workspace-access.service';
 
 // 타입 안정성을 위한 데이터베이스 로우 타입 정의
 interface RawKpiMetrics {
@@ -65,13 +66,33 @@ interface RawAgentComparison {
   completed: string;
   total: string;
   cost: string | null;
+  p95Latency?: string | null;
+}
+
+interface RawRecentIssue {
+  id: string;
+  agentName: string | null;
+  issueType: string | null;
+  severity: 'CRITICAL' | 'WARNING';
+  occurrenceCount: string;
+  affectedSessionsCount: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+}
+
+interface RawEnvironmentUsage {
+  environment: string | null;
+  runs: string;
 }
 
 @Injectable()
 export class DashboardService {
   private readonly logger = new Logger(DashboardService.name);
 
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly workspaceAccess: WorkspaceAccessService,
+  ) {}
 
   /**
    * 대시보드 홈(요약) 화면에 필요한 지표 데이터를 가져옵니다.
@@ -79,8 +100,12 @@ export class DashboardService {
    * 데이터가 충분하지 않을 경우 데모 목적의 기본 풍부한 모의(Mock) 데이터를 반환합니다.
    * 모든 API 응답 키와 필드 메시지는 영어로 작성됩니다.
    */
-  async getHomeMetrics(workspaceId: string): Promise<DashboardHomeMetricsDto> {
+  async getHomeMetrics(
+    workspaceId: string,
+    userId: string,
+  ): Promise<DashboardHomeMetricsDto> {
     try {
+      await this.workspaceAccess.assertAccess(userId, workspaceId);
       const now = new Date();
       const tMinus24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
       const tMinus48h = new Date(now.getTime() - 48 * 60 * 60 * 1000);
@@ -215,34 +240,63 @@ export class DashboardService {
       const runVolume = timeSeriesRaw.map((row) => ({
         time: row.hour,
         count: parseInt(row.count ?? '0', 10),
+        failedCount: parseInt(row.failed ?? '0', 10),
+        successCount:
+          parseInt(row.count ?? '0', 10) - parseInt(row.failed ?? '0', 10),
       }));
 
-      const failureTrend = timeSeriesRaw.map((row) => {
+      const failureTrend = timeSeriesRaw.map((row, index) => {
         const total = parseInt(row.count ?? '0', 10);
         const failed = parseInt(row.failed ?? '0', 10);
+        const rate =
+          total > 0 ? parseFloat(((failed / total) * 100).toFixed(2)) : 0;
+        const previous = index > 0 ? timeSeriesRaw[index - 1] : undefined;
+        const previousTotal = parseInt(previous?.count ?? '0', 10);
+        const previousFailed = parseInt(previous?.failed ?? '0', 10);
         return {
           time: row.hour,
-          rate: total > 0 ? parseFloat(((failed / total) * 100).toFixed(2)) : 0,
+          rate,
+          previousRate:
+            previousTotal > 0
+              ? parseFloat(((previousFailed / previousTotal) * 100).toFixed(2))
+              : 0,
         };
       });
 
-      const recentIssuesRaw = await eventRepository
+      const recentIssuesRaw = (await eventRepository
         .createQueryBuilder('e')
-        .innerJoinAndSelect('e.session', 's')
-        .innerJoinAndSelect('s.agent', 'a')
+        .innerJoin('e.session', 's')
+        .leftJoin('s.agent', 'a')
+        .select('MIN(e.id)', 'id')
+        .addSelect('a.name', 'agentName')
+        .addSelect(
+          "COALESCE(NULLIF(e.label, ''), 'Execution Error')",
+          'issueType',
+        )
+        .addSelect("'CRITICAL'", 'severity')
+        .addSelect('COUNT(e.id)', 'occurrenceCount')
+        .addSelect('COUNT(DISTINCT s.id)', 'affectedSessionsCount')
+        .addSelect('MIN(e.timestamp)', 'firstSeenAt')
+        .addSelect('MAX(e.timestamp)', 'lastSeenAt')
         .where('s.workspaceId = :workspaceId', { workspaceId })
+        .andWhere('e.timestamp >= :tMinus24h', { tMinus24h })
         .andWhere('e.eventType = :errorType', { errorType: 'ERROR' })
-        .orderBy('e.timestamp', 'DESC')
+        .groupBy('a.name')
+        .addGroupBy("COALESCE(NULLIF(e.label, ''), 'Execution Error')")
+        .orderBy('MAX(e.timestamp)', 'DESC')
         .limit(5)
-        .getMany();
+        .getRawMany()) as unknown as RawRecentIssue[];
 
-      const recentIssues = recentIssuesRaw.map((event) => {
+      const recentIssues = recentIssuesRaw.map((issue) => {
         return {
-          id: event.id,
-          agentName: event.session?.agent?.name ?? 'Unknown Agent',
-          issueType: event.label || 'Execution Error',
-          severity: 'CRITICAL' as const,
-          timestamp: event.timestamp.toISOString(),
+          id: issue.id,
+          agentName: issue.agentName ?? 'Unknown Agent',
+          issueType: issue.issueType ?? 'Execution Error',
+          severity: issue.severity,
+          timestamp: new Date(issue.firstSeenAt).toISOString(),
+          occurrenceCount: parseInt(issue.occurrenceCount, 10) || 0,
+          affectedSessionsCount: parseInt(issue.affectedSessionsCount, 10) || 0,
+          lastSeenAt: new Date(issue.lastSeenAt).toISOString(),
         };
       });
 
@@ -331,8 +385,10 @@ export class DashboardService {
    */
   async getStatusMetrics(
     workspaceId: string,
+    userId: string,
   ): Promise<DashboardStatusMetricsDto> {
     try {
+      await this.workspaceAccess.assertAccess(userId, workspaceId);
       const now = new Date();
       const tMinus24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
@@ -412,7 +468,10 @@ export class DashboardService {
       const toolStatusRaw = (await eventRepository
         .createQueryBuilder('e')
         .innerJoin('e.session', 's')
-        .select('e.label', 'toolName')
+        .select(
+          "COALESCE(NULLIF(e.payload->>'toolName', ''), NULLIF(e.label, ''), 'Unknown Tool')",
+          'toolName',
+        )
         .addSelect('COUNT(e.id)', 'totalCalls')
         .addSelect(
           "SUM(CASE WHEN e.eventType = 'ERROR' OR e.payload->>'error' IS NOT NULL THEN 1 ELSE 0 END)",
@@ -423,7 +482,9 @@ export class DashboardService {
         .andWhere('e.eventType IN (:...toolTypes)', {
           toolTypes: ['CALL_TOOLS', 'TOOL_CALL', 'TOOL_RESULT'],
         })
-        .groupBy('e.label')
+        .groupBy(
+          "COALESCE(NULLIF(e.payload->>'toolName', ''), NULLIF(e.label, ''), 'Unknown Tool')",
+        )
         .getRawMany()) as unknown as RawToolMetrics[];
 
       const toolStatus = toolStatusRaw.map((row) => {
@@ -504,8 +565,12 @@ export class DashboardService {
   /**
    * 대시보드 옵저버빌리티 지표(Metrics) 화면에 필요한 통계 데이터를 가져옵니다.
    */
-  async getMetricsData(workspaceId: string): Promise<DashboardMetricsDataDto> {
+  async getMetricsData(
+    workspaceId: string,
+    userId: string,
+  ): Promise<DashboardMetricsDataDto> {
     try {
+      await this.workspaceAccess.assertAccess(userId, workspaceId);
       const now = new Date();
       const tMinus24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
@@ -602,6 +667,7 @@ export class DashboardService {
         .createQueryBuilder('s')
         .innerJoin('s.agent', 'a')
         .select('a.name', 'agentName')
+        .addSelect('a.id', 'agentId')
         .addSelect(
           "SUM(CASE WHEN s.status = 'COMPLETED' THEN 1 ELSE 0 END)",
           'completed',
@@ -610,17 +676,38 @@ export class DashboardService {
         .addSelect('SUM(s.totalCost)', 'cost')
         .where('s.workspaceId = :workspaceId', { workspaceId })
         .andWhere('s.startedAt >= :tMinus24h', { tMinus24h })
-        .groupBy('a.name')
+        .groupBy('a.id, a.name')
         .getRawMany()) as unknown as RawAgentComparison[];
+
+      const agentLatencyRaw = (await eventRepository
+        .createQueryBuilder('e')
+        .innerJoin('e.session', 's')
+        .innerJoin('s.agent', 'a')
+        .select('a.name', 'agentName')
+        .addSelect(
+          'percentile_cont(0.95) WITHIN GROUP (ORDER BY e.latency)',
+          'p95Latency',
+        )
+        .where('s.workspaceId = :workspaceId', { workspaceId })
+        .andWhere('e.timestamp >= :tMinus24h', { tMinus24h })
+        .andWhere('e.latency IS NOT NULL')
+        .groupBy('a.id, a.name')
+        .getRawMany()) as unknown as RawAgentComparison[];
+      const p95ByAgent = new Map(
+        agentLatencyRaw.map((row) => [row.agentName, row.p95Latency]),
+      );
 
       const agentComparison = agentComparisonRaw.map((row) => {
         const total = parseInt(row.total, 10) || 0;
         const completed = parseInt(row.completed, 10) || 0;
         const successRate = total > 0 ? (completed / total) * 100 : 100;
+        const p95Latency = p95ByAgent.get(row.agentName);
         return {
           agentName: row.agentName || 'Default Agent',
           successRate: parseFloat(successRate.toFixed(1)),
-          p95Latency: 3.5,
+          p95Latency: parseFloat(
+            ((parseFloat(p95Latency ?? '0') || 0) / 1000).toFixed(2),
+          ),
           cost: parseFloat((parseFloat(row.cost ?? '0') || 0).toFixed(2)),
         };
       });
@@ -662,8 +749,12 @@ export class DashboardService {
    */
   async getUsageMetrics(
     workspaceId: string,
+    userId: string,
   ): Promise<DashboardUsageMetricsDto> {
     try {
+      await this.workspaceAccess.assertAccess(userId, workspaceId);
+      const now = new Date();
+      const tMinus24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
       const sessionRepository = this.dataSource.getRepository(SessionEntity);
       const eventRepository = this.dataSource.getRepository(EventEntity);
 
@@ -681,6 +772,7 @@ export class DashboardService {
         .select('a.name', 'agentName')
         .addSelect('COUNT(s.id)', 'count')
         .where('s.workspaceId = :workspaceId', { workspaceId })
+        .andWhere('s.startedAt >= :tMinus24h', { tMinus24h })
         .groupBy('a.name')
         .orderBy('count', 'DESC')
         .limit(5)
@@ -700,6 +792,7 @@ export class DashboardService {
         .addSelect('EXTRACT(HOUR FROM s.startedAt)', 'hour')
         .addSelect('COUNT(s.id)', 'count')
         .where('s.workspaceId = :workspaceId', { workspaceId })
+        .andWhere('s.startedAt >= :tMinus24h', { tMinus24h })
         .groupBy(
           'EXTRACT(DOW FROM s.startedAt), EXTRACT(HOUR FROM s.startedAt)',
         )
@@ -715,29 +808,43 @@ export class DashboardService {
         count: parseInt(row.count ?? '0', 10),
       }));
 
-      const userUsage = [
-        {
-          userId: 'usr-1',
-          email: 'alice@company.com',
-          runs: Math.floor(sessionCount * 0.6),
-        },
-        {
-          userId: 'usr-2',
-          email: 'bob@company.com',
-          runs: Math.floor(sessionCount * 0.4),
-        },
-      ];
+      const environmentUsageRaw = (await eventRepository
+        .createQueryBuilder('e')
+        .innerJoin('e.session', 's')
+        .select(
+          "COALESCE(NULLIF(e.payload->>'environment', ''), 'unknown')",
+          'environment',
+        )
+        .addSelect('COUNT(DISTINCT s.id)', 'runs')
+        .where('s.workspaceId = :workspaceId', { workspaceId })
+        .andWhere('s.startedAt >= :tMinus24h', { tMinus24h })
+        .groupBy("COALESCE(NULLIF(e.payload->>'environment', ''), 'unknown')")
+        .orderBy('runs', 'DESC')
+        .getRawMany()) as unknown as RawEnvironmentUsage[];
+
+      const environmentUsage = environmentUsageRaw
+        .filter((row) => row.environment)
+        .map((row) => ({
+          environment: row.environment ?? 'unknown',
+          runs: parseInt(row.runs ?? '0', 10),
+        }));
 
       const toolUsageRaw = (await eventRepository
         .createQueryBuilder('e')
         .innerJoin('e.session', 's')
-        .select('e.label', 'toolName')
+        .select(
+          "COALESCE(NULLIF(e.payload->>'toolName', ''), NULLIF(e.label, ''), 'Unknown Tool')",
+          'toolName',
+        )
         .addSelect('COUNT(e.id)', 'count')
         .where('s.workspaceId = :workspaceId', { workspaceId })
+        .andWhere('e.timestamp >= :tMinus24h', { tMinus24h })
         .andWhere('e.eventType IN (:...toolTypes)', {
           toolTypes: ['CALL_TOOLS', 'TOOL_CALL', 'TOOL_RESULT'],
         })
-        .groupBy('e.label')
+        .groupBy(
+          "COALESCE(NULLIF(e.payload->>'toolName', ''), NULLIF(e.label, ''), 'Unknown Tool')",
+        )
         .orderBy('count', 'DESC')
         .getRawMany()) as unknown as Array<{
         toolName: string | null;
@@ -759,6 +866,7 @@ export class DashboardService {
           'tokens',
         )
         .where('s.workspaceId = :workspaceId', { workspaceId })
+        .andWhere('e.timestamp >= :tMinus24h', { tMinus24h })
         .groupBy("COALESCE(e.payload->>'model', e.label)")
         .getRawMany()) as unknown as Array<{
         modelName: string | null;
@@ -775,7 +883,7 @@ export class DashboardService {
       return {
         topAgents,
         heatmap,
-        userUsage,
+        environmentUsage,
         toolUsage,
         modelUsage,
       };
@@ -792,15 +900,24 @@ export class DashboardService {
   /**
    * 대시보드 비용(Cost) 화면에 필요한 지표 데이터를 가져옵니다.
    */
-  async getCostMetrics(workspaceId: string): Promise<DashboardCostMetricsDto> {
+  async getCostMetrics(
+    workspaceId: string,
+    userId: string,
+  ): Promise<DashboardCostMetricsDto> {
     try {
+      await this.workspaceAccess.assertAccess(userId, workspaceId);
       const now = new Date();
+      const tMinus24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
       const startOfToday = new Date(
         now.getFullYear(),
         now.getMonth(),
         now.getDate(),
       );
-      const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
+      const startOfWeek = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() - now.getDay(),
+      );
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
       const sessionRepository = this.dataSource.getRepository(SessionEntity);
@@ -844,6 +961,7 @@ export class DashboardService {
         .innerJoin('e.session', 's')
         .select('SUM(e.cost)', 'cost')
         .where('s.workspaceId = :workspaceId', { workspaceId })
+        .andWhere('e.timestamp >= :tMinus24h', { tMinus24h })
         .andWhere('e.eventType IN (:...llmTypes)', {
           llmTypes: ['LLM_REASONING', 'LLM_CALL'],
         })
@@ -854,6 +972,7 @@ export class DashboardService {
         .innerJoin('e.session', 's')
         .select('SUM(e.cost)', 'cost')
         .where('s.workspaceId = :workspaceId', { workspaceId })
+        .andWhere('e.timestamp >= :tMinus24h', { tMinus24h })
         .andWhere('e.eventType IN (:...toolTypes)', {
           toolTypes: ['CALL_TOOLS', 'TOOL_CALL', 'TOOL_RESULT'],
         })
@@ -872,6 +991,7 @@ export class DashboardService {
         .select('a.name', 'agentName')
         .addSelect('SUM(s.totalCost)', 'cost')
         .where('s.workspaceId = :workspaceId', { workspaceId })
+        .andWhere('s.startedAt >= :tMinus24h', { tMinus24h })
         .groupBy('a.name')
         .orderBy('cost', 'DESC')
         .getRawMany()) as unknown as Array<{
@@ -889,6 +1009,7 @@ export class DashboardService {
         .select('SUM(s.totalCost)', 'cost')
         .addSelect('COUNT(s.id)', 'count')
         .where('s.workspaceId = :workspaceId', { workspaceId })
+        .andWhere('s.startedAt >= :tMinus24h', { tMinus24h })
         .getRawOne()) as unknown as
         | { cost: string | null; count: string | null }
         | undefined;
@@ -955,8 +1076,12 @@ export class DashboardService {
   /**
    * 대시보드 인사이트(Insights) 화면에 필요한 데이터를 가져옵니다.
    */
-  async getInsights(workspaceId: string): Promise<DashboardInsightsDto> {
+  async getInsights(
+    workspaceId: string,
+    userId: string,
+  ): Promise<DashboardInsightsDto> {
     try {
+      await this.workspaceAccess.assertAccess(userId, workspaceId);
       const now = new Date();
       const tMinus24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
@@ -1117,7 +1242,7 @@ export class DashboardService {
     return {
       topAgents: [],
       heatmap: [],
-      userUsage: [],
+      environmentUsage: [],
       toolUsage: [],
       modelUsage: [],
     };
@@ -1151,68 +1276,141 @@ export class DashboardService {
   }
 
   getDemoHomeMetrics(): DashboardHomeMetricsDto {
-    const hours = Array.from({ length: 24 }).map((_, i) => {
+    const agentNames = [
+      'ResearchBot',
+      'SupportBot',
+      'SalesOps Agent',
+      'InvoiceBot',
+      'PolicyReview Agent',
+      'DataOps Agent',
+      'ComplianceBot',
+      'CustomerSuccess Agent',
+      'Retriever Agent',
+      'IncidentTriage Agent',
+      'BillingBot',
+      'Onboarding Agent',
+      'SearchQA Agent',
+      'EscalationBot',
+      'KnowledgeSync Agent',
+      'WorkflowPlanner',
+    ];
+    const issues = [
+      ['Slack API Timeout', 'ResearchBot', 'CRITICAL', 214, 386],
+      [
+        'Tool retry loop detected',
+        'IncidentTriage Agent',
+        'CRITICAL',
+        168,
+        244,
+      ],
+      ['Prompt injection attempt blocked', 'SupportBot', 'CRITICAL', 142, 198],
+      ['CRM enrichment latency spike', 'SalesOps Agent', 'WARNING', 126, 176],
+      ['Context window truncation', 'Retriever Agent', 'WARNING', 118, 141],
+      ['Payment data access denied', 'ComplianceBot', 'CRITICAL', 86, 112],
+      ['Memory miss rate increased', 'KnowledgeSync Agent', 'WARNING', 74, 98],
+      [
+        'Policy approval queue backlog',
+        'PolicyReview Agent',
+        'WARNING',
+        69,
+        83,
+      ],
+      ['Database read timeout', 'DataOps Agent', 'CRITICAL', 58, 71],
+      ['Model fallback activated', 'CustomerSuccess Agent', 'WARNING', 43, 52],
+    ] as const;
+    const hours = Array.from({ length: 72 }).map((_, i) => {
       const d = new Date();
-      d.setHours(d.getHours() - (23 - i));
+      d.setHours(d.getHours() - (71 - i));
       d.setMinutes(0, 0, 0);
       return d.toISOString();
     });
 
     return {
       kpis: {
-        agentRuns: { value: 12482, change: 13.0, trend: 'up' as const },
-        successRate: { value: 96.2, change: -1.4, trend: 'down' as const },
-        avgLatency: { value: 4.2, change: 0.8, trend: 'up' as const },
-        cost: { value: 127.42, change: 22.0, trend: 'up' as const },
-        activeAgents: { value: 18 },
-        criticalAlerts: { value: 3, change: 1, trend: 'up' as const },
+        agentRuns: { value: 428640, change: 18.7, trend: 'up' as const },
+        successRate: { value: 96.8, change: -1.1, trend: 'down' as const },
+        avgLatency: { value: 2.84, change: 0.42, trend: 'up' as const },
+        cost: { value: 12842.72, change: 16.4, trend: 'up' as const },
+        activeAgents: { value: 184 },
+        criticalAlerts: { value: 37, change: 12, trend: 'up' as const },
       },
-      healthScores: [
-        {
-          agentId: 'agent-a',
-          agentName: 'Agent SupportBot',
-          score: 98,
-          status: 'HEALTHY' as const,
-        },
-        {
-          agentId: 'agent-b',
-          agentName: 'Agent SalesBot',
-          score: 82,
-          status: 'WARNING' as const,
-        },
-        {
-          agentId: 'agent-c',
-          agentName: 'Agent ResearchBot',
-          score: 64,
-          status: 'CRITICAL' as const,
-        },
-      ],
-      runVolume: hours.map((hour, idx) => ({
-        time: hour,
-        count: Math.floor(400 + Math.sin(idx / 3) * 150 + Math.random() * 80),
-      })),
-      failureTrend: hours.map((hour, idx) => ({
-        time: hour,
-        rate: parseFloat(
-          (2.0 + Math.cos(idx / 4) * 1.5 + Math.random() * 1.0).toFixed(2),
-        ),
-      })),
-      recentIssues: [
-        {
-          id: 'alert-1',
-          agentName: 'Agent SupportBot',
-          issueType: 'Prompt Injection Detected',
-          severity: 'CRITICAL' as const,
-          timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-        },
-        {
-          id: 'alert-2',
-          agentName: 'Agent SalesBot',
-          issueType: 'Tool Timeout (Slack API)',
-          severity: 'WARNING' as const,
-          timestamp: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
-        },
-      ],
+      healthScores: agentNames.map((agentName, index) => {
+        const score = Math.max(52, 99 - index * 3 - (index % 4) * 4);
+        return {
+          agentId: `demo-agent-${index + 1}`,
+          agentName,
+          score,
+          status:
+            score >= 90
+              ? ('HEALTHY' as const)
+              : score >= 75
+                ? ('WARNING' as const)
+                : ('CRITICAL' as const),
+        };
+      }),
+      runVolume: hours.map((hour, idx) => {
+        const eventHour = new Date(hour).getHours();
+        const businessHourBoost =
+          eventHour >= 8 && eventHour <= 20 ? 2800 : 850;
+        const dailyWave = Math.max(0, Math.sin(idx / 5)) * 1450;
+        const incidentSpike = idx >= 58 && idx <= 66 ? 1800 : 0;
+        const count = Math.floor(
+          4200 + businessHourBoost + dailyWave + incidentSpike,
+        );
+        const failureRatio =
+          idx >= 58 && idx <= 66
+            ? 0.082 + (idx - 58) * 0.004
+            : 0.024 + (idx % 7) * 0.002;
+        const failedCount = Math.floor(count * failureRatio);
+        const successCount = count - failedCount;
+
+        return {
+          time: hour,
+          count: successCount + failedCount,
+          successCount,
+          failedCount,
+        };
+      }),
+      failureTrend: hours.map((hour, idx) => {
+        const incident = idx >= 58 && idx <= 66;
+        const rate = incident
+          ? 8.2 + (idx - 58) * 0.7
+          : 2.1 + Math.max(0, Math.sin(idx / 6)) * 1.4;
+        const previousRate = incident
+          ? 3.1 + (idx - 58) * 0.15
+          : 1.8 + Math.max(0, Math.cos(idx / 7)) * 1.1;
+
+        return {
+          time: hour,
+          rate: parseFloat(rate.toFixed(2)),
+          previousRate: parseFloat(previousRate.toFixed(2)),
+        };
+      }),
+      recentIssues: issues.map(
+        (
+          [
+            issueType,
+            agentName,
+            severity,
+            occurrenceCount,
+            affectedSessionsCount,
+          ],
+          index,
+        ) => ({
+          id: `demo-issue-${index + 1}`,
+          agentName,
+          issueType,
+          severity,
+          timestamp: new Date(
+            Date.now() - (index * 11 + 6) * 60 * 1000,
+          ).toISOString(),
+          occurrenceCount,
+          affectedSessionsCount,
+          lastSeenAt: new Date(
+            Date.now() - (index * 7 + 3) * 60 * 1000,
+          ).toISOString(),
+        }),
+      ),
     };
   }
 
@@ -1341,9 +1539,10 @@ export class DashboardService {
     return {
       topAgents: this.getDefaultTopAgents(),
       heatmap,
-      userUsage: [
-        { userId: 'usr-1', email: 'alice@company.com', runs: 450 },
-        { userId: 'usr-2', email: 'bob@company.com', runs: 320 },
+      environmentUsage: [
+        { environment: 'production', runs: 520 },
+        { environment: 'staging', runs: 190 },
+        { environment: 'preview', runs: 60 },
       ],
       toolUsage: this.getDefaultToolUsage(),
       modelUsage: this.getDefaultModelUsage(),

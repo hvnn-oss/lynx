@@ -203,7 +203,9 @@ export class OrganizationService {
         });
       }
 
-      const membershipRepository = manager.getRepository(OrganizationUserEntity);
+      const membershipRepository = manager.getRepository(
+        OrganizationUserEntity,
+      );
       const existing = await membershipRepository.findOne({
         where: {
           organization: { id: organizationId },
@@ -252,7 +254,9 @@ export class OrganizationService {
     await this.assertOwnerInvariant(organizationId, targetUserId, dto.role);
 
     membership.role = dto.role;
-    await this.dataSource.getRepository(OrganizationUserEntity).save(membership);
+    await this.dataSource
+      .getRepository(OrganizationUserEntity)
+      .save(membership);
 
     return this.toMember(membership);
   }

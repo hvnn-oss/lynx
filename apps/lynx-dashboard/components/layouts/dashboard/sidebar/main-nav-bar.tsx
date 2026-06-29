@@ -25,7 +25,7 @@ export const MainNavBar = memo(function MainNavBar({
           key={key}
           icon={icon}
           labelKey={label}
-          isActive={pathname.startsWith(`/${key}`)}
+          isActive={pathname.startsWith(`/${key}`) || activeMenu === key}
           onClick={() => onNavClick(key)}
           onMouseEnter={() => onHoverMenu(key)}
         />

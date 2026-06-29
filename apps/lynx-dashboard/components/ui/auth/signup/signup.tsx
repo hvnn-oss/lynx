@@ -17,7 +17,6 @@ import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ERROR_CODES } from "@repo/constants";
 
 export default function SignupForm({
   onComplete,
@@ -66,7 +65,7 @@ export default function SignupForm({
       }
     };
     prepare();
-  }, []);
+  }, [params]);
 
   if (error.etc)
     return (

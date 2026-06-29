@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "mint dev --port 3002",
-    "build": "mint build",
+    "build": "mint validate",
     "lint": "mint broken-links",
     "check-types": "mint broken-links"
   },

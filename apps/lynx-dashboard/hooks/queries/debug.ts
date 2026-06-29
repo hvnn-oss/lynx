@@ -11,13 +11,17 @@ import type {
 } from "@repo/dto";
 import {
   getDebugBottlenecks,
+  getDebugErrors,
   getDebugLatency,
+  getDebugLlmCalls,
+  getDebugLogs,
   getDebugMemory,
   getDebugPatterns,
   getDebugRootCause,
   getDebugSessionEvents,
   getDebugSessions,
   getDebugTimeline,
+  getDebugToolCalls,
   reproduceDebugSession,
   simulateDebugPolicy,
 } from "@/services/debug.service";
@@ -39,26 +43,30 @@ export const debugQueryKeys = {
   all: ["debug"] as const,
   sessions: (query: OptionalWorkspaceQuery<DebugSessionListQueryDto>) =>
     [...debugQueryKeys.all, "sessions", query] as const,
+  logs: (query: OptionalWorkspaceQuery<DebugEventLogQueryDto>) =>
+    [...debugQueryKeys.all, "logs", query] as const,
+  toolCalls: (query: OptionalWorkspaceQuery<DebugEventLogQueryDto>) =>
+    [...debugQueryKeys.all, "tool-calls", query] as const,
+  llmCalls: (query: OptionalWorkspaceQuery<DebugEventLogQueryDto>) =>
+    [...debugQueryKeys.all, "llm-io", query] as const,
+  errors: (query: OptionalWorkspaceQuery<DebugEventLogQueryDto>) =>
+    [...debugQueryKeys.all, "errors", query] as const,
   events: (
     sessionId: string | undefined,
     query: OptionalWorkspaceQuery<DebugEventLogQueryDto>,
-  ) =>
-    [...debugQueryKeys.all, "events", sessionId, query] as const,
+  ) => [...debugQueryKeys.all, "events", sessionId, query] as const,
   timeline: (
     sessionId: string | undefined,
     query: OptionalWorkspaceQuery<DebugTimelineQueryDto>,
-  ) =>
-    [...debugQueryKeys.all, "timeline", sessionId, query] as const,
+  ) => [...debugQueryKeys.all, "timeline", sessionId, query] as const,
   rootCause: (
     sessionId: string | undefined,
     query: OptionalWorkspaceQuery<DebugTimelineQueryDto>,
-  ) =>
-    [...debugQueryKeys.all, "root-cause", sessionId, query] as const,
+  ) => [...debugQueryKeys.all, "root-cause", sessionId, query] as const,
   memory: (
     sessionId: string | undefined,
     query: OptionalWorkspaceQuery<DebugTimelineQueryDto>,
-  ) =>
-    [...debugQueryKeys.all, "memory", sessionId, query] as const,
+  ) => [...debugQueryKeys.all, "memory", sessionId, query] as const,
   patterns: (query: OptionalWorkspaceQuery<DebugAnalysisQueryDto>) =>
     [...debugQueryKeys.all, "patterns", query] as const,
   bottlenecks: (query: OptionalWorkspaceQuery<DebugAnalysisQueryDto>) =>
@@ -73,6 +81,46 @@ export function useDebugSessionsQuery(
   return useQuery({
     queryKey: debugQueryKeys.sessions(query),
     queryFn: () => getDebugSessions(query as DebugSessionListQueryDto),
+    enabled: hasWorkspaceId(query),
+  });
+}
+
+export function useDebugLogsQuery(
+  query: OptionalWorkspaceQuery<DebugEventLogQueryDto>,
+) {
+  return useQuery({
+    queryKey: debugQueryKeys.logs(query),
+    queryFn: () => getDebugLogs(query as DebugEventLogQueryDto),
+    enabled: hasWorkspaceId(query),
+  });
+}
+
+export function useDebugToolCallsQuery(
+  query: OptionalWorkspaceQuery<DebugEventLogQueryDto>,
+) {
+  return useQuery({
+    queryKey: debugQueryKeys.toolCalls(query),
+    queryFn: () => getDebugToolCalls(query as DebugEventLogQueryDto),
+    enabled: hasWorkspaceId(query),
+  });
+}
+
+export function useDebugLlmCallsQuery(
+  query: OptionalWorkspaceQuery<DebugEventLogQueryDto>,
+) {
+  return useQuery({
+    queryKey: debugQueryKeys.llmCalls(query),
+    queryFn: () => getDebugLlmCalls(query as DebugEventLogQueryDto),
+    enabled: hasWorkspaceId(query),
+  });
+}
+
+export function useDebugErrorsQuery(
+  query: OptionalWorkspaceQuery<DebugEventLogQueryDto>,
+) {
+  return useQuery({
+    queryKey: debugQueryKeys.errors(query),
+    queryFn: () => getDebugErrors(query as DebugEventLogQueryDto),
     enabled: hasWorkspaceId(query),
   });
 }

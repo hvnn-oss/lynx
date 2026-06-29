@@ -1,4 +1,4 @@
-import { LynxTracer } from "./tracer.js";
+import { DEFAULT_ENDPOINT, LynxTracer } from "./tracer.js";
 
 const parseBool = (val: string | undefined): boolean | undefined => {
   if (val === undefined) return undefined;
@@ -15,7 +15,7 @@ const parseNum = (val: string | undefined): number | undefined => {
  * Default Lynx tracer instance configured from environment variables.
  *
  * This is the recommended entry point for most applications. Configure it with
- * `LYNX_CLIENT_ID`, `LYNX_ENDPOINT`, `LYNX_API_KEY`, and optional capture,
+ * `LYNX_CLIENT_ID`, `LYNX_API_KEY`, and optional endpoint, capture,
  * delivery, and deployment metadata variables before importing the SDK.
  *
  * @example
@@ -29,7 +29,7 @@ const parseNum = (val: string | undefined): number | undefined => {
  */
 export const lynx = new LynxTracer({
   clientId: process.env.LYNX_CLIENT_ID || "local_dev_env",
-  endpoint: process.env.LYNX_ENDPOINT || "http://localhost:4000",
+  endpoint: process.env.LYNX_ENDPOINT || DEFAULT_ENDPOINT,
   sampleRate: parseNum(process.env.LYNX_SAMPLE_RATE),
   captureInput: parseBool(process.env.LYNX_CAPTURE_INPUT),
   captureOutput: parseBool(process.env.LYNX_CAPTURE_OUTPUT),

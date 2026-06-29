@@ -1,4 +1,4 @@
-import { SESSION_STATUS, type SessionStatus } from "@repo/constants";
+﻿import { SESSION_STATUS, type SessionStatus } from "@repo/constants";
 import {
   Column,
   Entity,
@@ -45,22 +45,22 @@ export class SessionEntity {
   @Column()
   totalCost!: number;
 
-  @ManyToOne(() => WorkspaceEntity, (workspace) => workspace.sessions, {
+  @ManyToOne(() => WorkspaceEntity, (workspace: WorkspaceEntity) => workspace.sessions, {
     onDelete: "CASCADE",
   })
   workspace!: WorkspaceEntity;
 
-  @ManyToOne(() => AgentEntity, (agent) => agent.sessions)
+  @ManyToOne(() => AgentEntity, (agent: AgentEntity) => agent.sessions)
   agent!: AgentEntity;
 
-  @ManyToOne(() => PromptEntity, (prompt) => prompt.sessions, {
+  @ManyToOne(() => PromptEntity, (prompt: PromptEntity) => prompt.sessions, {
     nullable: true,
   })
   usedPrompt?: PromptEntity;
 
-  @OneToMany(() => EventEntity, (event) => event.session)
+  @OneToMany(() => EventEntity, (event: EventEntity) => event.session)
   events!: EventEntity[];
 
-  @OneToMany(() => GuardrailViolationEntity, (blocked) => blocked.session)
+  @OneToMany(() => GuardrailViolationEntity, (blocked: GuardrailViolationEntity) => blocked.session)
   blocked!: GuardrailViolationEntity[];
 }

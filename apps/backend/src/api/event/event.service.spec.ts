@@ -4,6 +4,7 @@ import { EventService } from './event.service';
 import { DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { LynxEventDto, LynxEventType } from '@repo/dto';
+import { WorkspaceApiKeyEntity } from '@repo/database';
 
 describe('EventService', () => {
   let service: EventService;
@@ -12,7 +13,17 @@ describe('EventService', () => {
     id: 'ws-1',
     name: 'Test Workspace',
     plan: 'FREE',
+    planConfig: {
+      code: 'FREE',
+      retentionDays: 3,
+    },
   };
+
+  const mockWorkspacePlans = [
+    { code: 'FREE', retentionDays: 3 },
+    { code: 'PRO', retentionDays: 30 },
+    { code: 'ENTERPRISE', retentionDays: 365 },
+  ];
 
   const mockAgent = {
     id: 'agent-1',
@@ -22,6 +33,8 @@ describe('EventService', () => {
   const mockSession = {
     id: 'sess-1',
     name: 'Test Session',
+    status: 'RUNNING',
+    endedAt: undefined as Date | undefined,
     totalPromptTokens: 0,
     totalCompletionTokens: 0,
     totalTokens: 0,
@@ -30,6 +43,23 @@ describe('EventService', () => {
 
   const mockWorkspaceRepository = {
     findOne: jest.fn(() => Promise.resolve(mockWorkspace)),
+  };
+
+  const mockWorkspacePlanRepository = {
+    find: jest.fn(() => Promise.resolve(mockWorkspacePlans)),
+  };
+
+  const mockWorkspaceApiKeyQueryBuilder = {
+    innerJoinAndSelect: jest.fn().mockReturnThis(),
+    leftJoinAndSelect: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    getOne: jest.fn().mockResolvedValue(null),
+  };
+
+  const mockWorkspaceApiKeyRepository = {
+    createQueryBuilder: jest.fn(() => mockWorkspaceApiKeyQueryBuilder),
+    update: jest.fn(() => Promise.resolve({ affected: 1 })),
   };
 
   const mockAgentRepository = {
@@ -62,6 +92,7 @@ describe('EventService', () => {
     from: jest.fn().mockReturnThis(),
     innerJoin: jest.fn().mockReturnThis(),
     getQuery: jest.fn().mockReturnValue('(SELECT id FROM session)'),
+    getOne: jest.fn().mockResolvedValue(null),
   };
 
   const mockEventRepository = {
@@ -74,6 +105,9 @@ describe('EventService', () => {
     getRepository: jest.fn((entity: { name: string }) => {
       const name = entity.name;
       if (name === 'WorkspaceEntity') return mockWorkspaceRepository;
+      if (entity === WorkspaceApiKeyEntity)
+        return mockWorkspaceApiKeyRepository;
+      if (name === 'WorkspacePlanEntity') return mockWorkspacePlanRepository;
       if (name === 'AgentEntity') return mockAgentRepository;
       if (name === 'SessionEntity') return mockSessionRepository;
       if (name === 'EventEntity') return mockEventRepository;
@@ -84,8 +118,8 @@ describe('EventService', () => {
 
   const mockConfigService = {
     get: jest.fn((key: string) => {
-      if (key === 'RETENTION_DAYS_FREE') return 3;
-      if (key === 'RETENTION_DAYS_PRO') return 30;
+      if (key === 'MAX_INGEST_BATCH_SIZE') return 100;
+      if (key === 'MAX_EVENT_FUTURE_SKEW_SECONDS') return 300;
       return undefined;
     }),
   };
@@ -103,6 +137,19 @@ describe('EventService', () => {
 
     // Reset mocks
     jest.clearAllMocks();
+    mockSession.name = 'Test Session';
+    mockSession.status = 'RUNNING';
+    mockSession.endedAt = undefined;
+    mockSession.totalPromptTokens = 0;
+    mockSession.totalCompletionTokens = 0;
+    mockSession.totalTokens = 0;
+    mockSession.totalCost = 0;
+    mockWorkspace.plan = 'FREE';
+    mockWorkspace.planConfig = {
+      code: 'FREE',
+      retentionDays: 3,
+    };
+    mockWorkspacePlanRepository.find.mockResolvedValue(mockWorkspacePlans);
   });
 
   it('should be defined', () => {
@@ -159,6 +206,29 @@ describe('EventService', () => {
     const result = await service.ingestEvent(dto, 'test-api-key');
     expect(result.success).toBe(false);
     expect(result.reason).toContain('retention limit');
+  });
+
+  it('should use retention days from the workspace plan configuration', async () => {
+    mockWorkspace.plan = 'PRO';
+    mockWorkspace.planConfig = {
+      code: 'PRO',
+      retentionDays: 30,
+    };
+
+    const dto: LynxEventDto = {
+      clientId: 'client-1',
+      runId: 'trace-1',
+      agentName: 'TestAgent',
+      eventType: 'LLM_REASONING' as LynxEventType,
+      label: 'gpt-4o',
+      payload: {},
+      timestamp: Date.now() - 10 * 24 * 60 * 60 * 1000,
+      workspaceId: 'ws-1',
+    };
+
+    const result = await service.ingestEvent(dto, 'test-api-key');
+
+    expect(result.success).toBe(true);
   });
 
   it('should process batches sequentially and handle individual failures gracefully', async () => {
@@ -234,6 +304,63 @@ describe('EventService', () => {
     expect(mockSessionRepository.findOne).toHaveBeenCalledTimes(1);
   });
 
+  it('should use runId as the session identity when sessionId is omitted', async () => {
+    mockSessionRepository.findOne.mockResolvedValue(null as any);
+    mockSessionRepository.create.mockClear();
+
+    const dto: LynxEventDto = {
+      clientId: 'client-1',
+      runId: 'trace-run-1',
+      agentName: 'TestAgent',
+      eventType: 'USER_INPUT' as LynxEventType,
+      label: 'User request',
+      payload: {},
+      timestamp: Date.now(),
+      workspaceId: 'ws-1',
+      agentId: 'agent-1',
+    };
+
+    const result = await service.ingestEvent(dto, 'test-api-key');
+
+    expect(result.success).toBe(true);
+    expect(mockSessionRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: undefined,
+        name: 'trace-run-1',
+        status: 'RUNNING',
+      }),
+    );
+  });
+
+  it('should close the run session when a session outcome event is ingested', async () => {
+    const completedAt = new Date().toISOString();
+    const dto: LynxEventDto = {
+      clientId: 'client-1',
+      runId: 'trace-1',
+      agentName: 'TestAgent',
+      eventType: 'SESSION_OUTCOME' as LynxEventType,
+      label: 'Run completed',
+      payload: {
+        status: 'COMPLETED',
+        completedAt,
+      },
+      timestamp: Date.now(),
+      workspaceId: 'ws-1',
+      agentId: 'agent-1',
+      sessionId: 'sess-1',
+    };
+
+    const result = await service.ingestEvent(dto, 'test-api-key');
+
+    expect(result.success).toBe(true);
+    expect(mockSessionRepository.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'COMPLETED',
+        endedAt: new Date(completedAt),
+      }),
+    );
+  });
+
   it('should reject batches over the configured maximum size', async () => {
     const dtos = Array.from({ length: 101 }, (_, index) => ({
       clientId: 'client-1',
@@ -254,16 +381,13 @@ describe('EventService', () => {
   describe('cleanExpiredEvents', () => {
     it('should successfully run cleanExpiredEvents and execute delete queries for each tier', async () => {
       mockDeleteQueryBuilder.execute.mockClear();
-      mockConfigService.get.mockImplementation(((key: string) => {
-        if (key === 'RETENTION_DAYS_FREE') return 5;
-        if (key === 'RETENTION_DAYS_PRO') return 15;
-        if (key === 'RETENTION_DAYS_ENTERPRISE') return 100;
-        return undefined;
-      }) as any);
 
       await service.cleanExpiredEvents();
 
-      // Should execute delete query for each of the 3 plans (FREE, PRO, ENTERPRISE)
+      // DB에 등록된 활성 플랜마다 보존기간 정리 쿼리를 실행합니다.
+      expect(mockWorkspacePlanRepository.find).toHaveBeenCalledWith({
+        where: { isActive: true },
+      });
       expect(mockEventRepository.createQueryBuilder).toHaveBeenCalledTimes(3);
       expect(mockDeleteQueryBuilder.execute).toHaveBeenCalledTimes(3);
     });

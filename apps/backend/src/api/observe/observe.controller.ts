@@ -12,6 +12,7 @@ export class ObserveController {
 
   // 1. 대시보드 통계 메트릭
   @Get('overview')
+  @Get('overview')
   async getOverviewMetrics(
     @Query('workspaceId') workspaceId: string,
     @Req() req: AuthenticatedRequest,
@@ -23,6 +24,7 @@ export class ObserveController {
   }
 
   // 2. 시간별 이용량 & 비용 시계열 차트 데이터
+  @Get('analytics')
   @Get('analytics')
   async getAnalytics(
     @Query('workspaceId') workspaceId: string,

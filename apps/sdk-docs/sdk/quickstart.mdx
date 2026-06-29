@@ -6,7 +6,6 @@ description: "Install Lynx SDK and capture your first AI agent run."
 ## Prerequisites
 
 - Node.js 18 or later
-- A Lynx ingestion endpoint
 - A Lynx API key
 
 ## Install
@@ -29,7 +28,6 @@ import { LynxTracer } from "@lynx/sdk";
 
 const lynx = new LynxTracer({
   clientId: "support-api",
-  endpoint: "https://lynx.example.com",
   apiKey: process.env.LYNX_API_KEY,
 });
 ```
@@ -72,5 +70,6 @@ process.on("SIGTERM", () => {
 ```
 
 <Note>
-  The default delivery mode is background-only. Telemetry failures do not throw from your agent workflow.
+  The default delivery mode is background-only. Telemetry failures do not throw
+  from your agent workflow.
 </Note>

@@ -43,6 +43,30 @@ test("flush sends queued events even when the batch size is not reached", async 
   );
 });
 
+test("uses the hosted Lynx API endpoint by default", async () => {
+  let requestedUrl;
+  globalThis.fetch = async (url) => {
+    requestedUrl = url;
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+
+  const tracer = new LynxTracer({
+    clientId: "test-client",
+    apiKey: "test-api-key",
+    delivery: {
+      flushIntervalMs: 60_000,
+    },
+  });
+
+  await tracer.run("SupportAgent", async () => {
+    tracer.log("manual-note", { ok: true });
+  });
+  await tracer.flush();
+  await tracer.shutdown();
+
+  assert.equal(requestedUrl, "https://api.lynxops.co/openapi/v1/events/batch");
+});
+
 test("shutdown flushes queued events and clears the timer", async () => {
   const batches = [];
   globalThis.fetch = async (_url, init) => {

@@ -28,14 +28,22 @@ export interface DashboardHomeMetricsDto {
     score: number;
     status: "HEALTHY" | "WARNING" | "CRITICAL";
   }>;
-  runVolume: Array<{ time: string; count: number }>;
-  failureTrend: Array<{ time: string; rate: number }>;
+  runVolume: Array<{
+    time: string;
+    count: number;
+    successCount?: number;
+    failedCount?: number;
+  }>;
+  failureTrend: Array<{ time: string; rate: number; previousRate?: number }>;
   recentIssues: Array<{
     id: string;
     agentName: string;
     issueType: string;
     severity: "CRITICAL" | "WARNING";
     timestamp: string;
+    occurrenceCount?: number;
+    affectedSessionsCount?: number;
+    lastSeenAt?: string;
   }>;
 }
 
@@ -108,7 +116,7 @@ export interface DashboardMetricsDataDto {
 export interface DashboardUsageMetricsDto {
   topAgents: Array<{ name: string; count: number }>;
   heatmap: Array<{ day: number; hour: number; count: number }>;
-  userUsage: Array<{ userId: string; email: string; runs: number }>;
+  environmentUsage: Array<{ environment: string; runs: number }>;
   toolUsage: Array<{ name: string; count: number }>;
   modelUsage: Array<{ name: string; count: number; tokens: number }>;
 }

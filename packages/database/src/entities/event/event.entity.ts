@@ -1,11 +1,11 @@
+﻿import { type EventType } from "@repo/constants";
 import {
-  Entity,
-  PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  Entity,
   ManyToOne,
+  PrimaryGeneratedColumn,
 } from "typeorm";
-import { type EventType } from "@repo/constants";
 import { SessionEntity } from "../session/session.entity";
 
 export interface TokenUsage {
@@ -47,6 +47,15 @@ export class EventEntity {
   @Column({ type: "varchar", length: 255 })
   label!: string;
 
+  @Column({ type: "varchar", length: 120, nullable: true })
+  clientId?: string;
+
+  @Column({ type: "varchar", length: 120, nullable: true })
+  clientEventId?: string;
+
+  @Column({ type: "varchar", length: 40, nullable: true })
+  schemaVersion?: string;
+
   @Column({ type: "jsonb", nullable: true })
   payload!: LynxEventPayloadDto;
 
@@ -62,7 +71,7 @@ export class EventEntity {
   @CreateDateColumn()
   createdAt!: Date;
 
-  @ManyToOne(() => SessionEntity, (session) => session.events, {
+  @ManyToOne(() => SessionEntity, (session: SessionEntity) => session.events, {
     onDelete: "CASCADE",
   })
   session!: SessionEntity;

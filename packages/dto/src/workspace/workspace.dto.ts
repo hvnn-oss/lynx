@@ -1,5 +1,4 @@
 import {
-  IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -8,8 +7,7 @@ import {
   MinLength,
 } from "class-validator";
 
-export const WORKSPACE_PLAN_VALUES = ["FREE", "PRO", "ENTERPRISE"] as const;
-export type WorkspacePlanValue = (typeof WORKSPACE_PLAN_VALUES)[number];
+export type WorkspacePlanValue = string;
 
 export class WorkspaceIdParamDto {
   @IsNotEmpty()
@@ -29,7 +27,8 @@ export class CreateWorkspaceDto {
   name!: string;
 
   @IsOptional()
-  @IsIn(WORKSPACE_PLAN_VALUES)
+  @IsString()
+  @MaxLength(40)
   plan?: WorkspacePlanValue;
 }
 
@@ -41,7 +40,8 @@ export class UpdateWorkspaceDto {
   name?: string;
 
   @IsOptional()
-  @IsIn(WORKSPACE_PLAN_VALUES)
+  @IsString()
+  @MaxLength(40)
   plan?: WorkspacePlanValue;
 }
 
@@ -53,10 +53,22 @@ export interface WorkspaceSummaryDto {
     id: string;
     name: string;
   };
+  planConfig?: WorkspacePlanConfigDto;
 }
 
 export interface WorkspaceDetailDto extends WorkspaceSummaryDto {
   apiKey?: string;
+}
+
+export interface WorkspacePlanConfigDto {
+  code: string;
+  name: string;
+  retentionDays: number;
+  monthlyEventLimit?: number;
+  includedLogCount?: number;
+  logOverageUnitPrice?: number;
+  features: Record<string, unknown>;
+  isActive: boolean;
 }
 
 export interface WorkspaceApiKeyResponseDto {

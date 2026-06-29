@@ -1,10 +1,4 @@
-import {
-  Brain,
-  BugOff,
-  ChartArea,
-  PanelsTopLeft,
-  Settings,
-} from "lucide-react";
+import { Brain, BugOff, ChartArea, Settings } from "lucide-react";
 import { MenuConfig } from "./types";
 
 export const menuConfig: Record<string, MenuConfig> = {
@@ -25,7 +19,32 @@ export const menuConfig: Record<string, MenuConfig> = {
           },
           { label: "dashboard.items.overview.usage", href: "/dashboard/usage" },
           { label: "dashboard.items.overview.cost", href: "/dashboard/cost" },
-          { label: "dashboard.items.overview.insights", href: "/dashboard/insights" },
+          {
+            label: "dashboard.items.overview.insights",
+            href: "/dashboard/insights",
+          },
+        ],
+      },
+      {
+        label: "session.items.list.title",
+        items: [
+          {
+            label: "session.items.list.overview",
+            href: "/dashboard/session/overview",
+          },
+          { label: "session.items.list.live", href: "/dashboard/session/live" },
+          {
+            label: "session.items.list.completed",
+            href: "/dashboard/session/completed",
+          },
+          {
+            label: "session.items.list.failed",
+            href: "/dashboard/session/failed",
+          },
+          {
+            label: "session.items.list.anomaly",
+            href: "/dashboard/session/anomaly",
+          },
         ],
       },
       {
@@ -77,42 +96,19 @@ export const menuConfig: Record<string, MenuConfig> = {
       {
         label: "agents.items.performance.title",
         items: [
-          { label: "agents.items.performance.latency", href: "/agents/perf/latency" },
-          { label: "agents.items.performance.tokens", href: "/agents/perf/tokens" },
-          { label: "agents.items.performance.success-rate", href: "/agents/perf/success-rate" },
+          {
+            label: "agents.items.performance.latency",
+            href: "/agents/perf/latency",
+          },
+          {
+            label: "agents.items.performance.tokens",
+            href: "/agents/perf/tokens",
+          },
+          {
+            label: "agents.items.performance.success-rate",
+            href: "/agents/perf/success-rate",
+          },
           { label: "agents.items.performance.cost", href: "/agents/perf/cost" },
-        ],
-      },
-    ],
-  },
-  session: {
-    title: "session.title",
-    groups: [
-      {
-        label: "session.items.list.title",
-        items: [
-          { label: "session.items.list.overview", href: "/session/overview" },
-          { label: "session.items.list.live", href: "/session/live" },
-          { label: "session.items.list.completed", href: "/session/completed" },
-          { label: "session.items.list.failed", href: "/session/failed" },
-          { label: "session.items.list.anomaly", href: "/session/anomaly" },
-        ],
-      },
-      {
-        label: "session.items.analysis.title",
-        items: [
-          { label: "session.items.analysis.timeline", href: "/session/timeline" },
-          { label: "session.items.analysis.replay", href: "/session/replay" },
-          { label: "session.items.analysis.multi-agent", href: "/session/multi-agent" },
-          { label: "session.items.analysis.context", href: "/session/context" },
-        ],
-      },
-      {
-        label: "session.items.usage.title",
-        items: [
-          { label: "session.items.usage.tokens", href: "/session/tokens" },
-          { label: "session.items.usage.calls", href: "/session/calls" },
-          { label: "session.items.usage.cost", href: "/session/cost" },
         ],
       },
     ],
@@ -134,14 +130,20 @@ export const menuConfig: Record<string, MenuConfig> = {
         items: [
           { label: "debug.items.error.errors", href: "/debug/errors" },
           { label: "debug.items.error.root-cause", href: "/debug/root-cause" },
-          { label: "debug.items.error.failure-patterns", href: "/debug/failure-patterns" },
+          {
+            label: "debug.items.error.failure-patterns",
+            href: "/debug/failure-patterns",
+          },
           { label: "debug.items.error.reproduce", href: "/debug/reproduce" },
         ],
       },
       {
         label: "debug.items.performance.title",
         items: [
-          { label: "debug.items.performance.bottleneck", href: "/debug/bottleneck" },
+          {
+            label: "debug.items.performance.bottleneck",
+            href: "/debug/bottleneck",
+          },
           { label: "debug.items.performance.latency", href: "/debug/latency" },
           { label: "debug.items.performance.memory", href: "/debug/memory" },
         ],
@@ -154,27 +156,54 @@ export const menuConfig: Record<string, MenuConfig> = {
       {
         label: "settings.items.workspace.title",
         items: [
-          { label: "settings.items.workspace.general", href: "/settings/general" },
-          { label: "settings.items.workspace.members", href: "/settings/members" },
+          {
+            label: "settings.items.workspace.general",
+            href: "/settings/general",
+          },
+          {
+            label: "settings.items.workspace.members",
+            href: "/settings/members",
+          },
           { label: "settings.items.workspace.roles", href: "/settings/roles" },
-          { label: "settings.items.workspace.billing", href: "/settings/billing" },
+          {
+            label: "settings.items.workspace.billing",
+            href: "/settings/billing",
+          },
         ],
       },
       {
         label: "settings.items.integration.title",
         items: [
-          { label: "settings.items.integration.api-keys", href: "/settings/api-keys" },
+          {
+            label: "settings.items.integration.api-keys",
+            href: "/settings/api-keys",
+          },
           { label: "settings.items.integration.sdk", href: "/settings/sdk" },
-          { label: "settings.items.integration.webhooks", href: "/settings/webhooks" },
-          { label: "settings.items.integration.slack", href: "/settings/slack" },
+          {
+            label: "settings.items.integration.webhooks",
+            href: "/settings/webhooks",
+          },
+          {
+            label: "settings.items.integration.slack",
+            href: "/settings/slack",
+          },
         ],
       },
       {
         label: "settings.items.notification.title",
         items: [
-          { label: "settings.items.notification.channels", href: "/settings/notifications/channels" },
-          { label: "settings.items.notification.rules", href: "/settings/notifications/rules" },
-          { label: "settings.items.notification.preferences", href: "/settings/notifications/preferences" },
+          {
+            label: "settings.items.notification.channels",
+            href: "/settings/notifications/channels",
+          },
+          {
+            label: "settings.items.notification.rules",
+            href: "/settings/notifications/rules",
+          },
+          {
+            label: "settings.items.notification.preferences",
+            href: "/settings/notifications/preferences",
+          },
         ],
       },
     ],
@@ -184,7 +213,6 @@ export const menuConfig: Record<string, MenuConfig> = {
 export const MAIN_MENU_ITEMS = [
   { icon: ChartArea, label: "menu.dashboard", key: "dashboard" },
   { icon: Brain, label: "menu.agents", key: "agents" },
-  { icon: PanelsTopLeft, label: "menu.session", key: "session" },
   { icon: BugOff, label: "menu.debug", key: "debug" },
   { icon: Settings, label: "menu.settings", key: "settings" },
 ];

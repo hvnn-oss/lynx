@@ -7,18 +7,18 @@ Lynx is designed so telemetry failures do not stop your AI service by default.
 
 ## Production defaults
 
-| Option | Default |
-| --- | --- |
-| `delivery.mode` | `"BACKGROUND"` |
-| `delivery.timeoutMs` | `1000` |
-| `delivery.flushOnRunEnd` | `false` |
-| `delivery.flushIntervalMs` | `3000` |
-| `delivery.batchSize` | `50` |
-| `delivery.maxQueueSize` | `1000` |
-| `delivery.overflowStrategy` | `"DROP_OLDEST"` |
-| `circuitBreaker.enabled` | `true` |
-| `circuitBreaker.failureThreshold` | `3` |
-| `circuitBreaker.cooldownMs` | `30000` |
+| Option                            | Default         |
+| --------------------------------- | --------------- |
+| `delivery.mode`                   | `"BACKGROUND"`  |
+| `delivery.timeoutMs`              | `1000`          |
+| `delivery.flushOnRunEnd`          | `false`         |
+| `delivery.flushIntervalMs`        | `3000`          |
+| `delivery.batchSize`              | `50`            |
+| `delivery.maxQueueSize`           | `1000`          |
+| `delivery.overflowStrategy`       | `"DROP_OLDEST"` |
+| `circuitBreaker.enabled`          | `true`          |
+| `circuitBreaker.failureThreshold` | `3`             |
+| `circuitBreaker.cooldownMs`       | `30000`         |
 
 ## Background delivery
 
@@ -27,7 +27,6 @@ In background mode, `run()` records events locally and returns without waiting f
 ```ts
 const lynx = new LynxTracer({
   clientId: "support-api",
-  endpoint: "https://lynx.example.com",
   apiKey: process.env.LYNX_API_KEY,
   delivery: {
     mode: "BACKGROUND",
@@ -44,7 +43,6 @@ Use blocking mode only when the current process must make a send attempt during 
 ```ts
 const lynx = new LynxTracer({
   clientId: "worker",
-  endpoint: "https://lynx.example.com",
   apiKey: process.env.LYNX_API_KEY,
   delivery: {
     mode: "BLOCKING",

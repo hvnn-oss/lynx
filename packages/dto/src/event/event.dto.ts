@@ -30,6 +30,10 @@ export const LYNX_EVENT_TYPES = [
 ] as const satisfies readonly LynxEventType[];
 
 export class IngestEventDto implements LynxEventDto {
+  @IsOptional()
+  @IsString()
+  eventId?: string;
+
   @IsNotEmpty()
   @IsString()
   clientId!: string;

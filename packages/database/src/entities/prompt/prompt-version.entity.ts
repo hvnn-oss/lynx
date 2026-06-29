@@ -1,12 +1,12 @@
-import {
+﻿import {
   Column,
   Entity,
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
 } from "typeorm";
-import { PromptEntity } from "./prompt.entity";
 import { WorkspaceEntity } from "../organization/workspace.entity";
+import { PromptEntity } from "./prompt.entity";
 
 @Entity("prompt-version")
 export class PromptVersionEntity {
@@ -25,11 +25,11 @@ export class PromptVersionEntity {
   @Column()
   createdAt!: Date;
 
-  @ManyToOne(() => WorkspaceEntity, (workspace) => workspace, {
+  @ManyToOne(() => WorkspaceEntity, (workspace: WorkspaceEntity) => workspace, {
     onDelete: "CASCADE",
   })
   workspace!: WorkspaceEntity;
 
-  @OneToMany(() => PromptEntity, (prompt) => prompt.version)
+  @OneToMany(() => PromptEntity, (prompt: PromptEntity) => prompt.version)
   prompts!: PromptEntity[];
 }

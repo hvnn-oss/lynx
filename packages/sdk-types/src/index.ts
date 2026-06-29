@@ -1,5 +1,5 @@
 /**
- * AsyncLocalStorage 내부에서 관리되는 컨텍스트 구조입니다.
+ * Execution context stored for the active Lynx trace.
  */
 export interface LynxContext {
   runId: string;
@@ -15,7 +15,7 @@ export interface LynxContext {
 }
 
 /**
- * 에이전트 실행 추적을 위한 옵션 정보입니다.
+ * Options used when starting an agent run.
  */
 export interface LynxRunOptions {
   agentName: string;
@@ -26,11 +26,11 @@ export interface LynxRunOptions {
 }
 
 /**
- * Lynx SDK 초기화를 위한 설정 옵션입니다.
+ * Configuration options for the Lynx SDK runtime.
  */
 export interface LynxConfig {
   clientId: string;
-  endpoint: string;
+  endpoint?: string;
   workspaceId?: string;
   agentId?: string;
   apiKey?: string;
@@ -40,31 +40,36 @@ export interface LynxConfig {
   policyVersion?: string;
 
   /**
-   * 텔레메트리 전송 샘플링 비율 (0.0 ~ 1.0).
-   * 0.1이면 10%의 트레이스만 전송합니다. 지정되지 않으면 1.0 (100%) 전송.
+   * Telemetry sampling ratio between 0.0 and 1.0.
+   *
+   * For example, `0.1` captures roughly 10% of traces. When omitted, all traces
+   * are captured unless a runtime context overrides sampling.
    */
   sampleRate?: number;
 
   /**
-   * 입력을 캡처하여 보낼지 여부 (기본값: true).
+   * Whether request/input payloads should be captured.
    */
   captureInput?: boolean;
 
   /**
-   * 출력을 캡처하여 보낼지 여부 (기본값: true).
+   * Whether response/output payloads should be captured.
    */
   captureOutput?: boolean;
 
   /**
-   * 단일 이벤트 내의 payload 전체 JSON 문자열 최대 길이 (기본값: 5000).
+   * Maximum serialized payload length for a single event.
    */
   maxPayloadLength?: number;
 
   /**
-   * 텔레메트리 캡처 및 압축 모드
-   * - 'full': 원본 페이로드 전체를 그대로 전송하고 저장합니다.
-   * - 'metadata-only': 원문은 버리고 해시, 비용, 지연시간, 토큰 사용량, 매칭된 툴 등 메타데이터만 캡처합니다.
-   * - 'smart': (기본값) 헤드+테일 압축, 중요 패턴 추출 등을 활용한 운영 의미 기반 압축 텔레메트리를 전송합니다.
+   * Telemetry capture and retention mode.
+   *
+   * - `full`: Capture full input/output payloads.
+   * - `metadata-only`: Capture structure, timing, usage, status, and error
+   *   metadata without raw content.
+   * - `smart`: Prefer metadata for normal events while preserving richer
+   *   details for failures, policy violations, and abnormal latency.
    */
   captureMode?: "full" | "metadata-only" | "smart";
 
@@ -92,7 +97,7 @@ export interface LynxConfig {
 }
 
 /**
- * 토큰 사용량 정보입니다.
+ * Token usage returned by an LLM provider.
  */
 export interface TokenUsage {
   promptTokens: number;
@@ -178,27 +183,31 @@ export interface LynxStatus {
 }
 
 /**
- * 특정 LLM 클라이언트를 가로채고 계측하기 위한 커스텀 규칙 인터페이스입니다.
+ * Custom instrumentation rule for wrapping an LLM client method.
  */
 export interface LlmInstrumentationRule {
   /**
-   * 해당 메소드 접근 경로(예: ["chat", "completions", "create"])가 가로채기 대상인지 여부를 판단합니다.
+   * Returns whether the current method path should be instrumented.
    */
   isTargetMethod: (path: string[]) => boolean;
+
   /**
-   * 가로챈 메소드의 입력 인자들로부터 프롬프트 또는 입력 구조 데이터를 추출합니다.
+   * Extracts prompt or input data from the intercepted method arguments.
    */
   extractInput?: (args: any[]) => any;
+
   /**
-   * 가로챈 메소드의 실행 결과물로부터 응답 텍스트 또는 결과 데이터를 추출합니다.
+   * Extracts response content or structured output from the method result.
    */
   extractOutput?: (result: any) => any;
+
   /**
-   * 가로챈 메소드의 실행 결과물로부터 사용된 토큰량을 추출합니다.
+   * Extracts token usage from the method result.
    */
   extractUsage?: (result: any) => TokenUsage | undefined;
+
   /**
-   * 가로챈 모델 및 토큰 사용량에 대한 비용을 추정합니다.
+   * Estimates call cost from model and token usage.
    */
   estimateCost?: (
     model: string,
@@ -208,7 +217,7 @@ export interface LlmInstrumentationRule {
 }
 
 /**
- * Lynx SDK가 추적할 수 있는 이벤트 타입입니다.
+ * Event types captured by the Lynx SDK.
  */
 export type LynxEventType =
   | "USER_INPUT"
@@ -229,7 +238,7 @@ export type LynxEventType =
   | "CONTEXT_ALERT";
 
 /**
- * 추적된 이벤트의 세부 정보를 포함하는 페이로드 DTO 스키마입니다.
+ * Event payload schema used for trace, replay, and root-cause analysis.
  */
 export interface LynxEventPayloadDto {
   input?: any;
@@ -237,14 +246,14 @@ export interface LynxEventPayloadDto {
   error?: string;
   arguments?: any;
 
-  // Span Hierarchical Tracking
+  // Span hierarchy
   spanId?: string;
   parentSpanId?: string;
 
-  // Performance and Cost Analytics
-  latency?: number; // millisecond duration of the execution
-  usage?: TokenUsage; // token usage for LLM calls
-  cost?: number; // estimated cost in USD
+  // Performance and cost analytics
+  latency?: number;
+  usage?: TokenUsage;
+  cost?: number;
 
   // Runtime metadata for replay and root-cause analysis
   provider?: string;
@@ -283,7 +292,7 @@ export interface LynxEventPayloadDto {
   loopCount?: number;
   repeatedLabel?: string;
 
-  // Prompt injection & pollution alert metadata
+  // Prompt injection and context pollution metadata
   isPolluted?: boolean;
   pollutionReason?: string;
 
@@ -291,6 +300,7 @@ export interface LynxEventPayloadDto {
 }
 
 export interface LynxEventDto {
+  eventId?: string;
   clientId: string;
   runId: string;
   agentName: string;

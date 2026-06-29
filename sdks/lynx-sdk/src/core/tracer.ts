@@ -15,10 +15,15 @@ import {
   LynxStatus,
 } from "./types.js";
 import { processPayload } from "../utils/payload.js";
-import { generateTraceId, generateSpanId } from "../utils/id.js";
+import {
+  generateTraceId,
+  generateSpanId,
+  generateEventId,
+} from "../utils/id.js";
 import { instrumentLLM, instrumentTool } from "../instrumentation/index.js";
 
 const SDK_VERSION = "1.0.0";
+export const DEFAULT_ENDPOINT = "https://api.lynxops.co";
 const DEFAULT_MAX_QUEUE_SIZE = 1000;
 const DEFAULT_BATCH_SIZE = 50;
 
@@ -61,7 +66,6 @@ function stableHash(data: any): string {
  * ```ts
  * const tracer = new LynxTracer({
  *   clientId: "support-service",
- *   endpoint: "https://lynx.example.com",
  *   apiKey: process.env.LYNX_API_KEY,
  * });
  *
@@ -75,6 +79,7 @@ export class LynxTracer {
   private static readonly storage = new AsyncLocalStorage<LynxContext>();
   private static readonly instances = new Set<LynxTracer>();
   private static beforeExitHookRegistered = false;
+  private readonly config: LynxConfig & { endpoint: string };
   private readonly pendingPromises = new Set<Promise<any>>();
   private readonly eventQueue: LynxEventDto[] = [];
   private readonly retryQueue: LynxEventDto[] = [];
@@ -99,7 +104,12 @@ export class LynxTracer {
    *
    * @param config Runtime configuration for telemetry capture and delivery.
    */
-  constructor(private readonly config: LynxConfig) {
+  constructor(config: LynxConfig) {
+    this.config = {
+      ...config,
+      endpoint: config.endpoint ?? DEFAULT_ENDPOINT,
+    };
+
     LynxTracer.instances.add(this);
 
     const interval = this.config.delivery?.flushIntervalMs ?? 3000;
@@ -256,9 +266,6 @@ export class LynxTracer {
 
     this.isFlushInProgress = true;
     const url = `${this.config.endpoint}/openapi/v1/events/batch`;
-    console.log(
-      `[LynxTracer] flushing ${eventsToFlush.length} events to: ${url}`,
-    );
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -290,7 +297,6 @@ export class LynxTracer {
             );
             this.handleFailedEvents(eventsToFlush, "batch_failed");
           } else {
-            // ?꾩넚 ?깃났 ??諛깆삤??由ъ뀑
             this.handleSuccessfulFlush();
           }
         }
@@ -499,10 +505,6 @@ export class LynxTracer {
       attributes: { ...parentContext?.attributes },
     };
 
-    console.log(
-      `[LynxTracer] run started for agent: ${agentName}, runId: ${runId}, spanId: ${spanId}, parentSpanId: ${parentSpanId}`,
-    );
-
     this.captureInternal(
       "CONTEXT_ALERT",
       `run.start:${agentName}`,
@@ -556,14 +558,8 @@ export class LynxTracer {
           await this.flushInternal(!this.isBackgroundOnly());
         }
         if (!this.isBackgroundOnly() && this.pendingPromises.size > 0) {
-          console.log(
-            `[LynxTracer] awaiting ${this.pendingPromises.size} pending telemetry transmissions...`,
-          );
           await Promise.all(Array.from(this.pendingPromises));
         }
-        console.log(
-          `[LynxTracer] run finished for agent: ${agentName}, runId: ${runId}`,
-        );
       }
     });
   }
@@ -734,7 +730,7 @@ export class LynxTracer {
   }
 
   /**
-   * 異붿쟻 ?대깽?몃? 罹≪쿂?섏뿬 而⑦듃濡??뚮젅?몄쑝濡??꾩넚?⑸땲??
+   * Captures a semantic event for the active Lynx run context.
    */
   private capture(
     eventType: LynxEventDto["eventType"],
@@ -771,8 +767,8 @@ export class LynxTracer {
     payload: any,
     context: LynxContext,
   ): void {
-    // Tail-based/Adaptive sampling fallback:
-    // ?먮윭 愿???대깽?몄씤 寃쎌슦 ?섑뵆留??щ?(sampled === false)? 愿怨꾩뾾??媛뺤젣 ?섏쭛??
+    // Tail-based/adaptive sampling fallback keeps error-related events even
+    // when the current context is sampled out, so failures remain debuggable.
     const isError =
       eventType === "ERROR" ||
       (payload && (payload.error || "error" in payload));
@@ -803,6 +799,7 @@ export class LynxTracer {
     };
 
     const eventDto: LynxEventDto = {
+      eventId: generateEventId(),
       clientId: this.config.clientId,
       runId: context.runId,
       agentName: context.agentName,
@@ -813,7 +810,7 @@ export class LynxTracer {
       workspaceId: context.workspaceId,
       agentId: context.agentId,
       sessionId: context.sessionId,
-      schemaVersion: "1", // ?ㅽ궎留?踰꾩???異붽?
+      schemaVersion: "1",
     };
 
     const queued = this.enqueueEvent(eventDto);

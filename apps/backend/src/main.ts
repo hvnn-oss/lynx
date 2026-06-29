@@ -5,11 +5,15 @@ import { BadRequestException, ValidationPipe } from '@nestjs/common';
 import { ERROR_CODES } from '@repo/constants';
 import { json, urlencoded } from 'express';
 import { ingestionRateLimit } from './common/middleware/ingestion-rate-limit.middleware';
+import { requestId } from './common/middleware/request-id.middleware';
 import { securityHeaders } from './common/middleware/security-headers.middleware';
+import { REDIS_CLIENT } from './providers/redis/redis.constants';
+import Redis from 'ioredis';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const bodyLimit = process.env.JSON_BODY_LIMIT ?? '2mb';
+  const redis = app.get<Redis>(REDIS_CLIENT, { strict: false });
 
   app.enableCors({
     origin:
@@ -17,8 +21,9 @@ async function bootstrap() {
       true,
     credentials: true,
   });
+  app.use(requestId());
   app.use(securityHeaders);
-  app.use(ingestionRateLimit());
+  app.use(ingestionRateLimit(redis));
   app.use(json({ limit: bodyLimit }));
   app.use(
     urlencoded({

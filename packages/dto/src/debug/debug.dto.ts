@@ -30,6 +30,11 @@ export type DebugSessionStatus = (typeof DEBUG_SESSION_STATUSES)[number];
 export type DebugEventPhase = (typeof DEBUG_EVENT_PHASES)[number];
 export type DebugReproduceMode = (typeof DEBUG_REPRODUCE_MODES)[number];
 export type DebugTrendDirection = "up" | "down" | "flat";
+export type DebugRiskCategory =
+  | "read-only"
+  | "write"
+  | "external"
+  | "destructive";
 
 /**
  * 디버깅 API에서 공통으로 사용하는 워크스페이스 쿼리 DTO입니다.
@@ -353,6 +358,63 @@ export interface DebugEventLogItemDto {
 
 export interface DebugEventLogResponseDto {
   events: DebugEventLogItemDto[];
+  page: DebugPageInfoDto;
+}
+
+export interface DebugToolCallItemDto extends DebugEventLogItemDto {
+  toolName: string;
+  status: "success" | "failed" | "timeout" | "unknown";
+  retryCount: number;
+  sideEffect: boolean;
+  riskCategory: DebugRiskCategory;
+  argumentsPreview?: string;
+  resultPreview?: string;
+}
+
+export interface DebugToolCallListResponseDto {
+  toolCalls: DebugToolCallItemDto[];
+  page: DebugPageInfoDto;
+}
+
+export interface DebugLlmCallItemDto extends DebugEventLogItemDto {
+  provider?: string;
+  model: string;
+  promptVersion?: string;
+  temperature?: number;
+  maxTokens?: number;
+  finishReason?: string;
+  totalTokens: number;
+  requestedToolCall?: boolean;
+  refused?: boolean;
+  requestPreview?: string;
+  responsePreview?: string;
+}
+
+export interface DebugLlmCallListResponseDto {
+  llmCalls: DebugLlmCallItemDto[];
+  page: DebugPageInfoDto;
+}
+
+export interface DebugErrorGroupDto {
+  fingerprint: string;
+  title: string;
+  errorType: string;
+  severity: DebugSeverity;
+  occurrenceCount: number;
+  affectedSessions: number;
+  affectedAgents: string[];
+  firstSeenAt: string;
+  lastSeenAt: string;
+  representativeEventId: string;
+  representativeSessionId: string;
+  representativeMessage?: string;
+  relatedTool?: string;
+  relatedModel?: string;
+  status: "open" | "investigating" | "resolved";
+}
+
+export interface DebugErrorGroupListResponseDto {
+  errors: DebugErrorGroupDto[];
   page: DebugPageInfoDto;
 }
 

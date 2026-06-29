@@ -21,7 +21,9 @@ export default function SetLocaleButton() {
         <Button>Change Locale</Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent>
-        <DropdownMenuItem>Profile</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => changeLanguage("ko")}>
+          한국어
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

@@ -10,10 +10,17 @@ import {
   AgentEntity,
   EventEntity,
   SessionEntity,
+  WorkspaceApiKeyEntity,
+  WorkspacePlanEntity,
   WorkspaceEntity,
 } from '@repo/database';
-import { ERROR_CODES } from '@repo/constants';
+import {
+  ERROR_CODES,
+  SESSION_STATUS,
+  type SessionStatus,
+} from '@repo/constants';
 import { LynxEventDto } from '@repo/dto';
+import { createHash } from 'crypto';
 import { DataSource } from 'typeorm';
 
 interface IngestContext {
@@ -22,6 +29,12 @@ interface IngestContext {
   agentsByKey: Map<string, AgentEntity>;
   sessionsByKey: Map<string, SessionEntity>;
 }
+
+const fallbackPlanRetentionDays: Record<string, number> = {
+  FREE: 3,
+  PRO: 30,
+  ENTERPRISE: 365,
+};
 
 @Injectable()
 export class EventService {
@@ -101,15 +114,46 @@ export class EventService {
       });
     }
 
-    const workspace = await this.dataSource
-      .getRepository(WorkspaceEntity)
-      .findOne({ where: { apiKey } });
+    const keyHash = this.hashApiKey(apiKey);
+    const workspaceApiKey = await this.dataSource
+      .getRepository(WorkspaceApiKeyEntity)
+      .createQueryBuilder('apiKey')
+      .innerJoinAndSelect('apiKey.workspace', 'workspace')
+      .leftJoinAndSelect('workspace.planConfig', 'planConfig')
+      .where('apiKey.keyHash = :keyHash', { keyHash })
+      .andWhere('apiKey.revokedAt IS NULL')
+      .andWhere('(apiKey.expiresAt IS NULL OR apiKey.expiresAt > :now)', {
+        now: new Date(),
+      })
+      .getOne();
+
+    let workspace = workspaceApiKey?.workspace;
+
+    if (!workspace) {
+      workspace = await this.dataSource.getRepository(WorkspaceEntity).findOne({
+        where: { apiKey },
+        relations: { planConfig: true },
+      });
+    }
 
     if (!workspace) {
       throw new ForbiddenException({
         error_code: ERROR_CODES.INVALID_INPUT,
         message: 'Invalid API key.',
       });
+    }
+
+    if (workspaceApiKey && !workspaceApiKey.scopes.includes('events:write')) {
+      throw new ForbiddenException({
+        error_code: ERROR_CODES.INVALID_INPUT,
+        message: 'API key does not have events:write scope.',
+      });
+    }
+
+    if (workspaceApiKey) {
+      await this.dataSource
+        .getRepository(WorkspaceApiKeyEntity)
+        .update(workspaceApiKey.id, { lastUsedAt: new Date() });
     }
 
     return {
@@ -126,6 +170,8 @@ export class EventService {
   ) {
     const {
       workspaceId,
+      eventId,
+      clientId,
       agentId,
       sessionId,
       eventType,
@@ -133,6 +179,7 @@ export class EventService {
       payload,
       timestamp,
       agentName,
+      runId,
     } = dto;
     const workspace = context.workspace;
 
@@ -171,21 +218,49 @@ export class EventService {
       context,
       workspace,
       agent,
+      runId,
       sessionId,
       eventDate,
     );
     const { cost, promptTokens, completionTokens, totalTokens } =
       this.processPayloadCost(label, payload);
+    let shouldSaveSession = false;
 
     if (payload && (totalTokens > 0 || cost > 0)) {
       session.totalPromptTokens += promptTokens;
       session.totalCompletionTokens += completionTokens;
       session.totalTokens += totalTokens;
       session.totalCost += cost;
+      shouldSaveSession = true;
+    }
+    if (this.applySessionOutcome(session, eventType, payload, eventDate)) {
+      shouldSaveSession = true;
+    }
+    if (shouldSaveSession) {
       await this.dataSource.getRepository(SessionEntity).save(session);
     }
 
+    if (eventId) {
+      const existingEvent = await this.dataSource
+        .getRepository(EventEntity)
+        .createQueryBuilder('event')
+        .innerJoin('event.session', 'session')
+        .where('event.clientId = :clientId', { clientId })
+        .andWhere('event.clientEventId = :eventId', { eventId })
+        .andWhere('session.workspaceId = :workspaceId', {
+          workspaceId: workspace.id,
+        })
+        .getOne();
+
+      if (existingEvent) {
+        return { success: true, duplicate: true };
+      }
+    }
+
     const event = this.dataSource.getRepository(EventEntity).create({
+      clientId,
+      clientEventId: eventId,
+      schemaVersion: dto.schemaVersion,
       eventType,
       label,
       payload,
@@ -195,8 +270,28 @@ export class EventService {
       session,
     });
 
-    await this.dataSource.getRepository(EventEntity).save(event);
+    try {
+      await this.dataSource.getRepository(EventEntity).save(event);
+    } catch (error) {
+      if (this.isDuplicateEventError(error)) {
+        return { success: true, duplicate: true };
+      }
+      throw error;
+    }
     return { success: true };
+  }
+
+  private hashApiKey(apiKey: string): string {
+    return createHash('sha256').update(apiKey).digest('hex');
+  }
+
+  private isDuplicateEventError(error: unknown): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === '23505'
+    );
   }
 
   private async findOrCreateAgent(
@@ -240,11 +335,13 @@ export class EventService {
     context: IngestContext,
     workspace: WorkspaceEntity,
     agent: AgentEntity,
+    runId: string,
     sessionId: string | undefined,
     eventDate: Date,
   ) {
     const sessionRepository = this.dataSource.getRepository(SessionEntity);
-    const cacheKey = sessionId || 'default';
+    const sessionKey = sessionId || runId;
+    const cacheKey = sessionKey || 'default';
     const cached = context.sessionsByKey.get(cacheKey);
     if (cached) return cached;
 
@@ -253,20 +350,21 @@ export class EventService {
           where: { id: sessionId, workspace: { id: workspace.id } },
         })
       : null;
-    if (!session && sessionId) {
+    if (!session && sessionKey) {
       session = await sessionRepository.findOne({
         where: [
-          { id: sessionId, workspace: { id: workspace.id } },
-          { name: sessionId, workspace: { id: workspace.id } },
+          { id: sessionKey, workspace: { id: workspace.id } },
+          { name: sessionKey, workspace: { id: workspace.id } },
+          { name: runId, workspace: { id: workspace.id } },
         ],
       });
     }
     if (!session) {
       session = sessionRepository.create({
         id: sessionId && sessionId.length === 36 ? sessionId : undefined,
-        name: sessionId || 'Default Session',
+        name: runId,
         startedAt: eventDate,
-        status: 'RUNNING',
+        status: SESSION_STATUS.RUNNING,
         totalPromptTokens: 0,
         totalCompletionTokens: 0,
         totalTokens: 0,
@@ -278,9 +376,46 @@ export class EventService {
     }
 
     context.sessionsByKey.set(cacheKey, session);
+    context.sessionsByKey.set(runId, session);
+    if (sessionId) {
+      context.sessionsByKey.set(sessionId, session);
+    }
     context.sessionsByKey.set(session.id, session);
     context.sessionsByKey.set(session.name, session);
     return session;
+  }
+
+  private applySessionOutcome(
+    session: SessionEntity,
+    eventType: string,
+    payload: Record<string, any> | undefined,
+    eventDate: Date,
+  ): boolean {
+    if (eventType !== 'SESSION_OUTCOME') return false;
+
+    const status = this.normalizeSessionStatus(payload?.status);
+    session.status = status;
+    session.endedAt = this.resolveOutcomeEndDate(payload, eventDate);
+    return true;
+  }
+
+  private normalizeSessionStatus(status: unknown): SessionStatus {
+    if (status === SESSION_STATUS.COMPLETED) return SESSION_STATUS.COMPLETED;
+    if (status === SESSION_STATUS.CANCELLED) return SESSION_STATUS.CANCELLED;
+    return SESSION_STATUS.FAILED;
+  }
+
+  private resolveOutcomeEndDate(
+    payload: Record<string, any> | undefined,
+    fallback: Date,
+  ): Date {
+    const value = payload?.endedAt ?? payload?.completedAt;
+    if (typeof value !== 'string' && typeof value !== 'number') {
+      return fallback;
+    }
+
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? fallback : date;
   }
 
   private processPayloadCost(label: string, payload?: Record<string, any>) {
@@ -315,14 +450,11 @@ export class EventService {
   }
 
   private getRetentionDays(workspace: WorkspaceEntity): number {
-    const plan = workspace.plan || 'FREE';
-    if (plan === 'PRO') {
-      return this.configService.get<number>('RETENTION_DAYS_PRO') ?? 30;
-    }
-    if (plan === 'ENTERPRISE') {
-      return this.configService.get<number>('RETENTION_DAYS_ENTERPRISE') ?? 365;
-    }
-    return this.configService.get<number>('RETENTION_DAYS_FREE') ?? 3;
+    return (
+      workspace.planConfig?.retentionDays ??
+      fallbackPlanRetentionDays[workspace.plan] ??
+      fallbackPlanRetentionDays.FREE
+    );
   }
 
   private validateEventTimestamp(timestamp?: number): Date {
@@ -390,16 +522,21 @@ export class EventService {
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
   async cleanExpiredEvents() {
     this.logger.log('Starting daily expired event cleanup...');
-    const retentionFree =
-      this.configService.get<number>('RETENTION_DAYS_FREE') ?? 3;
-    const retentionPro =
-      this.configService.get<number>('RETENTION_DAYS_PRO') ?? 30;
-    const retentionEnterprise =
-      this.configService.get<number>('RETENTION_DAYS_ENTERPRISE') ?? 365;
 
-    await this.deleteExpiredEventsForPlan('FREE', retentionFree);
-    await this.deleteExpiredEventsForPlan('PRO', retentionPro);
-    await this.deleteExpiredEventsForPlan('ENTERPRISE', retentionEnterprise);
+    const plans = await this.dataSource
+      .getRepository(WorkspacePlanEntity)
+      .find({ where: { isActive: true } });
+
+    const effectivePlans =
+      plans.length > 0
+        ? plans
+        : Object.entries(fallbackPlanRetentionDays).map(
+            ([code, retentionDays]) => ({ code, retentionDays }),
+          );
+
+    for (const plan of effectivePlans) {
+      await this.deleteExpiredEventsForPlan(plan.code, plan.retentionDays);
+    }
   }
 
   private async deleteExpiredEventsForPlan(

@@ -1,16 +1,19 @@
+import { WORKSPACE_PLANS } from "@repo/constants";
 import {
   Column,
   Entity,
+  JoinColumn,
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
 } from "typeorm";
-import { WORKSPACE_PLANS, type WorkspacePlans } from "@repo/constants";
 import { AgentEntity } from "../agent/agent.entity";
-import { OrganizationEntity } from "./organization.entity";
-import { SessionEntity } from "../session/session.entity";
-import { PromptVersionEntity } from "../prompt/prompt-version.entity";
 import { GuardrailPolicyEntity } from "../guardrail/policy.entity";
+import { PromptVersionEntity } from "../prompt/prompt-version.entity";
+import { SessionEntity } from "../session/session.entity";
+import { WorkspaceApiKeyEntity } from "../workspace/workspace-api-key.entity";
+import { WorkspacePlanEntity } from "../workspace/workspace-plan.entity";
+import { OrganizationEntity } from "./organization.entity";
 
 @Entity("workspace")
 export class WorkspaceEntity {
@@ -21,34 +24,54 @@ export class WorkspaceEntity {
   name!: string;
 
   @Column({ type: "varchar", default: WORKSPACE_PLANS.FREE })
-  plan!: WorkspacePlans;
+  plan!: string;
+
+  @ManyToOne(
+    () => WorkspacePlanEntity,
+    (plan: WorkspacePlanEntity) => plan.workspaces,
+    {
+      eager: true,
+      nullable: true,
+    },
+  )
+  @JoinColumn({ name: "plan", referencedColumnName: "code" })
+  planConfig?: WorkspacePlanEntity;
 
   @Column({ type: "varchar", nullable: true, unique: true })
   apiKey?: string;
 
+  @OneToMany(
+    () => WorkspaceApiKeyEntity,
+    (apiKey: WorkspaceApiKeyEntity) => apiKey.workspace,
+  )
+  apiKeys!: WorkspaceApiKeyEntity[];
+
   @ManyToOne(
     () => OrganizationEntity,
-    (organization) => organization.workspaces,
+    (organization: OrganizationEntity) => organization.workspaces,
     {
       onDelete: "CASCADE",
     },
   )
   organization!: OrganizationEntity;
 
-  @OneToMany(() => AgentEntity, (agent) => agent.workspace, {
+  @OneToMany(() => AgentEntity, (agent: AgentEntity) => agent.workspace, {
     onDelete: "CASCADE",
   })
   agents!: AgentEntity[];
 
-  @OneToMany(() => SessionEntity, (session) => session.workspace)
+  @OneToMany(() => SessionEntity, (session: SessionEntity) => session.workspace)
   sessions!: SessionEntity[];
 
-  @OneToMany(() => PromptVersionEntity, (prompt) => prompt.workspace)
+  @OneToMany(
+    () => PromptVersionEntity,
+    (prompt: PromptVersionEntity) => prompt.workspace,
+  )
   prompts!: PromptVersionEntity[];
 
   @OneToMany(
     () => GuardrailPolicyEntity,
-    (guardrailPolicy) => guardrailPolicy.workspace,
+    (guardrailPolicy: GuardrailPolicyEntity) => guardrailPolicy.workspace,
   )
   guardrailPolicy!: GuardrailPolicyEntity[];
 }

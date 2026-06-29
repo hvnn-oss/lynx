@@ -17,7 +17,6 @@ import { LynxTracer } from "@repo/sdk";
 
 const lynx = new LynxTracer({
   clientId: "support-api",
-  endpoint: "https://lynx.example.com",
   apiKey: process.env.LYNX_API_KEY,
 });
 
@@ -50,7 +49,6 @@ These are the production-oriented defaults:
 ```ts
 const lynx = new LynxTracer({
   clientId: "support-api",
-  endpoint: "https://lynx.example.com",
   apiKey: process.env.LYNX_API_KEY,
 
   delivery: {
@@ -73,19 +71,19 @@ const lynx = new LynxTracer({
 
 ### Option Reference
 
-| Option                            | Default        | Description                                                                                                  |
-| --------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------ |
-| `endpoint`                        | Required       | Lynx server URL.                                                                                             |
-| `delivery.mode`                   | `"BACKGROUND"` | `"BACKGROUND"` keeps HTTP delivery out of `run()`; `"BLOCKING"` may flush when the batch size is reached.    |
-| `delivery.timeoutMs`              | `1000`         | Maximum duration for one telemetry HTTP request.                                                             |
-| `delivery.flushOnRunEnd`          | `false`        | When `true`, `run()` tries to flush after the wrapped agent work finishes.                                   |
-| `delivery.flushIntervalMs`        | `3000`         | Background flush interval in milliseconds.                                                                   |
-| `delivery.batchSize`              | `50`           | Number of newly queued events that can trigger a flush in blocking mode.                                     |
-| `delivery.maxQueueSize`           | `1000`         | Maximum number of queued telemetry events kept in memory.                                                    |
-| `delivery.overflowStrategy`       | `DROP_OLDEST`  | `DROP_OLDEST` keeps the newest events. `DROP_NEWEST` preserves the existing queue and drops incoming events. |
-| `circuitBreaker.enabled`          | `true`         | Enables circuit breaker protection for telemetry delivery.                                                   |
-| `circuitBreaker.failureThreshold` | `3`            | Number of consecutive failed sends before the breaker opens.                                                 |
-| `circuitBreaker.cooldownMs`       | `30000`        | Time to wait before allowing another send attempt after the breaker opens.                                   |
+| Option                            | Default                    | Description                                                                                                  |
+| --------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `endpoint`                        | `"https://api.lynxops.co"` | Lynx server URL. Override this for self-hosted or local development.                                         |
+| `delivery.mode`                   | `"BACKGROUND"`             | `"BACKGROUND"` keeps HTTP delivery out of `run()`; `"BLOCKING"` may flush when the batch size is reached.    |
+| `delivery.timeoutMs`              | `1000`                     | Maximum duration for one telemetry HTTP request.                                                             |
+| `delivery.flushOnRunEnd`          | `false`                    | When `true`, `run()` tries to flush after the wrapped agent work finishes.                                   |
+| `delivery.flushIntervalMs`        | `3000`                     | Background flush interval in milliseconds.                                                                   |
+| `delivery.batchSize`              | `50`                       | Number of newly queued events that can trigger a flush in blocking mode.                                     |
+| `delivery.maxQueueSize`           | `1000`                     | Maximum number of queued telemetry events kept in memory.                                                    |
+| `delivery.overflowStrategy`       | `DROP_OLDEST`              | `DROP_OLDEST` keeps the newest events. `DROP_NEWEST` preserves the existing queue and drops incoming events. |
+| `circuitBreaker.enabled`          | `true`                     | Enables circuit breaker protection for telemetry delivery.                                                   |
+| `circuitBreaker.failureThreshold` | `3`                        | Number of consecutive failed sends before the breaker opens.                                                 |
+| `circuitBreaker.cooldownMs`       | `30000`                    | Time to wait before allowing another send attempt after the breaker opens.                                   |
 
 ## What Happens If the Lynx Server Is Down?
 
@@ -168,29 +166,29 @@ If policy evaluation itself throws, `failureMode` decides what to do:
 
 The default `lynx` export reads these environment variables:
 
-| Variable                                 | Description                                           |
-| ---------------------------------------- | ----------------------------------------------------- |
-| `LYNX_CLIENT_ID`                         | Client or service identifier.                         |
-| `LYNX_ENDPOINT`                          | Lynx server URL.                                      |
-| `LYNX_API_KEY`                           | API key used for ingestion.                           |
-| `LYNX_WORKSPACE_ID`                      | Default workspace id.                                 |
-| `LYNX_AGENT_ID`                          | Default agent id.                                     |
-| `LYNX_SAMPLE_RATE`                       | Sampling rate from `0` to `1`.                        |
-| `LYNX_CAPTURE_INPUT`                     | Whether to capture inputs.                            |
-| `LYNX_CAPTURE_OUTPUT`                    | Whether to capture outputs.                           |
-| `LYNX_CAPTURE_MODE`                      | `full`, `metadata-only`, or `smart`.                  |
-| `LYNX_MAX_PAYLOAD_LENGTH`                | Maximum payload string length.                        |
-| `LYNX_APP_VERSION`                       | Application version metadata.                         |
-| `LYNX_DEPLOYMENT_ID`                     | Deployment id metadata.                               |
-| `LYNX_ENVIRONMENT`                       | Runtime environment metadata.                         |
-| `LYNX_POLICY_VERSION`                    | Policy version metadata.                              |
-| `LYNX_DELIVERY_MODE`                     | `BLOCKING` or `BACKGROUND`.                           |
-| `LYNX_DELIVERY_TIMEOUT_MS`               | Delivery timeout in milliseconds.                     |
-| `LYNX_DELIVERY_FLUSH_ON_RUN_END`         | `true` or `false`.                                    |
-| `LYNX_DELIVERY_FLUSH_INTERVAL_MS`        | Flush interval in milliseconds.                       |
-| `LYNX_DELIVERY_BATCH_SIZE`               | Batch size for blocking-mode flush triggers.          |
-| `LYNX_DELIVERY_MAX_QUEUE_SIZE`           | Maximum queued event count.                           |
-| `LYNX_DELIVERY_OVERFLOW_STRATEGY`        | `DROP_OLDEST` or `DROP_NEWEST`.                       |
-| `LYNX_CIRCUIT_BREAKER_ENABLED`           | `true` or `false`.                                    |
-| `LYNX_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | Consecutive failure count before opening the breaker. |
-| `LYNX_CIRCUIT_BREAKER_COOLDOWN_MS`       | Circuit breaker cooldown in milliseconds.             |
+| Variable                                 | Description                                                                      |
+| ---------------------------------------- | -------------------------------------------------------------------------------- |
+| `LYNX_CLIENT_ID`                         | Client or service identifier.                                                    |
+| `LYNX_ENDPOINT`                          | Optional override for the Lynx server URL. Defaults to `https://api.lynxops.co`. |
+| `LYNX_API_KEY`                           | API key used for ingestion.                                                      |
+| `LYNX_WORKSPACE_ID`                      | Default workspace id.                                                            |
+| `LYNX_AGENT_ID`                          | Default agent id.                                                                |
+| `LYNX_SAMPLE_RATE`                       | Sampling rate from `0` to `1`.                                                   |
+| `LYNX_CAPTURE_INPUT`                     | Whether to capture inputs.                                                       |
+| `LYNX_CAPTURE_OUTPUT`                    | Whether to capture outputs.                                                      |
+| `LYNX_CAPTURE_MODE`                      | `full`, `metadata-only`, or `smart`.                                             |
+| `LYNX_MAX_PAYLOAD_LENGTH`                | Maximum payload string length.                                                   |
+| `LYNX_APP_VERSION`                       | Application version metadata.                                                    |
+| `LYNX_DEPLOYMENT_ID`                     | Deployment id metadata.                                                          |
+| `LYNX_ENVIRONMENT`                       | Runtime environment metadata.                                                    |
+| `LYNX_POLICY_VERSION`                    | Policy version metadata.                                                         |
+| `LYNX_DELIVERY_MODE`                     | `BLOCKING` or `BACKGROUND`.                                                      |
+| `LYNX_DELIVERY_TIMEOUT_MS`               | Delivery timeout in milliseconds.                                                |
+| `LYNX_DELIVERY_FLUSH_ON_RUN_END`         | `true` or `false`.                                                               |
+| `LYNX_DELIVERY_FLUSH_INTERVAL_MS`        | Flush interval in milliseconds.                                                  |
+| `LYNX_DELIVERY_BATCH_SIZE`               | Batch size for blocking-mode flush triggers.                                     |
+| `LYNX_DELIVERY_MAX_QUEUE_SIZE`           | Maximum queued event count.                                                      |
+| `LYNX_DELIVERY_OVERFLOW_STRATEGY`        | `DROP_OLDEST` or `DROP_NEWEST`.                                                  |
+| `LYNX_CIRCUIT_BREAKER_ENABLED`           | `true` or `false`.                                                               |
+| `LYNX_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | Consecutive failure count before opening the breaker.                            |
+| `LYNX_CIRCUIT_BREAKER_COOLDOWN_MS`       | Circuit breaker cooldown in milliseconds.                                        |

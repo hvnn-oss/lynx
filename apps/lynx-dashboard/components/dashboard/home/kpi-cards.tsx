@@ -1,14 +1,7 @@
 import type { DashboardHomeMetricsDto } from "@repo/dto";
-import type { ComponentType } from "react";
-import {
-  Activity,
-  AlertTriangle,
-  Bot,
-  Clock,
-  DollarSign,
-  Gauge,
-} from "lucide-react";
+import { useTranslations } from "next-intl";
 import { CardSkeleton } from "../shared/skeletons";
+import { cn } from "@/lib/utils";
 
 type Kpis = DashboardHomeMetricsDto["kpis"];
 
@@ -17,12 +10,13 @@ interface KpiCardsProps {
   isLoading?: boolean;
 }
 
+type ChangeTone = "good" | "bad" | "neutral";
+
 interface KpiCard {
   label: string;
   value: string;
-  change?: number;
-  trend?: "up" | "down";
-  icon: ComponentType<{ className?: string }>;
+  changeLabel: string;
+  tone: ChangeTone;
 }
 
 const numberFormatter = new Intl.NumberFormat("ko-KR");
@@ -37,100 +31,131 @@ const currencyFormatter = new Intl.NumberFormat("ko-KR", {
 });
 
 export function KpiCards({ data, isLoading = false }: KpiCardsProps) {
+  const t = useTranslations("dashboard.home.kpis");
+
   if (isLoading || !data) {
     return (
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        {Array.from({ length: 6 }).map((_, index) => (
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+        {Array.from({ length: 5 }).map((_, index) => (
           <CardSkeleton key={index} />
         ))}
       </div>
     );
   }
 
+  const hasRuns = data.agentRuns.value > 0;
+  const failureRate = hasRuns ? Math.max(0, 100 - data.successRate.value) : null;
+  const failureRateChange = -data.successRate.change;
   const cards: KpiCard[] = [
     {
-      label: "Active Agents",
-      value: numberFormatter.format(data.activeAgents.value),
-      icon: Activity,
-    },
-    {
-      label: "Agent Runs",
+      label: t("runs"),
       value: compactFormatter.format(data.agentRuns.value),
-      change: data.agentRuns.change,
-      trend: data.agentRuns.trend,
-      icon: Bot,
+      changeLabel:
+        data.agentRuns.change === 0
+          ? t("sameAsYesterday")
+          : t("yesterdayPercent", {
+              value: `${formatSignedNumber(data.agentRuns.change)}%`,
+            }),
+      tone: data.agentRuns.change >= 0 ? "good" : "bad",
     },
     {
-      label: "Success Rate",
-      value: `${data.successRate.value.toFixed(1)}%`,
-      change: data.successRate.change,
-      trend: data.successRate.trend,
-      icon: Gauge,
+      label: t("failureRate"),
+      value:
+        failureRate === null
+          ? "-"
+          : t("percentValue", { value: failureRate.toFixed(1) }),
+      changeLabel:
+        failureRate === null
+          ? t("noRuns")
+          : failureRateChange === 0
+            ? t("sameAsYesterday")
+            : t("yesterdayPoint", {
+                value: t("pointValue", {
+                  value: formatSignedNumber(failureRateChange),
+                }),
+              }),
+      tone: failureRate === null ? "neutral" : getBadWhenUpTone(failureRateChange),
     },
     {
-      label: "Avg Latency",
-      value: `${data.avgLatency.value.toFixed(2)}s`,
-      change: data.avgLatency.change,
-      trend: data.avgLatency.trend,
-      icon: Clock,
+      label: t("latency"),
+      value: hasRuns
+        ? t("secondsValue", { value: data.avgLatency.value.toFixed(2) })
+        : "-",
+      changeLabel:
+        !hasRuns || data.avgLatency.change === 0
+          ? t("sameAsLast24Hours")
+          : t("last24HoursSeconds", {
+              value: t("secondsValue", {
+                value: formatSignedNumber(data.avgLatency.change),
+              }),
+            }),
+      tone: hasRuns ? getBadWhenUpTone(data.avgLatency.change) : "neutral",
     },
     {
-      label: "Cost",
-      value: `$${data.cost.value}`,
-      change: data.cost.change,
-      trend: data.cost.trend,
-      icon: DollarSign,
+      label: t("cost"),
+      value: currencyFormatter.format(data.cost.value),
+      changeLabel:
+        data.cost.change === 0
+          ? t("sameAsYesterday")
+          : t("yesterdayPercent", {
+              value: `${formatSignedNumber(data.cost.change)}%`,
+            }),
+      tone: data.cost.change < 0 ? "good" : "neutral",
     },
     {
-      label: "Critical Alerts",
-      value: numberFormatter.format(data.criticalAlerts.value),
-      change: data.criticalAlerts.change,
-      trend: data.criticalAlerts.trend,
-      icon: AlertTriangle,
+      label: t("riskEvents"),
+      value: t("eventsValue", {
+        value: numberFormatter.format(data.criticalAlerts.value),
+      }),
+      changeLabel:
+        data.criticalAlerts.change === 0
+          ? t("sameAsLast24Hours")
+          : t("last24HoursCount", {
+              value: t("eventsValue", {
+                value: formatSignedNumber(data.criticalAlerts.change),
+              }),
+            }),
+      tone: getBadWhenUpTone(data.criticalAlerts.change),
     },
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-      {cards.map((card) => {
-        const Icon = card.icon;
-        const positive = card.trend === "up";
-
-        return (
-          <div
-            key={card.label}
-            className="rounded-xl border border-border/40 bg-card/30 p-5"
-          >
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <p className="min-w-0 truncate text-sm font-medium text-muted-foreground">
-                {card.label}
-              </p>
-              <span className="rounded-lg border border-border/50 bg-background p-2 text-muted-foreground">
-                <Icon className="size-4" />
-              </span>
-            </div>
-            <div className="flex items-end justify-between">
-              <p className="truncate text-4xl font-semibold tracking-normal">
-                {card.value}
-              </p>
-              {"change" in card && typeof card.change === "number" ? (
-                <p
-                  className={
-                    positive
-                      ? "text-sm font-medium text-emerald-600"
-                      : "text-sm font-medium text-rose-600"
-                  }
-                >
-                  {positive ? "+" : ""}
-                  {card.change.toFixed(1)}
-                </p>
-              ) : (
-                <p className="text-sm text-muted-foreground">현재 활성</p>
-              )}
-            </div>
-          </div>
-        );
-      })}
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+      {cards.map((card) => (
+        <KpiCardView key={card.label} card={card} />
+      ))}
     </div>
   );
+}
+
+function KpiCardView({ card }: { card: KpiCard }) {
+  return (
+    <div className="rounded-lg border border-border/40 bg-card/40 p-4">
+      <p className="text-sm font-medium text-muted-foreground">{card.label}</p>
+      <p className="mt-3 truncate text-3xl font-semibold tracking-normal">
+        {card.value}
+      </p>
+      <p
+        className={cn(
+          "mt-2 truncate text-xs font-medium",
+          card.tone === "bad" && "text-rose-700",
+          card.tone === "good" && "text-emerald-700",
+          card.tone === "neutral" && "text-muted-foreground",
+        )}
+      >
+        {card.changeLabel}
+      </p>
+    </div>
+  );
+}
+
+function getBadWhenUpTone(value: number): ChangeTone {
+  if (value > 0) return "bad";
+  if (value < 0) return "good";
+  return "neutral";
+}
+
+function formatSignedNumber(value = 0) {
+  if (value === 0) return "0";
+  return `${value > 0 ? "+" : ""}${value.toFixed(1)}`;
 }

@@ -8,7 +8,7 @@ export default getRequestConfig(async () => {
   // 쿠키에서 언어 설정을 가져오고, 없으면 기본값 'ko' 사용
   const locale = cookieStore.get("NEXT_LOCALE")?.value || "ko";
 
-  const messages: Record<string, any> = {};
+  const messages: Record<string, unknown> = {};
   const localeDir = path.join(process.cwd(), "messages", locale);
 
   if (fs.existsSync(localeDir)) {
@@ -31,4 +31,3 @@ export default getRequestConfig(async () => {
     messages,
   };
 });
-

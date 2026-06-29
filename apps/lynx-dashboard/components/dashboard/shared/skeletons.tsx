@@ -1,5 +1,7 @@
-import React from "react";
+"use client";
+
 import { Skeleton } from "@repo/ui/components/ui/skeleton";
+import { useTranslations } from "next-intl";
 
 export interface CardSkeletonProps {
   className?: string;
@@ -9,7 +11,7 @@ export interface CardSkeletonProps {
 export function CardSkeleton({ className = "", rows = 2 }: CardSkeletonProps) {
   return (
     <div
-      className={`bg-card/30 border border-border/40 rounded-xl p-6 ${className}`}
+      className={`rounded-lg border border-border/60 bg-background p-4 ${className}`}
     >
       <div className="flex items-center justify-between mb-4">
         <Skeleton className="h-5 w-1/3" />
@@ -34,7 +36,7 @@ export function ChartSkeleton({
 }) {
   return (
     <div
-      className={`bg-card/30 border border-border/40 rounded-xl p-6 ${className}`}
+      className={`rounded-lg border border-border/60 bg-background p-4 ${className}`}
     >
       <div className="flex items-center justify-between mb-6">
         <Skeleton className="h-5 w-1/4" />
@@ -73,7 +75,7 @@ export function ListSkeleton({
 }) {
   return (
     <div
-      className={`bg-card/30 border border-border/40 rounded-xl p-6 ${className}`}
+      className={`rounded-lg border border-border/60 bg-background p-4 ${className}`}
     >
       <div className="flex items-center justify-between mb-6">
         <Skeleton className="h-5 w-1/3" />
@@ -101,8 +103,12 @@ export function ListSkeleton({
 }
 
 export function HeatmapSkeleton({ className = "" }: { className?: string }) {
+  const t = useTranslations("dashboard.shared");
+
   return (
-    <div className={`bg-card/30 border-border/40 rounded-xl p-6 ${className}`}>
+    <div
+      className={`rounded-lg border border-border/60 bg-background p-4 ${className}`}
+    >
       <div className="flex items-center justify-between mb-6">
         <Skeleton className="h-5 w-1/4" />
         <div className="flex gap-2">
@@ -124,12 +130,16 @@ export function HeatmapSkeleton({ className = "" }: { className?: string }) {
       <div className="flex justify-between mt-4">
         <Skeleton className="h-3 w-16" />
         <div className="flex items-center gap-1">
-          <span className="text-[10px] text-muted-foreground mr-1">Less</span>
+          <span className="mr-1 text-[10px] text-muted-foreground">
+            {t("less")}
+          </span>
           <Skeleton className="h-3 w-3 rounded-sm" style={{ opacity: 0.2 }} />
           <Skeleton className="h-3 w-3 rounded-sm" style={{ opacity: 0.4 }} />
           <Skeleton className="h-3 w-3 rounded-sm" style={{ opacity: 0.6 }} />
           <Skeleton className="h-3 w-3 rounded-sm" style={{ opacity: 0.8 }} />
-          <span className="text-[10px] text-muted-foreground ml-1">More</span>
+          <span className="ml-1 text-[10px] text-muted-foreground">
+            {t("more")}
+          </span>
         </div>
       </div>
     </div>

@@ -1,53 +1,64 @@
-import React from "react";
-import { UsePageInfo } from "@/components/util/set-pageinfo";
+import { getTranslations } from "next-intl/server";
+import { DashboardPageHeader } from "@repo/ui/components/dashboard/panel";
+import { EnvironmentUsage } from "@/components/dashboard/usage/environment-usage";
+import { ModelUsage } from "@/components/dashboard/usage/model-usage";
+import { ToolUsage } from "@/components/dashboard/usage/tool-usage";
 import { TopAgents } from "@/components/dashboard/usage/top-agents";
 import { UsageHeatmap } from "@/components/dashboard/usage/usage-heatmap";
-import { UserUsage } from "@/components/dashboard/usage/user-usage";
-import { ToolUsage } from "@/components/dashboard/usage/tool-usage";
-import { ModelUsage } from "@/components/dashboard/usage/model-usage";
+import { UsePageInfo } from "@/components/util/set-pageinfo";
 
-export default function UsagePage() {
+export default async function UsagePage() {
+  const t = await getTranslations("dashboard.pages.usage");
+  const breadcrumbT = await getTranslations("dashboard.breadcrumbs");
+
   return (
-    <main className="p-6 space-y-6">
-      <UsePageInfo 
+    <main className="space-y-6 p-6">
+      <UsePageInfo
         breadcrumbs={[
-          { title: "대시보드", url: "/dashboard" },
-          { title: "사용 현황", url: "/dashboard/usage" }
-        ]} 
+          { title: breadcrumbT("dashboard"), url: "/dashboard" },
+          { title: t("breadcrumb"), url: "/dashboard/usage" },
+        ]}
       />
-      
-      <div className="flex flex-col gap-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight mb-1">사용 현황 (Usage)</h1>
-          <p className="text-sm text-muted-foreground">에이전트별 사용 랭킹, 사용자 활동성, 연동 도구 및 LLM 모델별 사용량 지표를 상세 제공합니다.</p>
-        </div>
 
-        {/* 최다 사용 에이전트 및 유저 활동 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="flex flex-col gap-6">
+        <DashboardPageHeader
+          description={t("description")}
+          title={t("title")}
+        />
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div className="flex flex-col">
-            <h2 className="text-lg font-semibold mb-3">최다 활성 에이전트 (Top Agents)</h2>
+            <h2 className="mb-3 text-lg font-semibold">
+              {t("sections.topAgents")}
+            </h2>
             <TopAgents />
           </div>
           <div className="flex flex-col">
-            <h2 className="text-lg font-semibold mb-3">워크스페이스 멤버별 활동량 (User Usage)</h2>
-            <UserUsage />
+            <h2 className="mb-3 text-lg font-semibold">
+              {t("sections.environmentUsage")}
+            </h2>
+            <EnvironmentUsage />
           </div>
         </div>
 
-        {/* 시간대별 핫맵 */}
         <div className="flex flex-col">
-          <h2 className="text-lg font-semibold mb-3">요일 및 시간대별 사용량 핫맵 (Usage Heatmap)</h2>
+          <h2 className="mb-3 text-lg font-semibold">
+            {t("sections.heatmap")}
+          </h2>
           <UsageHeatmap />
         </div>
 
-        {/* 도구 및 모델 사용량 분포 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div className="flex flex-col">
-            <h2 className="text-lg font-semibold mb-3">도구별 호출 횟수 (Tool Usage)</h2>
+            <h2 className="mb-3 text-lg font-semibold">
+              {t("sections.toolUsage")}
+            </h2>
             <ToolUsage />
           </div>
           <div className="flex flex-col">
-            <h2 className="text-lg font-semibold mb-3">LLM 모델별 사용 통계 (Model Usage)</h2>
+            <h2 className="mb-3 text-lg font-semibold">
+              {t("sections.modelUsage")}
+            </h2>
             <ModelUsage />
           </div>
         </div>

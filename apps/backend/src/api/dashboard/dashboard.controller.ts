@@ -1,4 +1,5 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
+import { Request } from 'express';
 import { DashboardService } from './dashboard.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import {
@@ -11,6 +12,8 @@ import {
   DashboardInsightsDto,
 } from '@repo/dto';
 
+type AuthenticatedRequest = Request & { user?: { sub: string } };
+
 @Controller('v1/observe/dashboard')
 @UseGuards(JwtAuthGuard)
 export class DashboardController {
@@ -22,8 +25,12 @@ export class DashboardController {
   @Get('home')
   async getHomeMetrics(
     @Query() query: DashboardQueryDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<DashboardHomeMetricsDto> {
-    return await this.dashboardService.getHomeMetrics(query.workspaceId);
+    return await this.dashboardService.getHomeMetrics(
+      query.workspaceId,
+      req.user!.sub,
+    );
   }
 
   /**
@@ -32,8 +39,12 @@ export class DashboardController {
   @Get('status')
   async getStatusMetrics(
     @Query() query: DashboardQueryDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<DashboardStatusMetricsDto> {
-    return await this.dashboardService.getStatusMetrics(query.workspaceId);
+    return await this.dashboardService.getStatusMetrics(
+      query.workspaceId,
+      req.user!.sub,
+    );
   }
 
   /**
@@ -42,8 +53,12 @@ export class DashboardController {
   @Get('metrics')
   async getMetricsData(
     @Query() query: DashboardQueryDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<DashboardMetricsDataDto> {
-    return await this.dashboardService.getMetricsData(query.workspaceId);
+    return await this.dashboardService.getMetricsData(
+      query.workspaceId,
+      req.user!.sub,
+    );
   }
 
   /**
@@ -52,8 +67,12 @@ export class DashboardController {
   @Get('usage')
   async getUsageMetrics(
     @Query() query: DashboardQueryDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<DashboardUsageMetricsDto> {
-    return await this.dashboardService.getUsageMetrics(query.workspaceId);
+    return await this.dashboardService.getUsageMetrics(
+      query.workspaceId,
+      req.user!.sub,
+    );
   }
 
   /**
@@ -62,8 +81,12 @@ export class DashboardController {
   @Get('cost')
   async getCostMetrics(
     @Query() query: DashboardQueryDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<DashboardCostMetricsDto> {
-    return await this.dashboardService.getCostMetrics(query.workspaceId);
+    return await this.dashboardService.getCostMetrics(
+      query.workspaceId,
+      req.user!.sub,
+    );
   }
 
   /**
@@ -72,7 +95,11 @@ export class DashboardController {
   @Get('insights')
   async getInsights(
     @Query() query: DashboardQueryDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<DashboardInsightsDto> {
-    return await this.dashboardService.getInsights(query.workspaceId);
+    return await this.dashboardService.getInsights(
+      query.workspaceId,
+      req.user!.sub,
+    );
   }
 }

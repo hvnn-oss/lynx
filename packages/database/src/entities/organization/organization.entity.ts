@@ -1,4 +1,4 @@
-import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from "typeorm";
+﻿import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from "typeorm";
 import { WorkspaceEntity } from "./workspace.entity";
 import { OrganizationUserEntity } from "./organization-user.entity";
 import { OrganizationDomainEntity } from "./domain.entity";
@@ -35,12 +35,12 @@ export class OrganizationEntity {
   @Column({ type: "text", nullable: true })
   samlCert?: string;
 
-  @OneToMany(() => OrganizationUserEntity, (user) => user.organization)
+  @OneToMany(() => OrganizationUserEntity, (user: OrganizationUserEntity) => user.organization)
   users!: OrganizationUserEntity[];
 
-  @OneToMany(() => OrganizationDomainEntity, (domain) => domain.organization)
+  @OneToMany(() => OrganizationDomainEntity, (domain: OrganizationDomainEntity) => domain.organization)
   domains!: OrganizationDomainEntity[];
 
-  @OneToMany(() => WorkspaceEntity, (workspace) => workspace.organization)
+  @OneToMany(() => WorkspaceEntity, (workspace: WorkspaceEntity) => workspace.organization)
   workspaces!: WorkspaceEntity[];
 }

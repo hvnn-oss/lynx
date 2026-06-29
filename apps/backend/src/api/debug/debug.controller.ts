@@ -35,6 +35,38 @@ export class DebugController {
     return this.debugService.listSessions(query, req.user!.sub);
   }
 
+  @Get('logs')
+  listLogs(
+    @Query() query: DebugEventLogQueryDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.debugService.listEvents(query, req.user!.sub);
+  }
+
+  @Get('tool-calls')
+  listToolCalls(
+    @Query() query: DebugEventLogQueryDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.debugService.listToolCalls(query, req.user!.sub);
+  }
+
+  @Get('llm-io')
+  listLlmCalls(
+    @Query() query: DebugEventLogQueryDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.debugService.listLlmCalls(query, req.user!.sub);
+  }
+
+  @Get('errors')
+  listErrors(
+    @Query() query: DebugEventLogQueryDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.debugService.listErrors(query, req.user!.sub);
+  }
+
   @Get('sessions/:sessionId/events')
   listSessionEvents(
     @Param('sessionId') sessionId: string,

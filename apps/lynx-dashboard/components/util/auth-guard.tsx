@@ -1,7 +1,12 @@
 "use client";
 
-import axios from "axios";
 import { useEffect, useState } from "react";
+import {
+  clearStoredAccessToken,
+  getStoredAccessToken,
+  isAccessTokenExpired,
+  refreshAccessToken,
+} from "@/lib/api";
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -20,25 +25,11 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       window.history.replaceState({}, document.title, cleanUrl);
     };
 
-    const refreshAccessToken = async () => {
-      const res = await axios.post(
-        "/api/auth/refresh",
-        {},
-        { withCredentials: true },
-      );
-
-      if (!res.data?.success || !res.data?.accessToken) {
-        throw new Error("Could not refresh access token.");
-      }
-
-      localStorage.setItem("_uid", res.data.accessToken);
-    };
-
     const authenticate = async () => {
       cleanSsoQuery();
 
-      const token = localStorage.getItem("_uid");
-      if (token) {
+      const token = getStoredAccessToken();
+      if (token && !isAccessTokenExpired(token)) {
         if (isMounted) setIsAuthenticated(true);
         return;
       }
@@ -47,7 +38,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
         await refreshAccessToken();
         if (isMounted) setIsAuthenticated(true);
       } catch {
-        localStorage.removeItem("_uid");
+        clearStoredAccessToken();
         window.location.href = "/login";
       }
     };

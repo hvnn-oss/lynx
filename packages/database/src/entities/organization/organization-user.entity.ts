@@ -1,4 +1,4 @@
-import { USER_PERMISSIONS, type UserPermissions } from "@repo/constants";
+﻿import { USER_PERMISSIONS, type UserPermissions } from "@repo/constants";
 import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
 import { OrganizationEntity } from "./organization.entity";
 import { UserEntity } from "./user.entity";
@@ -17,9 +17,9 @@ export class OrganizationUserEntity {
   @Column()
   joinedAt!: Date;
 
-  @ManyToOne(() => OrganizationEntity, (organization) => organization.users)
+  @ManyToOne(() => OrganizationEntity, (organization: OrganizationEntity) => organization.users)
   organization!: OrganizationEntity;
 
-  @ManyToOne(() => UserEntity, (user) => user.organizations)
+  @ManyToOne(() => UserEntity, (user: UserEntity) => user.organizations)
   user!: UserEntity;
 }

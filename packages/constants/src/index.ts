@@ -17,3 +17,6 @@ export * from "./guardrail/guardrail";
 
 // prompt
 export * from "./prompt/prompt";
+
+// admin
+export * from "./admin/roles";

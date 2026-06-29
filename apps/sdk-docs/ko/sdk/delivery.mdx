@@ -1,33 +1,32 @@
 ---
 title: "전송과 안정성"
-description: "백그라운드 전송, flush, 타임아웃, 재시도, 서킷 브레이커가 어떻게 동작하는지 설명합니다."
+description: "백그라운드 전송, flush, timeout, retry, circuit breaker가 어떻게 동작하는지 설명합니다."
 ---
 
-Lynx는 수집 데이터 전송 실패가 AI 서비스를 멈추지 않도록 설계되어 있습니다. 운영 환경에서는 관측 데이터보다 사용자 요청의 흐름이 먼저입니다.
+Lynx SDK는 수집 서버 장애가 고객 서비스의 요청 실패로 이어지지 않도록 설계되어 있습니다. 기본값에서는 이벤트를 메모리에 큐잉하고, 짧은 timeout과 circuit breaker로 전송 실패를 격리합니다.
 
 ## 운영 기본값
 
-| 옵션 | 기본값 |
-| --- | --- |
-| `delivery.mode` | `"BACKGROUND"` |
-| `delivery.timeoutMs` | `1000` |
-| `delivery.flushOnRunEnd` | `false` |
-| `delivery.flushIntervalMs` | `3000` |
-| `delivery.batchSize` | `50` |
-| `delivery.maxQueueSize` | `1000` |
-| `delivery.overflowStrategy` | `"DROP_OLDEST"` |
-| `circuitBreaker.enabled` | `true` |
-| `circuitBreaker.failureThreshold` | `3` |
-| `circuitBreaker.cooldownMs` | `30000` |
+| 옵션                              | 기본값          |
+| --------------------------------- | --------------- |
+| `delivery.mode`                   | `"BACKGROUND"`  |
+| `delivery.timeoutMs`              | `1000`          |
+| `delivery.flushOnRunEnd`          | `false`         |
+| `delivery.flushIntervalMs`        | `3000`          |
+| `delivery.batchSize`              | `50`            |
+| `delivery.maxQueueSize`           | `1000`          |
+| `delivery.overflowStrategy`       | `"DROP_OLDEST"` |
+| `circuitBreaker.enabled`          | `true`          |
+| `circuitBreaker.failureThreshold` | `3`             |
+| `circuitBreaker.cooldownMs`       | `30000`         |
 
 ## 백그라운드 전송
 
-백그라운드 모드에서 `run()`은 이벤트를 로컬에 기록하고 전송을 기다리지 않습니다. SDK는 타이머, 명시적인 `flush()`, 또는 `shutdown()` 시점에 이벤트를 전송합니다.
+백그라운드 모드에서 `run()`은 이벤트를 로컬 큐에 기록하고 전송을 기다리지 않습니다. SDK는 주기적으로 큐를 flush하며, 명시적으로 `flush()`나 `shutdown()`을 호출할 수도 있습니다.
 
 ```ts
 const lynx = new LynxTracer({
   clientId: "support-api",
-  endpoint: "https://lynx.example.com",
   apiKey: process.env.LYNX_API_KEY,
   delivery: {
     mode: "BACKGROUND",
@@ -39,45 +38,41 @@ const lynx = new LynxTracer({
 
 ## Blocking 전송
 
-현재 요청 안에서 전송 시도까지 끝내야 하는 특수한 환경에서만 blocking mode를 사용하세요.
+`BLOCKING` 모드는 batch size에 도달했을 때 즉시 flush를 시도할 수 있습니다. 그래도 네트워크 실패는 애플리케이션 예외로 전파하지 않고 SDK 내부에서 처리합니다.
 
 ```ts
 const lynx = new LynxTracer({
-  clientId: "worker",
-  endpoint: "https://lynx.example.com",
+  clientId: "support-api",
   apiKey: process.env.LYNX_API_KEY,
   delivery: {
     mode: "BLOCKING",
-    flushOnRunEnd: true,
-    timeoutMs: 1500,
+    batchSize: 20,
+    timeoutMs: 1000,
   },
 });
 ```
 
-## Flush와 shutdown
+## flush와 shutdown
+
+`flush()`는 현재 큐에 쌓인 이벤트를 전송합니다.
 
 ```ts
 await lynx.flush();
 ```
 
-프로세스가 종료되기 전에는 `shutdown()`을 사용하세요.
+`shutdown()`은 서버 종료, CLI 종료, serverless handler 종료처럼 런타임이 곧 내려갈 때 사용합니다.
 
 ```ts
 await lynx.shutdown({ timeoutMs: 1000 });
 ```
 
-## 로컬 상태 확인
+## Lynx 서버가 내려가면
 
-```ts
-const status = lynx.getStatus();
+Lynx 서버가 내려가도 고객 서비스는 계속 실행됩니다.
 
-console.log(status.queueSize);
-console.log(status.circuitState);
-console.log(status.droppedEvents);
-```
+- 전송 실패는 SDK 내부에서 잡습니다.
+- 실패한 이벤트는 retry queue에 보관합니다.
+- 연속 실패가 많아지면 circuit breaker가 열립니다.
+- 큐가 꽉 차면 `overflowStrategy`에 따라 오래된 이벤트나 새 이벤트를 버립니다.
 
-## Lynx 서버가 내려간 경우
-
-SDK는 네트워크 오류, 타임아웃, 2xx가 아닌 응답을 내부에서 처리합니다. 실패한 batch는 메모리 재시도 큐로 이동합니다. 실패가 반복되면 서킷 브레이커가 열리고, cooldown이 끝날 때까지 전송 시도를 잠시 멈춥니다.
-
-큐가 `maxQueueSize`에 도달하면 SDK는 `overflowStrategy`에 따라 이벤트를 버립니다.
+가드레일 판단은 SDK의 로컬 정책 평가를 우선합니다. 서버가 내려가도 이미 캐시되어 있거나 코드로 정의된 정책은 계속 평가됩니다.

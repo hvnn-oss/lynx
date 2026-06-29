@@ -33,6 +33,7 @@ export const SESSION_STATUS = {
   RUNNING: "RUNNING",
   COMPLETED: "COMPLETED",
   FAILED: "FAILED",
+  CANCELLED: "CANCELLED",
 };
 
 export type SessionStatus =

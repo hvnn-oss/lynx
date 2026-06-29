@@ -6,9 +6,12 @@ import {
 import {
   OrganizationEntity,
   OrganizationUserEntity,
+  WorkspaceApiKeyEntity,
   WorkspaceEntity,
+  WorkspacePlanEntity,
 } from '@repo/database';
-import { DataSource } from 'typeorm';
+import { randomBytes, createHash } from 'crypto';
+import { DataSource, EntityManager } from 'typeorm';
 import {
   ERROR_CODES,
   USER_PERMISSIONS,
@@ -21,6 +24,7 @@ import type {
   UpdateWorkspaceDto,
   WorkspaceApiKeyResponseDto,
   WorkspaceDetailDto,
+  WorkspacePlanConfigDto,
   WorkspaceSummaryDto,
 } from '@repo/dto';
 
@@ -40,7 +44,9 @@ export class WorkspaceService {
         where: { user: { id: userId } },
         relations: {
           organization: {
-            workspaces: true,
+            workspaces: {
+              planConfig: true,
+            },
           },
         },
       });
@@ -63,16 +69,22 @@ export class WorkspaceService {
     );
 
     const organization = await this.findOrganizationOrThrow(dto.organizationId);
-    const workspaceRepository = this.dataSource.getRepository(WorkspaceEntity);
-    const workspace = workspaceRepository.create({
-      name: dto.name,
-      plan: dto.plan ?? WORKSPACE_PLANS.FREE,
-      apiKey: this.generateApiKey(),
-      organization,
-    });
+    const planCode = await this.resolveActivePlanCode(
+      dto.plan ?? WORKSPACE_PLANS.FREE,
+    );
 
-    await workspaceRepository.save(workspace);
-    return this.toWorkspaceDetail(workspace, organization);
+    return await this.dataSource.transaction(async (manager) => {
+      const workspaceRepository = manager.getRepository(WorkspaceEntity);
+      const workspace = workspaceRepository.create({
+        name: dto.name,
+        plan: planCode,
+        organization,
+      });
+
+      await workspaceRepository.save(workspace);
+      const apiKey = await this.createWorkspaceApiKey(manager, workspace);
+      return this.toWorkspaceDetail(workspace, organization, apiKey);
+    });
   }
 
   async getWorkspace(
@@ -97,7 +109,9 @@ export class WorkspaceService {
     );
 
     if (dto.name !== undefined) workspace.name = dto.name;
-    if (dto.plan !== undefined) workspace.plan = dto.plan;
+    if (dto.plan !== undefined) {
+      workspace.plan = await this.resolveActivePlanCode(dto.plan);
+    }
 
     await this.dataSource.getRepository(WorkspaceEntity).save(workspace);
     return this.toWorkspaceDetail(workspace, workspace.organization);
@@ -129,13 +143,40 @@ export class WorkspaceService {
       workspaceManagers,
     );
 
-    workspace.apiKey = this.generateApiKey();
-    await this.dataSource.getRepository(WorkspaceEntity).save(workspace);
+    return await this.dataSource.transaction(async (manager) => {
+      await manager
+        .getRepository(WorkspaceApiKeyEntity)
+        .createQueryBuilder()
+        .update(WorkspaceApiKeyEntity)
+        .set({ revokedAt: new Date() })
+        .where('"workspaceId" = :workspaceId', { workspaceId: workspace.id })
+        .andWhere('"revokedAt" IS NULL')
+        .execute();
+      const apiKey = await this.createWorkspaceApiKey(manager, workspace);
 
-    return {
-      workspaceId: workspace.id,
-      apiKey: workspace.apiKey,
-    };
+      return {
+        workspaceId: workspace.id,
+        apiKey,
+      };
+    });
+  }
+
+  private async resolveActivePlanCode(planCode: string): Promise<string> {
+    const normalizedCode = planCode.trim().toUpperCase();
+    const plan = await this.dataSource
+      .getRepository(WorkspacePlanEntity)
+      .findOne({
+        where: { code: normalizedCode, isActive: true },
+      });
+
+    if (!plan) {
+      throw new NotFoundException({
+        error_code: ERROR_CODES.INVALID_INPUT,
+        message: 'Active workspace plan not found.',
+      });
+    }
+
+    return plan.code;
   }
 
   private async assertOrganizationRole(
@@ -190,7 +231,7 @@ export class WorkspaceService {
       .getRepository(WorkspaceEntity)
       .findOne({
         where: { id: workspaceId },
-        relations: { organization: true },
+        relations: { organization: true, planConfig: true },
       });
 
     if (!workspace) {
@@ -215,20 +256,69 @@ export class WorkspaceService {
         id: organization.id,
         name: organization.name,
       },
+      planConfig: workspace.planConfig
+        ? this.toWorkspacePlanConfig(workspace.planConfig)
+        : undefined,
     };
   }
 
   private toWorkspaceDetail(
     workspace: WorkspaceEntity,
     organization: OrganizationEntity,
+    apiKey?: string,
   ): WorkspaceDetailDto {
     return {
       ...this.toWorkspaceSummary(workspace, organization),
-      apiKey: workspace.apiKey,
+      apiKey,
     };
   }
 
   private generateApiKey(): string {
-    return `lynx_${crypto.randomUUID().replace(/-/g, '')}`;
+    return `lynx_${randomBytes(32).toString('base64url')}`;
+  }
+
+  private hashApiKey(apiKey: string): string {
+    return createHash('sha256').update(apiKey).digest('hex');
+  }
+
+  private async createWorkspaceApiKey(
+    manager: DataSource | EntityManager,
+    workspace: WorkspaceEntity,
+  ): Promise<string> {
+    const apiKey = this.generateApiKey();
+    await manager.getRepository(WorkspaceApiKeyEntity).save({
+      prefix: apiKey.slice(0, 16),
+      keyHash: this.hashApiKey(apiKey),
+      name: 'Default ingest key',
+      scopes: ['events:write'],
+      workspace,
+    });
+
+    return apiKey;
+  }
+
+  private toWorkspacePlanConfig(
+    plan: NonNullable<WorkspaceEntity['planConfig']>,
+  ): WorkspacePlanConfigDto {
+    return {
+      code: plan.code,
+      name: plan.name,
+      retentionDays: plan.retentionDays,
+      monthlyEventLimit: plan.monthlyEventLimit,
+      includedLogCount: plan.includedLogCount,
+      logOverageUnitPrice: this.toOptionalNumber(plan.logOverageUnitPrice),
+      features: plan.features,
+      isActive: plan.isActive,
+    };
+  }
+
+  private toOptionalNumber(
+    value: number | string | undefined,
+  ): number | undefined {
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+
+    return Number(value);
   }
 }

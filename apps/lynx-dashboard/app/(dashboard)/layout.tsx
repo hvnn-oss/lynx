@@ -4,7 +4,7 @@ import { DashboardSidebar } from "@/components/layouts/dashboard/sidebar";
 import AuthGuard from "@/components/util/auth-guard";
 import WorkspaceGuard from "@/components/util/workspace-guard";
 
-// 대시보드 내부 영역 전체를 로그인 필수 상태로 제어하고 레이아웃을 구성합니다.
+// 대시보드 내부 영역은 로그인과 워크스페이스 선택이 끝난 뒤에만 렌더링합니다.
 export default function RootLayout({
   children,
 }: Readonly<{

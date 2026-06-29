@@ -1,16 +1,18 @@
 ---
-title: "계측"
+title: "SDK 연동하기"
 description: "애플리케이션 흐름을 바꾸지 않고 LLM 클라이언트와 도구 함수를 감쌉니다."
 ---
 
-## LLM 클라이언트 계측
+## LLM 클라이언트 연동하기
 
 `instrumentLLM()`은 원본 클라이언트와 같은 public shape를 가진 proxy를 반환합니다. SDK가 알고 있는 generation method는 자동으로 수집됩니다.
 
 ```ts
-const openai = lynx.instrumentLLM(new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-}));
+const openai = lynx.instrumentLLM(
+  new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  }),
+);
 
 await lynx.run("SupportAgent", async () => {
   const response = await openai.chat.completions.create({
@@ -25,9 +27,9 @@ await lynx.run("SupportAgent", async () => {
 
 Lynx는 모델 메타데이터, 지연 시간, 가능한 경우 토큰 사용량, span ID, 오류를 기록합니다.
 
-## 도구 계측
+## 도구 연동하기
 
-일반 수집만 필요하면 `instrumentTool()`을 사용하세요. 호출 전에 정책 검사까지 해야 한다면 `guardTool()`을 사용하세요.
+일반 수집만 필요하다면 `instrumentTool()`을 사용하세요. 호출 전에 정책 검사까지 해야 한다면 `guardTool()`을 사용할 수 있습니다.
 
 ```ts
 const searchOrders = lynx.instrumentTool(
@@ -50,7 +52,7 @@ await lynx.run("SupportAgent", async () => {
 
 ## Custom LLM interception
 
-클라이언트가 SDK에서 기본으로 아는 method 이름을 쓰지 않는다면 custom rule을 넘기면 됩니다.
+클라이언트가 SDK에서 기본으로 제공하는 method 이름을 쓰지 않는다면 custom rule을 사용할 수 있습니다.
 
 ```ts
 const model = lynx.instrumentLLM(customClient, {

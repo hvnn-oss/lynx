@@ -1,9 +1,12 @@
 import { ERROR_CODES } from '@repo/constants';
+import { createHash } from 'crypto';
 import { NextFunction, Request, Response } from 'express';
+import Redis from 'ioredis';
 
-export function ingestionRateLimit() {
+export function ingestionRateLimit(redis?: Redis) {
   const maxRequests = Number(process.env.INGEST_RATE_LIMIT_PER_MINUTE ?? 600);
   const windowMs = 60_000;
+  const windowSeconds = Math.ceil(windowMs / 1000);
   const buckets = new Map<string, { count: number; resetAt: number }>();
 
   return (req: Request, res: Response, next: NextFunction) => {
@@ -12,12 +15,16 @@ export function ingestionRateLimit() {
       return;
     }
 
+    if (redis) {
+      void applyRedisRateLimit(redis, req, res, next, {
+        maxRequests,
+        windowSeconds,
+      });
+      return;
+    }
+
     const now = Date.now();
-    const key =
-      req.headers['x-api-key']?.toString() ||
-      req.ip ||
-      req.socket.remoteAddress ||
-      'unknown';
+    const key = getRateLimitKey(req);
     const bucket = buckets.get(key);
 
     if (!bucket || bucket.resetAt <= now) {
@@ -37,4 +44,46 @@ export function ingestionRateLimit() {
 
     next();
   };
+}
+
+async function applyRedisRateLimit(
+  redis: Redis,
+  req: Request,
+  res: Response,
+  next: NextFunction,
+  options: { maxRequests: number; windowSeconds: number },
+) {
+  const key = `rate:ingest:${getRateLimitKey(req)}`;
+
+  try {
+    const count = await redis.incr(key);
+    if (count === 1) {
+      await redis.expire(key, options.windowSeconds);
+    }
+
+    if (count > options.maxRequests) {
+      res.setHeader('Retry-After', options.windowSeconds.toString());
+      res.status(429).json({
+        error_code: ERROR_CODES.INVALID_INPUT,
+        message: 'Ingestion rate limit exceeded.',
+      });
+      return;
+    }
+
+    next();
+  } catch (error) {
+    // 수집 안정성이 우선이므로 Redis 장애 시 rate limit만 우회합니다.
+    console.warn('Redis ingestion rate limit failed open.', error);
+    next();
+  }
+}
+
+function getRateLimitKey(req: Request) {
+  const rawKey =
+    req.headers['x-api-key']?.toString() ||
+    req.ip ||
+    req.socket.remoteAddress ||
+    'unknown';
+
+  return createHash('sha256').update(rawKey).digest('hex');
 }

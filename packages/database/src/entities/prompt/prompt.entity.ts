@@ -1,4 +1,4 @@
-import {
+﻿import {
   Column,
   Entity,
   ManyToOne,
@@ -29,14 +29,14 @@ export class PromptEntity {
   @Column()
   updatedAt!: Date;
 
-  @ManyToOne(() => PromptVersionEntity, (version) => version.prompts, {
+  @ManyToOne(() => PromptVersionEntity, (version: PromptVersionEntity) => version.prompts, {
     onDelete: "CASCADE",
   })
   version!: PromptVersionEntity;
 
-  @OneToMany(() => PromptBlockEntity, (block) => block.prompt)
+  @OneToMany(() => PromptBlockEntity, (block: PromptBlockEntity) => block.prompt)
   blocks!: PromptBlockEntity[];
 
-  @OneToMany(() => SessionEntity, (session) => session.usedPrompt)
+  @OneToMany(() => SessionEntity, (session: SessionEntity) => session.usedPrompt)
   sessions!: SessionEntity[];
 }

@@ -17,6 +17,8 @@
     "@repo/typescript-config": "workspace:^",
     "@repo/ui": "workspace:^",
     "@tanstack/react-query": "^5.90.12",
+    "@tanstack/react-table": "^8.21.3",
+    "@xyflow/react": "^12.9.3",
     "axios": "^1.18.0",
     "clsx": "^2.1.1",
     "lucide-react": "^1.7.0",

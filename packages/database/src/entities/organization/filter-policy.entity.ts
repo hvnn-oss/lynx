@@ -1,10 +1,5 @@
-import {
-  Column,
-  Entity,
-  ManyToOne,
-  PrimaryGeneratedColumn,
-} from "typeorm";
-import { type RiskLevel } from "@repo/constants";
+﻿import { type RiskLevel } from "@repo/constants";
+import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
 import { OrganizationEntity } from "./organization.entity";
 
 @Entity("filter-policy")
@@ -41,7 +36,7 @@ export class FilterPolicyEntity {
 
   @ManyToOne(
     () => OrganizationEntity,
-    (organization) => organization.id,
+    (organization: OrganizationEntity) => organization.id,
     {
       onDelete: "CASCADE",
     },

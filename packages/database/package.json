@@ -13,6 +13,9 @@
   },
   "scripts": {
     "build": "tsc",
+    "seed:admin": "pnpm build && node dist/seeds/admin-user.seed.js",
+    "seed:plans": "pnpm build && node dist/seeds/workspace-plans.seed.js",
+    "backfill:workspace-api-keys": "pnpm build && node dist/seeds/workspace-api-keys.backfill.js",
     "test": "echo 'No tests defined'"
   },
   "keywords": [],

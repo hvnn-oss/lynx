@@ -12,7 +12,9 @@ import {
   DebugEventLogQueryDto,
   DebugEventLogResponseDto,
   DebugFailurePatternResponseDto,
+  DebugErrorGroupListResponseDto,
   DebugLatencyResponseDto,
+  DebugLlmCallListResponseDto,
   DebugMemoryResponseDto,
   DebugPageInfoDto,
   DebugPolicySimulationRequestDto,
@@ -27,6 +29,7 @@ import {
   DebugTimelineNodeDto,
   DebugTimelineQueryDto,
   DebugTimelineResponseDto,
+  DebugToolCallListResponseDto,
   DebugSeverity,
 } from '@repo/dto';
 import { WorkspaceAccessService } from '../../common/services/workspace-access.service';
@@ -55,6 +58,10 @@ interface CursorValue {
   timestamp: string;
   id: string;
 }
+
+const MAX_DEBUG_RANGE_DAYS = 7;
+const MAX_ANALYSIS_EVENTS = 10000;
+const MAX_SESSION_EVENTS = 5000;
 
 @Injectable()
 export class DebugService {
@@ -168,6 +175,27 @@ export class DebugService {
         },
       );
     }
+    if (query.phase) {
+      if (query.phase === 'error') {
+        qb.andWhere(
+          "(event.eventType = :phaseErrorType OR event.payload->>'phase' = :phase OR event.payload ? :phaseErrorKey)",
+          {
+            phase: query.phase,
+            phaseErrorType: 'ERROR',
+            phaseErrorKey: 'error',
+          },
+        );
+      } else if (query.phase === 'single') {
+        qb.andWhere(
+          "(event.payload->>'phase' = :phase OR event.payload->>'phase' IS NULL)",
+          { phase: query.phase },
+        );
+      } else {
+        qb.andWhere("event.payload->>'phase' = :phase", {
+          phase: query.phase,
+        });
+      }
+    }
     if (cursor) {
       qb.andWhere(
         '(event.timestamp < :cursorTimestamp OR (event.timestamp = :cursorTimestamp AND event.id < :cursorId))',
@@ -183,7 +211,6 @@ export class DebugService {
     const mapped = visible
       .map((event) => this.toEventLogItem(event))
       .filter((event) => {
-        if (query.phase && event.phase !== query.phase) return false;
         if (query.severity && event.severity !== query.severity) return false;
         return true;
       });
@@ -193,6 +220,142 @@ export class DebugService {
       page: this.createPageInfo(events, limit, (event) =>
         this.encodeCursor(event.timestamp, event.id),
       ),
+    };
+  }
+
+  async listEvents(
+    query: DebugEventLogQueryDto,
+    userId: string,
+  ): Promise<DebugEventLogResponseDto> {
+    const workspaceId = query.workspaceId;
+    await this.workspaceAccess.assertAccess(userId, workspaceId);
+    const { items, page } = await this.getPagedEvents(workspaceId, query);
+
+    return {
+      events: items.map((event) => this.toEventLogItem(event)),
+      page,
+    };
+  }
+
+  async listToolCalls(
+    query: DebugEventLogQueryDto,
+    userId: string,
+  ): Promise<DebugToolCallListResponseDto> {
+    const workspaceId = query.workspaceId;
+    await this.workspaceAccess.assertAccess(userId, workspaceId);
+    const { items, page } = await this.getPagedEvents(
+      workspaceId,
+      query,
+      (qb) =>
+        qb.andWhere(
+          '(event.eventType ILIKE :toolType OR event.payload ? :toolNameKey)',
+          { toolType: '%TOOL%', toolNameKey: 'toolName' },
+        ),
+    );
+
+    return {
+      toolCalls: items.map((event) => this.toToolCallItem(event)),
+      page,
+    };
+  }
+
+  async listLlmCalls(
+    query: DebugEventLogQueryDto,
+    userId: string,
+  ): Promise<DebugLlmCallListResponseDto> {
+    const workspaceId = query.workspaceId;
+    await this.workspaceAccess.assertAccess(userId, workspaceId);
+    const { items, page } = await this.getPagedEvents(
+      workspaceId,
+      query,
+      (qb) =>
+        qb.andWhere(
+          '(event.eventType ILIKE :llmType OR event.payload ? :modelKey)',
+          { llmType: '%LLM%', modelKey: 'model' },
+        ),
+    );
+
+    return {
+      llmCalls: items.map((event) => this.toLlmCallItem(event)),
+      page,
+    };
+  }
+
+  async listErrors(
+    query: DebugEventLogQueryDto,
+    userId: string,
+  ): Promise<DebugErrorGroupListResponseDto> {
+    const workspaceId = query.workspaceId;
+    await this.workspaceAccess.assertAccess(userId, workspaceId);
+    const events = await this.getEventsForRange(workspaceId, query);
+    const grouped = new Map<string, EventEntity[]>();
+
+    for (const event of events.filter((item) => deriveIssues([item]).length)) {
+      const payload = getPayload(event);
+      const fingerprint = createFailureSignature({
+        eventType: event.eventType,
+        label: event.label,
+        model: getPayloadString(payload, 'model'),
+        toolName: getPayloadString(payload, 'toolName'),
+        error: payload.error,
+        payload,
+      });
+      grouped.set(fingerprint, [...(grouped.get(fingerprint) ?? []), event]);
+    }
+
+    const errors = Array.from(grouped.entries())
+      .map(([fingerprint, groupedEvents]) => {
+        const sorted = [...groupedEvents].sort(
+          (left, right) => left.timestamp.getTime() - right.timestamp.getTime(),
+        );
+        const first = sorted[0];
+        const last = sorted[sorted.length - 1];
+        const issue = deriveIssues([first])[0];
+        const payload = getPayload(first);
+
+        return {
+          fingerprint,
+          title: first.label,
+          errorType: issue?.type ?? first.eventType,
+          severity: computeSeverity(first),
+          occurrenceCount: groupedEvents.length,
+          affectedSessions: new Set(
+            groupedEvents.map((event) => event.session?.id ?? ''),
+          ).size,
+          affectedAgents: Array.from(
+            new Set(
+              groupedEvents.map(
+                (event) => event.session?.agent?.name ?? 'Unknown Agent',
+              ),
+            ),
+          ),
+          firstSeenAt: first.timestamp.toISOString(),
+          lastSeenAt: last.timestamp.toISOString(),
+          representativeEventId: first.id,
+          representativeSessionId: first.session?.id ?? '',
+          representativeMessage: issue?.reason ?? toDebugString(payload.error),
+          relatedTool: getPayloadString(payload, 'toolName'),
+          relatedModel: getPayloadString(payload, 'model'),
+          status: 'open' as const,
+        };
+      })
+      .sort((left, right) => {
+        if (right.severity !== left.severity) {
+          return (
+            this.getSeverityRank(right.severity) -
+            this.getSeverityRank(left.severity)
+          );
+        }
+        return right.occurrenceCount - left.occurrenceCount;
+      });
+
+    const limit = this.normalizeLimit(query.limit);
+    return {
+      errors: errors.slice(0, limit),
+      page: {
+        hasMore: errors.length > limit,
+        total: errors.length,
+      },
     };
   }
 
@@ -220,7 +383,11 @@ export class DebugService {
         events,
       } as SessionEntity),
       nodes: events.map((event) =>
-        this.toTimelineNode(event, eventBySpanId, query.includePayload),
+        this.toTimelineNode(
+          event,
+          eventBySpanId,
+          query.includePayload && this.canExposeRawPayloads(),
+        ),
       ),
       criticalPath: calculateCriticalPath(events),
       criticalPathMethod: 'MAX_ACCUMULATED_LATENCY',
@@ -616,10 +783,10 @@ export class DebugService {
       });
     }
 
-    const maxMs = 30 * 24 * 60 * 60 * 1000;
+    const maxMs = MAX_DEBUG_RANGE_DAYS * 24 * 60 * 60 * 1000;
     if (to.getTime() - from.getTime() > maxMs) {
       throw new BadRequestException({
-        message: 'Debug queries can cover at most 30 days.',
+        message: `Debug queries can cover at most ${MAX_DEBUG_RANGE_DAYS} days.`,
       });
     }
 
@@ -648,7 +815,7 @@ export class DebugService {
     workspaceId: string,
     sessionId: string,
   ): Promise<EventEntity[]> {
-    return await this.dataSource
+    const events = await this.dataSource
       .getRepository(EventEntity)
       .createQueryBuilder('event')
       .innerJoinAndSelect('event.session', 'session')
@@ -657,7 +824,17 @@ export class DebugService {
       .andWhere('session.workspaceId = :workspaceId', { workspaceId })
       .orderBy('event.timestamp', 'ASC')
       .addOrderBy('event.id', 'ASC')
+      .take(MAX_SESSION_EVENTS + 1)
       .getMany();
+
+    if (events.length > MAX_SESSION_EVENTS) {
+      throw new BadRequestException({
+        message:
+          'This session has too many events for an interactive debug view. Narrow the session or use an export workflow.',
+      });
+    }
+
+    return events;
   }
 
   private async getEventsForRange(
@@ -677,7 +854,93 @@ export class DebugService {
       .addOrderBy('event.id', 'ASC');
 
     this.applySearchFilters(qb, query);
-    return await qb.getMany();
+    if ('errorsOnly' in query && query.errorsOnly) {
+      qb.andWhere(
+        '(event.eventType = :errorType OR event.payload ? :errorKey)',
+        {
+          errorType: 'ERROR',
+          errorKey: 'error',
+        },
+      );
+    }
+    const events = await qb.take(MAX_ANALYSIS_EVENTS + 1).getMany();
+
+    if (events.length > MAX_ANALYSIS_EVENTS) {
+      throw new BadRequestException({
+        message:
+          'Debug analysis matched too many events. Narrow the time range or filter by agent/session.',
+      });
+    }
+
+    return events;
+  }
+
+  private async getPagedEvents(
+    workspaceId: string,
+    query: DebugEventLogQueryDto,
+    extend?: (qb: SelectQueryBuilder<EventEntity>) => void,
+  ): Promise<{ items: EventEntity[]; page: DebugPageInfoDto }> {
+    const { from, to } = this.getDateRange(query, 24);
+    const limit = this.normalizeLimit(query.limit);
+    const cursor = this.decodeCursor(query.cursor);
+    const qb = this.dataSource
+      .getRepository(EventEntity)
+      .createQueryBuilder('event')
+      .innerJoinAndSelect('event.session', 'session')
+      .leftJoinAndSelect('session.agent', 'agent')
+      .where('session.workspaceId = :workspaceId', { workspaceId })
+      .andWhere('event.timestamp >= :from', { from })
+      .andWhere('event.timestamp <= :to', { to })
+      .orderBy('event.timestamp', 'DESC')
+      .addOrderBy('event.id', 'DESC')
+      .take(limit + 1);
+
+    this.applySearchFilters(qb, query);
+    if (query.eventType) {
+      qb.andWhere('event.eventType = :eventType', {
+        eventType: query.eventType,
+      });
+    }
+    if (query.label) {
+      qb.andWhere('event.label ILIKE :label', { label: `%${query.label}%` });
+    }
+    if (query.errorsOnly) {
+      qb.andWhere(
+        '(event.eventType = :errorType OR event.payload ? :errorKey)',
+        {
+          errorType: 'ERROR',
+          errorKey: 'error',
+        },
+      );
+    }
+    if (query.phase) {
+      qb.andWhere("event.payload->>'phase' = :phase", { phase: query.phase });
+    }
+    if (cursor) {
+      qb.andWhere(
+        '(event.timestamp < :cursorTimestamp OR (event.timestamp = :cursorTimestamp AND event.id < :cursorId))',
+        {
+          cursorTimestamp: new Date(cursor.timestamp),
+          cursorId: cursor.id,
+        },
+      );
+    }
+    extend?.(qb);
+
+    const events = await qb.getMany();
+    const visible = events.slice(0, limit).filter((event) => {
+      if (query.severity && computeSeverity(event) !== query.severity) {
+        return false;
+      }
+      return true;
+    });
+
+    return {
+      items: visible,
+      page: this.createPageInfo(events, limit, (event) =>
+        this.encodeCursor(event.timestamp, event.id),
+      ),
+    };
   }
 
   private applySearchFilters(
@@ -763,6 +1026,70 @@ export class DebugService {
     };
   }
 
+  private toToolCallItem(
+    event: EventEntity,
+  ): DebugToolCallListResponseDto['toolCalls'][number] {
+    const payload = getPayload(event);
+    const base = this.toEventLogItem(event);
+    const rawStatus = getPayloadString(payload, 'status')?.toLowerCase();
+    const hasTimeout =
+      rawStatus === 'timeout' ||
+      toDebugString(payload.error)?.toLowerCase().includes('timeout') === true;
+    const hasFailed =
+      hasTimeout || rawStatus === 'failed' || Boolean(payload.error);
+
+    return {
+      ...base,
+      toolName:
+        base.toolName ??
+        getPayloadString(payload, 'name') ??
+        getPayloadString(payload, 'tool') ??
+        base.label,
+      status: hasTimeout
+        ? 'timeout'
+        : hasFailed
+          ? 'failed'
+          : rawStatus === 'success'
+            ? 'success'
+            : 'unknown',
+      retryCount: getPayloadNumber(payload, 'retryCount') ?? 0,
+      sideEffect: getPayloadBoolean(payload, 'sideEffect') ?? false,
+      riskCategory: this.toRiskCategory(payload),
+      argumentsPreview: createPreview(payload.args ?? payload.arguments),
+      resultPreview: createPreview(payload.result ?? payload.output),
+    };
+  }
+
+  private toLlmCallItem(
+    event: EventEntity,
+  ): DebugLlmCallListResponseDto['llmCalls'][number] {
+    const payload = getPayload(event);
+    const base = this.toEventLogItem(event);
+    const usage = this.toTokenUsage(payload.usage);
+
+    return {
+      ...base,
+      provider: getPayloadString(payload, 'provider'),
+      model: base.model ?? 'unknown',
+      promptVersion: getPayloadString(payload, 'promptVersion'),
+      temperature: getPayloadNumber(payload, 'temperature'),
+      maxTokens: getPayloadNumber(payload, 'maxTokens'),
+      finishReason: getPayloadString(payload, 'finishReason'),
+      totalTokens:
+        usage?.totalTokens ??
+        usage?.promptTokens ??
+        usage?.completionTokens ??
+        getPayloadNumber(payload, 'totalTokens') ??
+        0,
+      requestedToolCall:
+        getPayloadBoolean(payload, 'requestedToolCall') ??
+        Array.isArray(payload.toolCalls),
+      refused: getPayloadBoolean(payload, 'refused') ?? false,
+      requestPreview: createPreview(payload.messages ?? payload.input),
+      responsePreview: createPreview(payload.response ?? payload.output),
+    };
+  }
+
   private getPhase(event: EventEntity): DebugEventLogItemDto['phase'] {
     const payload = getPayload(event);
     const phase = getPayloadString(payload, 'phase');
@@ -814,6 +1141,10 @@ export class DebugService {
       orphaned: depth.orphaned,
       payload: includePayload ? payload : undefined,
     };
+  }
+
+  private canExposeRawPayloads() {
+    return process.env.LYNX_EXPOSE_RAW_PAYLOADS === 'true';
   }
 
   private toRootCauseCategory(
@@ -880,5 +1211,27 @@ export class DebugService {
     if (action === 'WARN') return 'WARN';
     if (allow === false) return 'BLOCK';
     return 'ALLOW';
+  }
+
+  private toRiskCategory(payload: EventPayload) {
+    const explicit = getPayloadString(payload, 'riskCategory');
+    if (
+      explicit === 'read-only' ||
+      explicit === 'write' ||
+      explicit === 'external' ||
+      explicit === 'destructive'
+    ) {
+      return explicit;
+    }
+    if (payload.destructive === true) return 'destructive';
+    if (payload.sideEffect === true) return 'write';
+    if (payload.external === true) return 'external';
+    return 'read-only';
+  }
+
+  private getSeverityRank(severity: DebugSeverity): number {
+    if (severity === 'CRITICAL') return 2;
+    if (severity === 'WARNING') return 1;
+    return 0;
   }
 }

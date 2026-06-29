@@ -1,4 +1,4 @@
-import { PROMPT_TYPE, type PromptType } from "@repo/constants";
+﻿import { PROMPT_TYPE, type PromptType } from "@repo/constants";
 import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
 import { PromptEntity } from "./prompt.entity";
 
@@ -16,7 +16,7 @@ export class PromptBlockEntity {
   @Column()
   content!: string;
 
-  @ManyToOne(() => PromptEntity, (prompt) => prompt.blocks, {
+  @ManyToOne(() => PromptEntity, (prompt: PromptEntity) => prompt.blocks, {
     onDelete: "CASCADE",
   })
   prompt!: PromptEntity;

@@ -9,13 +9,12 @@ interface UsePageInfoProps {
 
 export function UsePageInfo({ breadcrumbs }: UsePageInfoProps) {
   const setBreadcrumbs = usePageStore((state) => state.setBreadcrumbs);
-  
+
   const breadcrumbsStr = JSON.stringify(breadcrumbs);
 
   useEffect(() => {
-    setBreadcrumbs(breadcrumbs);
+    setBreadcrumbs(JSON.parse(breadcrumbsStr) as BreadcrumbItem[]);
   }, [breadcrumbsStr, setBreadcrumbs]);
 
   return null;
 }
-
