@@ -1,0 +1,118 @@
+name: Sync Lynx SDK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "sdks/lynx-sdk/**"
+      - "packages/sdk-types/**"
+      - ".github/scripts/prepare-oss-sdk.mjs"
+      - ".github/workflows/sync-lynx-sdk.yaml"
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: "Version bump to apply in hvnn-oss/lynx-sdk"
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - none
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout monorepo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install monorepo dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify SDK before sync
+        run: pnpm --filter @repo/sdk test
+
+      - name: Generate GitHub App Token
+        id: get_workflow_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.SDK_APP_ID }}
+          private-key: ${{ secrets.SDK_APP_PRIVATE_KEY }}
+          owner: hvnn-oss
+          repositories: lynx-sdk
+
+      - name: Checkout SDK repository
+        uses: actions/checkout@v4
+        with:
+          repository: hvnn-oss/lynx-sdk
+          token: ${{ steps.get_workflow_token.outputs.token }}
+          path: sdk-repo
+
+      - name: Read current public SDK version
+        id: version
+        shell: bash
+        run: |
+          if [ -f sdk-repo/package.json ]; then
+            VERSION="$(node -p "JSON.parse(require('fs').readFileSync('sdk-repo/package.json', 'utf8')).version")"
+          else
+            VERSION="$(node -p "JSON.parse(require('fs').readFileSync('sdks/lynx-sdk/package.json', 'utf8')).version")"
+          fi
+
+          echo "previous_version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Copy SDK sources
+        shell: bash
+        run: |
+          find sdk-repo -mindepth 1 -maxdepth 1 ! -name ".git" -exec rm -rf {} +
+
+          rsync -av \
+            --exclude=".git" \
+            --exclude="node_modules" \
+            --exclude="dist" \
+            --exclude=".turbo" \
+            sdks/lynx-sdk/ sdk-repo/
+
+      - name: Prepare standalone OSS package
+        env:
+          SDK_REPO_PATH: sdk-repo
+          SDK_TYPES_PATH: packages/sdk-types/src/index.ts
+          PREVIOUS_VERSION: ${{ steps.version.outputs.previous_version }}
+          VERSION_BUMP: ${{ inputs.version_bump || 'patch' }}
+        run: node .github/scripts/prepare-oss-sdk.mjs
+
+      - name: Install standalone SDK dependencies
+        working-directory: sdk-repo
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Verify standalone SDK
+        working-directory: sdk-repo
+        run: pnpm test
+
+      - name: Commit and push
+        working-directory: sdk-repo
+        shell: bash
+        run: |
+          git config user.name "haven-sdk-automation[bot]"
+          git config user.email "bot@lynxops.co"
+
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No SDK changes to commit."
+            exit 0
+          fi
+
+          VERSION="$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")"
+          git commit -m "chore: sync sdk v${VERSION}"
+          git push origin main
