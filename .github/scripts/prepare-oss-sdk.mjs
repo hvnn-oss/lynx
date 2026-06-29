@@ -52,6 +52,7 @@ packageJson.bugs = {
 packageJson.homepage = "https://github.com/hvnn-oss/lynx-sdk#readme";
 
 packageJson.dependencies = removeInternalPackages(packageJson.dependencies);
+delete packageJson.scripts?.prebuild;
 packageJson.devDependencies = {
   ...removeInternalPackages(packageJson.devDependencies),
   "@types/node": packageJson.devDependencies?.["@types/node"] ?? "^25.9.1",

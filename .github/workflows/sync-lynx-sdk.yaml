@@ -41,7 +41,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Verify SDK before sync
-        run: pnpm --filter @repo/sdk test
+        run: |
+          pnpm --filter @repo/sdk-types build
+          pnpm --filter @repo/sdk test
 
       - name: Generate GitHub App Token
         id: get_workflow_token

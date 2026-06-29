@@ -17,6 +17,7 @@
     "dist"
   ],
   "scripts": {
+    "prebuild": "pnpm --filter @repo/sdk-types build",
     "build": "tsup src/index.ts --format cjs,esm --clean --dts",
     "obfuscate": "javascript-obfuscator ./dist/index.js --output ./dist/index.js --config obfuscator.config.json && javascript-obfuscator ./dist/index.cjs --output ./dist/index.cjs --config obfuscator.config.json",
     "build:prod": "pnpm build && pnpm obfuscate",
