@@ -70,12 +70,24 @@ jobs:
           owner: hvnn-oss
           repositories: lynx-sdk
 
-      - name: Checkout SDK repository
-        uses: actions/checkout@v4
-        with:
-          repository: hvnn-oss/lynx-sdk
-          token: ${{ steps.get_workflow_token.outputs.token }}
-          path: sdk-repo
+      - name: Prepare SDK repository checkout
+        shell: bash
+        env:
+          SDK_REPO_TOKEN: ${{ steps.get_workflow_token.outputs.token }}
+        run: |
+          mkdir -p sdk-repo
+          cd sdk-repo
+
+          git init
+          git remote add origin "https://x-access-token:${SDK_REPO_TOKEN}@github.com/hvnn-oss/lynx-sdk.git"
+
+          if git ls-remote --exit-code --heads origin main >/dev/null 2>&1; then
+            git fetch --depth=1 origin main
+            git checkout -B main FETCH_HEAD
+          else
+            git checkout --orphan main
+            git rm -rf . >/dev/null 2>&1 || true
+          fi
 
       - name: Read current public SDK version
         id: version
