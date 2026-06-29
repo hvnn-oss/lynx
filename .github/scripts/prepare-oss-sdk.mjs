@@ -59,7 +59,6 @@ packageJson.publishConfig = {
 packageJson.engines = {
   node: ">=18",
 };
-packageJson.sideEffects = false;
 
 packageJson.dependencies = removeInternalPackages(packageJson.dependencies);
 delete packageJson.scripts?.prebuild;

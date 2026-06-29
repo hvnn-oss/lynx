@@ -1,7 +1,7 @@
 {
   "name": "@repo/sdk",
   "version": "1.0.0",
-  "description": "SDK package with TypeScript and obfuscation",
+  "description": "TypeScript SDK for tracing, debugging, and governing AI agent runs with Lynx.",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -16,7 +16,6 @@
   "engines": {
     "node": ">=18"
   },
-  "sideEffects": false,
   "files": [
     "dist",
     "CHANGELOG.md",
@@ -31,6 +30,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "homepage": "https://docs.lynxops.co",
   "devDependencies": {
     "@repo/typescript-config": "workspace:*",
     "@types/node": "^25.9.1",
