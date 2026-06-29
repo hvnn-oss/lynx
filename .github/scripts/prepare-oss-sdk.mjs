@@ -1,5 +1,6 @@
 import {
   existsSync,
+  mkdirSync,
   readdirSync,
   readFileSync,
   rmSync,
@@ -50,6 +51,10 @@ packageJson.bugs = {
   url: "https://github.com/hvnn-oss/lynx-sdk/issues",
 };
 packageJson.homepage = "https://github.com/hvnn-oss/lynx-sdk#readme";
+packageJson.publishConfig = {
+  access: "public",
+  provenance: true,
+};
 
 packageJson.dependencies = removeInternalPackages(packageJson.dependencies);
 delete packageJson.scripts?.prebuild;
@@ -110,6 +115,7 @@ writeFileSync(
   join(sdkRepoPath, "pnpm-workspace.yaml"),
   ["packages:", "  - .", "allowBuilds:", "  esbuild: true", ""].join("\n"),
 );
+writePublicSdkPublishWorkflow(sdkRepoPath);
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
@@ -117,6 +123,65 @@ function readJson(path) {
 
 function writeJson(path, value) {
   writeFileSync(`${path}`, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function writePublicSdkPublishWorkflow(path) {
+  const workflowsPath = join(path, ".github", "workflows");
+  mkdirSync(workflowsPath, { recursive: true });
+
+  writeFileSync(
+    join(workflowsPath, "publish-npm.yml"),
+    [
+      "name: Publish SDK to npm",
+      "",
+      "on:",
+      "  push:",
+      "    branches: [main]",
+      "  workflow_dispatch:",
+      "",
+      "permissions:",
+      "  contents: read",
+      "  id-token: write",
+      "",
+      "jobs:",
+      "  publish:",
+      "    runs-on: ubuntu-latest",
+      "    if: github.repository == 'hvnn-oss/lynx-sdk'",
+      "",
+      "    steps:",
+      "      - name: Checkout SDK",
+      "        uses: actions/checkout@v4",
+      "",
+      "      - name: Setup Node.js",
+      "        uses: actions/setup-node@v4",
+      "        with:",
+      "          node-version: 24",
+      "          registry-url: https://registry.npmjs.org",
+      "          package-manager-cache: false",
+      "",
+      "      - name: Enable pnpm",
+      "        run: corepack enable",
+      "",
+      "      - name: Install dependencies",
+      "        run: pnpm install --no-frozen-lockfile",
+      "",
+      "      - name: Verify SDK",
+      "        run: pnpm test",
+      "",
+      "      - name: Publish if version is new",
+      "        shell: bash",
+      "        run: |",
+      "          VERSION=\"$(node -p 'require(\"./package.json\").version')\"",
+      "",
+      "          if npm view \"@lynxops/sdk@${VERSION}\" version >/dev/null 2>&1; then",
+      "            echo \"@lynxops/sdk@${VERSION} already exists. Skipping publish.\"",
+      "            exit 0",
+      "          fi",
+      "",
+      "          npm publish --access public --provenance",
+      "",
+    ].join("\n"),
+  );
 }
 
 function removeInternalPackages(dependencies) {
