@@ -1,12 +1,23 @@
 ---
 title: "Configuration"
-description: "Configure capture, delivery, metadata, and environment variables."
+description: "Configure the Lynx SDK endpoint, capture mode, delivery behavior, and environment metadata."
 ---
 
-## Basic configuration
+Use configuration to control where events are sent, what content is recorded, and how safely the SDK delivers events in production.
+
+## When to use this
+
+Use this page when you need to:
+
+- Send events to Lynx Cloud or a local backend
+- Attach workspace, agent, version, or environment metadata
+- Avoid sending raw prompts or responses
+- Tune delivery timeouts, queues, and circuit breaker behavior
+
+## Basic setup
 
 ```ts
-import { LynxTracer } from "@lynx/sdk";
+import { LynxTracer } from "@lynxops/sdk";
 
 const lynx = new LynxTracer({
   clientId: "support-api",
@@ -17,15 +28,43 @@ const lynx = new LynxTracer({
 });
 ```
 
+`endpoint` defaults to `https://api.lynxops.co`.
+
+Use a custom endpoint only for local development or self-hosted deployments.
+
+```ts
+const lynx = new LynxTracer({
+  clientId: "support-api",
+  endpoint: "http://localhost:4000",
+  apiKey: process.env.LYNX_API_KEY,
+});
+```
+
 ## Capture options
 
-| Option             | Default   | Description                                    |
-| ------------------ | --------- | ---------------------------------------------- |
-| `sampleRate`       | `1`       | Fraction of runs to capture, from `0` to `1`.  |
-| `captureInput`     | `true`    | Capture input payloads.                        |
-| `captureOutput`    | `true`    | Capture output payloads.                       |
-| `captureMode`      | `"smart"` | Use `"full"`, `"metadata-only"`, or `"smart"`. |
-| `maxPayloadLength` | `5000`    | Maximum serialized payload length.             |
+| Option | Default | Description |
+| --- | --- | --- |
+| `sampleRate` | `1` | Fraction of runs to record, from `0` to `1`. |
+| `captureInput` | `true` | Whether input fields may be recorded. |
+| `captureOutput` | `true` | Whether output fields may be recorded. |
+| `captureMode` | `"smart"` | `full`, `metadata-only`, or `smart`. |
+| `maxPayloadLength` | `1000` | Maximum string length kept in `smart` mode. |
+
+## Capture modes
+
+| Mode | Behavior |
+| --- | --- |
+| `full` | Keeps input and output fields when `captureInput` and `captureOutput` allow them. |
+| `metadata-only` | Removes raw input and output, then keeps hashes, lengths, timing, usage, errors, and metadata. |
+| `smart` | Keeps important metadata and truncates long strings. Failures and policy events keep enough detail for debugging. |
+
+```ts
+const lynx = new LynxTracer({
+  clientId: "support-api",
+  apiKey: process.env.LYNX_API_KEY,
+  captureMode: "metadata-only",
+});
+```
 
 ## Delivery options
 
@@ -55,32 +94,44 @@ const lynx = new LynxTracer({
 The default `lynx` export reads configuration from environment variables.
 
 ```ts
-import { lynx } from "@lynx/sdk";
+import { lynx } from "@lynxops/sdk";
 ```
 
-| Variable                                 | Description                                                                      |
-| ---------------------------------------- | -------------------------------------------------------------------------------- |
-| `LYNX_CLIENT_ID`                         | Client or service identifier.                                                    |
-| `LYNX_ENDPOINT`                          | Optional override for the Lynx server URL. Defaults to `https://api.lynxops.co`. |
-| `LYNX_API_KEY`                           | API key for ingestion.                                                           |
-| `LYNX_WORKSPACE_ID`                      | Default workspace ID.                                                            |
-| `LYNX_AGENT_ID`                          | Default agent ID.                                                                |
-| `LYNX_SAMPLE_RATE`                       | Sampling rate from `0` to `1`.                                                   |
-| `LYNX_CAPTURE_INPUT`                     | Whether to capture inputs.                                                       |
-| `LYNX_CAPTURE_OUTPUT`                    | Whether to capture outputs.                                                      |
-| `LYNX_CAPTURE_MODE`                      | `full`, `metadata-only`, or `smart`.                                             |
-| `LYNX_MAX_PAYLOAD_LENGTH`                | Maximum payload string length.                                                   |
-| `LYNX_APP_VERSION`                       | Application version metadata.                                                    |
-| `LYNX_DEPLOYMENT_ID`                     | Deployment ID metadata.                                                          |
-| `LYNX_ENVIRONMENT`                       | Runtime environment metadata.                                                    |
-| `LYNX_POLICY_VERSION`                    | Policy version metadata.                                                         |
-| `LYNX_DELIVERY_MODE`                     | `BLOCKING` or `BACKGROUND`.                                                      |
-| `LYNX_DELIVERY_TIMEOUT_MS`               | Delivery timeout in milliseconds.                                                |
-| `LYNX_DELIVERY_FLUSH_ON_RUN_END`         | `true` or `false`.                                                               |
-| `LYNX_DELIVERY_FLUSH_INTERVAL_MS`        | Background flush interval.                                                       |
-| `LYNX_DELIVERY_BATCH_SIZE`               | Batch size for blocking mode triggers.                                           |
-| `LYNX_DELIVERY_MAX_QUEUE_SIZE`           | Maximum queued event count.                                                      |
-| `LYNX_DELIVERY_OVERFLOW_STRATEGY`        | `DROP_OLDEST` or `DROP_NEWEST`.                                                  |
-| `LYNX_CIRCUIT_BREAKER_ENABLED`           | `true` or `false`.                                                               |
-| `LYNX_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | Failure count before opening the breaker.                                        |
-| `LYNX_CIRCUIT_BREAKER_COOLDOWN_MS`       | Breaker cooldown in milliseconds.                                                |
+| Variable | Description |
+| --- | --- |
+| `LYNX_CLIENT_ID` | Client or service identifier. Defaults to `local_dev_env`. |
+| `LYNX_ENDPOINT` | Optional endpoint override. Defaults to `https://api.lynxops.co`. |
+| `LYNX_API_KEY` | API key for event ingestion. |
+| `LYNX_WORKSPACE_ID` | Default workspace ID. |
+| `LYNX_AGENT_ID` | Default agent ID. |
+| `LYNX_SESSION_ID` | Default session ID when `run()` does not receive one. |
+| `LYNX_SAMPLE_RATE` | Sampling rate from `0` to `1`. |
+| `LYNX_CAPTURE_INPUT` | `true` or `false`. |
+| `LYNX_CAPTURE_OUTPUT` | `true` or `false`. |
+| `LYNX_CAPTURE_MODE` | `full`, `metadata-only`, or `smart`. |
+| `LYNX_MAX_PAYLOAD_LENGTH` | Maximum payload string length. |
+| `LYNX_APP_VERSION` | Application version metadata. |
+| `LYNX_DEPLOYMENT_ID` | Deployment ID metadata. |
+| `LYNX_ENVIRONMENT` | Runtime environment. Falls back to `NODE_ENV`. |
+| `LYNX_POLICY_VERSION` | Default policy version metadata. |
+| `LYNX_DELIVERY_MODE` | `BACKGROUND` or `BLOCKING`. |
+| `LYNX_DELIVERY_TIMEOUT_MS` | Delivery timeout in milliseconds. |
+| `LYNX_DELIVERY_FLUSH_ON_RUN_END` | `true` or `false`. |
+| `LYNX_DELIVERY_FLUSH_INTERVAL_MS` | Background flush interval in milliseconds. |
+| `LYNX_DELIVERY_BATCH_SIZE` | Delivery batch size. |
+| `LYNX_DELIVERY_MAX_QUEUE_SIZE` | Maximum queued event count. |
+| `LYNX_DELIVERY_OVERFLOW_STRATEGY` | `DROP_OLDEST` or `DROP_NEWEST`. |
+| `LYNX_CIRCUIT_BREAKER_ENABLED` | `true` or `false`. |
+| `LYNX_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | Consecutive failure count before opening the breaker. |
+| `LYNX_CIRCUIT_BREAKER_COOLDOWN_MS` | Circuit breaker cooldown in milliseconds. |
+
+## Security note
+
+Depending on your settings, Lynx may receive prompts, tool arguments, and model responses. Avoid sending secrets, credentials, access tokens, or private keys. The SDK masks common sensitive keys, but you should still avoid passing secrets into prompts or tool payloads.
+
+Use `metadata-only`, `captureInput: false`, or `captureOutput: false` when raw content should not be sent.
+
+## Next steps
+
+- [Understand delivery behavior](/sdk/delivery)
+- [Track agent runs](/sdk/tracing)

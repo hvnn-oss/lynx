@@ -1,41 +1,70 @@
 ---
 title: "Lynx SDK"
-description: "Trace AI agent behavior, tool calls, guardrails, and runtime outcomes from your TypeScript application."
+description: "Connect your TypeScript agent to record sessions, inspect LLM and tool calls, and keep delivery safe in production."
 ---
 
-Lynx SDK helps you understand why an AI agent behaved a certain way. It captures execution context, LLM calls, tool usage, policy decisions, memory access, and outcomes, then sends telemetry to your Lynx server.
+Lynx helps you see what happened during an AI agent run. Connect the SDK to record sessions, trace each execution step, inspect LLM and tool calls, and review root cause candidates when something fails.
 
-Use Lynx when you need production observability for AI services, not just logs.
+Use Lynx when logs are not enough to answer questions like:
+
+- What did the user ask?
+- Which context did the agent load?
+- Which LLM and tool calls happened?
+- Where did the run fail or slow down?
+- Did a guardrail block a risky tool call?
 
 <CardGroup cols={2}>
-  <Card title="Start in minutes" icon="rocket" href="/sdk/quickstart">
-    Install the SDK, create a tracer, and capture your first agent run.
+  <Card title="Connect the SDK" icon="rocket" href="/sdk/quickstart">
+    Install the package and record your first agent session.
   </Card>
-  <Card title="Production-safe delivery" icon="shield-check" href="/sdk/delivery">
-    Telemetry delivery uses background flushing, timeouts, retries, and a circuit breaker.
+  <Card title="Track agent runs" icon="route" href="/sdk/tracing">
+    Record user input, context, decisions, memory access, and outcomes.
   </Card>
-  <Card title="Local guardrails" icon="lock" href="/sdk/guardrails">
-    Block risky tool calls locally without depending on Lynx server availability.
+  <Card title="Wrap LLMs and tools" icon="sparkles" href="/sdk/instrumentation">
+    Capture LLM calls and tool calls without changing your application flow.
   </Card>
-  <Card title="LLM and tool instrumentation" icon="sparkles" href="/sdk/instrumentation">
-    Wrap common LLM clients and tool functions with span-level telemetry.
+  <Card title="Run safely in production" icon="shield-check" href="/sdk/delivery">
+    Use background delivery, short timeouts, queues, and a circuit breaker.
   </Card>
 </CardGroup>
 
-## What Lynx captures
+## What Lynx records
 
-- Agent run identity, session identity, and workspace metadata
-- User input and structured context
-- Agent decisions and reasons
+The SDK can record:
+
+- Session, run, workspace, agent, and environment metadata
+- User input and selected context
+- Agent decisions and supporting reasons
 - LLM calls, model metadata, latency, token usage, and errors
-- Tool calls, tool results, side effects, and risk metadata
-- Local policy evaluations and guardrail activations
-- Memory access and final session outcome
+- Tool calls, tool results, side effect metadata, and risk level
+- Local policy decisions and guardrail actions
+- Memory access and final run outcome
 
-## What happens if Lynx is unavailable?
+## What you can see in Lynx
 
-Your AI service keeps running by default. The SDK queues telemetry in memory, retries failed sends, and opens a circuit breaker after repeated delivery failures. Guardrail decisions still happen locally.
+After events are sent, Lynx can show:
 
-<Tip>
-  Lynx telemetry is designed to be observable, not blocking. You can opt into blocking flush behavior when your environment requires it.
-</Tip>
+- The full session timeline
+- Each LLM call and tool call
+- Latency, token usage, and estimated cost
+- Errors, retries, and slow execution steps
+- Guardrail decisions and blocked tool calls
+- Root cause candidates with supporting evidence
+
+## Production behavior
+
+By default, SDK delivery is background-only. If the Lynx API is unavailable, your service keeps running. The SDK queues events in memory, retries failed sends, and opens a circuit breaker after repeated failures.
+
+Guardrail checks run locally in your process. Lynx API availability does not decide whether a guarded tool call is blocked.
+
+<Note>
+  Lynx may receive prompts, tool arguments, and model responses depending on
+  your SDK configuration. Avoid sending secrets or credentials. Use masking or
+  `metadata-only` mode when you do not want raw content stored.
+</Note>
+
+## Next steps
+
+- [Connect the SDK](/sdk/quickstart)
+- [Configure delivery and capture](/sdk/configuration)
+- [Track agent runs](/sdk/tracing)

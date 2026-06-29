@@ -3,13 +3,33 @@ title: "가드레일"
 description: "위험한 도구 호출이 실행되기 전에 로컬 정책을 평가합니다."
 ---
 
-`guardTool()`은 도구 함수를 로컬 정책 검사로 감쌉니다. 정책은 실제 도구 호출 전에 실행됩니다. 정책이 차단을 결정하면 도구 함수는 실행되지 않습니다.
+`guardTool()`은 도구 함수를 로컬 정책 검사로 감쌉니다. 정책은 실제 도구 호출 전에 실행됩니다. 정책이 차단을 결정하면 원래 도구 함수는 실행되지 않습니다.
+
+## 언제 사용하나요
+
+부작용, 비용, 사용자 영향이 있는 도구 호출에 사용합니다.
+
+예시는 다음과 같습니다.
+
+- 이메일이나 Slack 메시지 전송
+- 데이터베이스 쓰기
+- 환불 처리
+- 외부 API 호출
+- 삭제, 결제, 대량 작업처럼 위험도가 높은 행동
+
+## 동작 방식
+
+`beforeCall` callback을 제공합니다. SDK는 도구를 실행하기 전에 이 callback을 호출합니다. callback은 `ALLOW`, `WARN`, `BLOCK`, `REQUIRE_APPROVAL` 같은 정책 판단을 반환합니다.
+
+정책 판단은 세션에 함께 기록됩니다. 차단 판단이 나오면 SDK는 `LynxPolicyError`를 던집니다.
+
+## 예시
 
 ```ts
-import { LynxPolicyError } from "@lynx/sdk";
+import { LynxPolicyError } from "@lynxops/sdk";
 
 const refund = lynx.guardTool(
-  "refund",
+  "refund.create",
   async ({ amount }: { amount: number }) => {
     return { refunded: amount };
   },
@@ -17,12 +37,21 @@ const refund = lynx.guardTool(
     riskLevel: "HIGH",
     sideEffect: true,
     failureMode: "FAIL_CLOSED",
-    beforeCall: ({ input }) => ({
-      action: input.amount <= 100 ? "ALLOW" : "BLOCK",
-      policyId: "refund-limit",
-      reason: "Refund amount is over the limit",
-      severity: "HIGH",
-    }),
+    beforeCall: ({ input }) => {
+      if (input.amount > 100) {
+        return {
+          action: "BLOCK",
+          policyId: "refund-limit",
+          reason: "승인된 환불 한도를 초과했습니다",
+          severity: "HIGH",
+        };
+      }
+
+      return {
+        action: "ALLOW",
+        policyId: "refund-limit",
+      };
+    },
   },
 );
 
@@ -37,27 +66,44 @@ try {
 
 ## 정책 판단
 
-`beforeCall`은 다음 action 중 하나를 반환할 수 있습니다.
-
 | Action | 동작 |
 | --- | --- |
-| `ALLOW` | 도구를 실행합니다. |
-| `WARN` | 도구를 실행하고 warning을 기록합니다. |
+| `ALLOW` | 도구를 실행하고 정책 판단을 기록합니다. |
+| `WARN` | 도구를 실행하고 경고를 기록합니다. |
 | `BLOCK` | 도구를 차단하고 `LynxPolicyError`를 던집니다. |
 | `REQUIRE_APPROVAL` | 도구를 차단하고 `LynxPolicyError`를 던집니다. |
-| `REDACT` | 판단을 기록합니다. 실제 redaction은 policy callback에서 적용한 뒤 도구에 넘기세요. |
-| `MODIFY` | 판단을 기록합니다. 실제 modification은 policy callback에서 적용한 뒤 도구에 넘기세요. |
+| `REDACT` | 판단을 기록합니다. 실제 마스킹은 callback에서 적용한 뒤 도구를 허용하세요. |
+| `MODIFY` | 판단을 기록합니다. 실제 수정은 callback에서 적용한 뒤 도구를 허용하세요. |
 
-## Failure mode
+## 실패 모드
 
 정책 평가 자체가 실패하면 `failureMode`에 따라 동작이 달라집니다.
 
 | Failure mode | 동작 |
 | --- | --- |
-| `FAIL_OPEN` | 도구 호출은 허용하고 policy error를 기록합니다. |
+| `FAIL_OPEN` | 도구 호출을 허용하고 정책 오류를 기록합니다. |
 | `FAIL_CLOSED` | 도구 호출을 차단합니다. |
 | `REQUIRE_APPROVAL` | `REQUIRE_APPROVAL` 상태로 차단합니다. |
 
+## Lynx에서 확인할 수 있는 것
+
+Lynx에서 다음 정보를 확인할 수 있습니다.
+
+- 도구 호출에 대한 정책 판단
+- 허용, 경고, 차단, 승인 필요 여부
+- 정책 ID와 정책 버전
+- 세션 타임라인의 차단된 도구 호출
+- 관련 오류와 원인 후보
+
 ## 서버 가용성
 
-가드레일 판단은 로컬에서 이루어집니다. Lynx 서버가 내려가도 SDK는 계속 정책을 평가합니다. 정책 판단 데이터는 큐에 보관했다가 나중에 다시 전송합니다.
+가드레일 판단은 로컬에서 실행됩니다. Lynx API에 접근할 수 없어도 SDK는 `beforeCall` callback을 평가합니다. 정책 판단 이벤트는 큐에 보관했다가 나중에 다시 전송합니다.
+
+## 주의할 점
+
+정책 판단 없이 실행되면 위험한 고위험 도구에는 `FAIL_CLOSED`를 사용하세요. 낮은 위험도의 도구에서 서비스 가용성이 더 중요하다면 `FAIL_OPEN`을 사용할 수 있습니다.
+
+## 다음 단계
+
+- [LLM과 도구 연결하기](/ko/sdk/instrumentation)
+- [전송과 안정성 이해하기](/ko/sdk/delivery)

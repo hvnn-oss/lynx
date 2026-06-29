@@ -1,21 +1,38 @@
 ---
 title: "API reference"
-description: "Reference for the primary Lynx SDK classes, helpers, and options."
+description: "Reference for LynxTracer, the default lynx instance, guardrail errors, and SDK options."
 ---
+
+This page summarizes the primary SDK APIs. Use the feature guides for longer examples.
 
 ## `LynxTracer`
 
-Main telemetry collector.
+`LynxTracer` records events, manages the active run context, and delivers event batches to Lynx.
 
 ```ts
-import { LynxTracer } from "@lynx/sdk";
+import { LynxTracer } from "@lynxops/sdk";
 
-const lynx = new LynxTracer(config);
+const lynx = new LynxTracer({
+  clientId: "support-api",
+  apiKey: process.env.LYNX_API_KEY,
+});
 ```
+
+## `lynx`
+
+`lynx` is a default tracer configured from environment variables.
+
+```ts
+import { lynx } from "@lynxops/sdk";
+```
+
+Use this for simple applications. Use `new LynxTracer()` when you need explicit configuration per process, tenant, or test.
+
+## Run methods
 
 ### `run(agentName, callback)`
 
-Runs code inside a Lynx trace context.
+Runs code inside a Lynx context.
 
 ```ts
 await lynx.run("SupportAgent", async () => {
@@ -25,7 +42,7 @@ await lynx.run("SupportAgent", async () => {
 
 ### `run(options, callback)`
 
-Use structured run metadata.
+Runs code with structured run metadata.
 
 ```ts
 await lynx.run(
@@ -36,58 +53,85 @@ await lynx.run(
     sessionId: "session_123",
   },
   async () => {
-    // agent work
+    // Agent work
   },
 );
 ```
 
-### Semantic helpers
+## Semantic helpers
 
 | Method | Purpose |
 | --- | --- |
-| `userInput(input, metadata?)` | Capture user input. |
-| `decision(reasonOrDecision, options?)` | Capture an agent decision. |
-| `context(labelOrData, dataOrMetadata?)` | Capture retrieved or constructed context. |
-| `memory(label, payload)` | Capture memory access. |
-| `outcome(options)` | Capture final session outcome. |
-| `setAttributes(attributes)` | Attach attributes to later events in the run. |
-| `annotate(label, payload)` | Capture a custom annotation. |
-| `log(label, payload)` | Capture a custom context alert. |
+| `userInput(input, metadata?)` | Records user input. |
+| `decision(reasonOrDecision, options?)` | Records an agent decision. |
+| `context(labelOrData, dataOrMetadata?, metadata?)` | Records retrieved or constructed context. |
+| `memory(operation, data, metadata?)` | Records memory access. |
+| `outcome(options)` | Records the final technical and business outcome. |
+| `setAttributes(attributes)` | Attaches attributes to later events in the current run. |
+| `annotate(label, payload)` | Records a custom breadcrumb. |
+| `log(label, payload)` | Records a custom context event. |
 
-### Instrumentation helpers
-
-| Method | Purpose |
-| --- | --- |
-| `instrumentLLM(client, options?)` | Wrap an LLM client object. |
-| `instrumentTool(name, fn, metadata?)` | Wrap a tool function. |
-| `guardTool(name, fn, options)` | Wrap a tool with local policy evaluation. |
-
-### Delivery helpers
+## LLM and tool helpers
 
 | Method | Purpose |
 | --- | --- |
-| `flush()` | Send queued telemetry now. |
-| `shutdown(options?)` | Clear timers and flush before exit. |
-| `getStatus()` | Read local queue, circuit breaker, and delivery status. |
+| `instrumentLLM(client, options?)` | Wraps an LLM client object. |
+| `instrumentTool(name, fn, metadata?)` | Wraps a tool function. |
+| `guardTool(name, fn, options?)` | Wraps a tool with local policy evaluation. |
+
+## Delivery helpers
+
+| Method | Purpose |
+| --- | --- |
+| `flush()` | Sends queued events now. |
+| `shutdown(options?)` | Clears timers and performs a best-effort final flush. |
+| `getStatus()` | Returns local queue, circuit breaker, and delivery state. |
 
 ## `LynxPolicyError`
 
-Thrown when `guardTool()` blocks a tool call.
+`guardTool()` throws `LynxPolicyError` when a tool call is blocked.
 
 ```ts
-import { LynxPolicyError } from "@lynx/sdk";
+import { LynxPolicyError } from "@lynxops/sdk";
 
 if (error instanceof LynxPolicyError) {
   console.log(error.action);
+  console.log(error.policyId);
+  console.log(error.reason);
 }
 ```
 
-## `lynx`
+## Configuration options
 
-Default tracer configured from environment variables.
+| Option | Description |
+| --- | --- |
+| `clientId` | Required client or service identifier. |
+| `endpoint` | Lynx API endpoint. Defaults to `https://api.lynxops.co`. |
+| `workspaceId` | Default workspace ID attached to events. |
+| `agentId` | Default agent ID attached to events. |
+| `apiKey` | API key for event ingestion. |
+| `appVersion` | Application version metadata. |
+| `deploymentId` | Deployment ID metadata. |
+| `environment` | Runtime environment metadata. |
+| `policyVersion` | Default policy version metadata. |
+| `sampleRate` | Sampling ratio from `0` to `1`. |
+| `captureInput` | Whether input fields may be recorded. |
+| `captureOutput` | Whether output fields may be recorded. |
+| `captureMode` | `full`, `metadata-only`, or `smart`. |
+| `maxPayloadLength` | Maximum string length kept in `smart` mode. |
+| `delivery.mode` | `BACKGROUND` or `BLOCKING`. |
+| `delivery.timeoutMs` | Timeout for one delivery request. |
+| `delivery.flushOnRunEnd` | Whether `run()` tries to flush after the callback finishes. |
+| `delivery.flushIntervalMs` | Background flush interval. |
+| `delivery.batchSize` | Event batch size. |
+| `delivery.maxQueueSize` | Maximum queued event count in memory. |
+| `delivery.overflowStrategy` | `DROP_OLDEST` or `DROP_NEWEST`. |
+| `circuitBreaker.enabled` | Enables delivery circuit breaker protection. |
+| `circuitBreaker.failureThreshold` | Consecutive failures before opening the breaker. |
+| `circuitBreaker.cooldownMs` | Cooldown before another send attempt. |
 
-```ts
-import { lynx } from "@lynx/sdk";
-```
+## Related pages
 
-Use this for simple applications. Use `new LynxTracer()` when you need explicit config per process, tenant, or test.
+- [Connect the SDK](/sdk/quickstart)
+- [Configure the SDK](/sdk/configuration)
+- [Track agent runs](/sdk/tracing)

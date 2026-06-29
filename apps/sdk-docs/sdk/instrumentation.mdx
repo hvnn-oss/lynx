@@ -1,16 +1,35 @@
 ---
-title: "Instrumentation"
-description: "Wrap LLM clients and tool functions without changing your application flow."
+title: "Wrap LLMs and tools"
+description: "Record LLM calls and tool calls without changing your application flow."
 ---
 
-## Instrument an LLM client
+The SDK can wrap LLM clients and tool functions so each call appears as part of the session timeline.
 
-`instrumentLLM()` returns a proxy with the same public shape as the original client. Known generation methods are captured automatically.
+## When to use this
+
+Use this page when you want to inspect:
+
+- Which model was called
+- What input and output were sent
+- How long the call took
+- Token usage and estimated cost when available
+- Which tool ran, with what arguments, and whether it failed
+
+## Wrap an LLM client
+
+`instrumentLLM()` returns a proxy with the same public shape as the original client. Known generation methods are recorded automatically.
 
 ```ts
-const openai = lynx.instrumentLLM(new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-}));
+import OpenAI from "openai";
+
+const openai = lynx.instrumentLLM(
+  new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  }),
+  {
+    modelLabel: "openai",
+  },
+);
 
 await lynx.run("SupportAgent", async () => {
   const response = await openai.chat.completions.create({
@@ -23,15 +42,15 @@ await lynx.run("SupportAgent", async () => {
 });
 ```
 
-Lynx records model metadata, latency, token usage when available, span IDs, and errors.
+Lynx records model metadata, input and output according to your capture settings, latency, token usage when available, span IDs, and errors.
 
-## Instrument a tool
+## Wrap a tool
 
-Use `instrumentTool()` for normal telemetry. Use `guardTool()` when you also need a policy check.
+Use `instrumentTool()` when you want to record a tool call without adding a policy check.
 
 ```ts
 const searchOrders = lynx.instrumentTool(
-  "search_orders",
+  "orders.search",
   async ({ userId }: { userId: string }) => {
     return db.orders.findMany({ where: { userId } });
   },
@@ -48,9 +67,11 @@ await lynx.run("SupportAgent", async () => {
 });
 ```
 
-## Custom LLM interception
+Use `guardTool()` instead when the tool needs a policy check before it runs.
 
-If your client uses non-standard method names, pass a custom rule.
+## Custom LLM clients
+
+If your client uses custom method names, pass a custom rule.
 
 ```ts
 const model = lynx.instrumentLLM(customClient, {
@@ -63,3 +84,23 @@ const model = lynx.instrumentLLM(customClient, {
   },
 });
 ```
+
+## What you can see in Lynx
+
+After wrapping LLMs and tools, Lynx can show:
+
+- LLM calls in the session timeline
+- Tool calls and tool results
+- Failed or slow calls
+- Retry patterns and repeated call loops
+- Token usage, latency, and cost signals
+- Related session and trace links
+
+## Security note
+
+LLM inputs, model outputs, tool arguments, and tool results may contain sensitive data. Use `metadata-only`, `captureInput: false`, `captureOutput: false`, or application-level redaction when needed.
+
+## Next steps
+
+- [Track agent runs](/sdk/tracing)
+- [Use local guardrails](/sdk/guardrails)

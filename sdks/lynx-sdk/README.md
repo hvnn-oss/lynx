@@ -1,55 +1,118 @@
 # Lynx SDK
 
-TypeScript SDK for collecting AI agent telemetry and sending it to a Lynx server.
+TypeScript SDK for tracing, debugging, and governing AI agent runs with Lynx.
 
-The SDK is designed for production AI services. Telemetry delivery errors do not stop the application by default. Events are queued in memory, sent in batches, retried with backoff, and protected by a circuit breaker.
+Lynx records what happened during an agent run: user input, agent decisions,
+LLM calls, tool calls, context loading, policy decisions, retries, errors, and
+the final outcome. The SDK is designed for production services, so event
+delivery failures do not stop your application by default.
 
-## Install
+## Installation
 
 ```bash
-pnpm add @repo/sdk
+pnpm add @lynxops/sdk
 ```
 
-## Basic Usage
+```bash
+npm install @lynxops/sdk
+```
+
+```bash
+yarn add @lynxops/sdk
+```
+
+## Quick Start
 
 ```ts
-import { LynxTracer } from "@repo/sdk";
+import { LynxTracer } from "@lynxops/sdk";
 
 const lynx = new LynxTracer({
   clientId: "support-api",
   apiKey: process.env.LYNX_API_KEY,
+  workspaceId: process.env.LYNX_WORKSPACE_ID,
+  environment: "production",
 });
 
 await lynx.run("SupportAgent", async () => {
   lynx.userInput("I want a refund", { userId: "usr_123" });
   lynx.setAttributes({ orderId: "order_123" });
-  lynx.context("refund-policy", { refundWindowDays: 30 });
+
+  lynx.context("refund-policy", {
+    refundWindowDays: 30,
+  });
+
   lynx.decision({
     name: "select_refund_workflow",
     selected: "refund",
     confidence: 0.82,
     reason: "Order is inside the refund window",
   });
+
+  lynx.outcome({
+    status: "COMPLETED",
+    businessStatus: "SUCCEEDED",
+    reason: "Refund request was accepted",
+  });
 });
 ```
 
-## Production Delivery
+By default, events are sent to:
 
-These are the production-oriented defaults:
+```text
+https://api.lynxops.co
+```
 
-- `delivery.mode`: `"BACKGROUND"`
-- `delivery.timeoutMs`: `1000`
-- `delivery.flushOnRunEnd`: `false`
-- `delivery.flushIntervalMs`: `3000`
-- `delivery.batchSize`: `50`
-- `circuitBreaker.enabled`: `true`
-- `circuitBreaker.failureThreshold`: `3`
-- `circuitBreaker.cooldownMs`: `30000`
+Use `endpoint` or `LYNX_ENDPOINT` for local development or self-hosted
+deployments.
+
+## Default Instance
+
+The SDK exports a default `lynx` instance configured from environment
+variables.
+
+```ts
+import { lynx } from "@lynxops/sdk";
+
+await lynx.run("ResearchAgent", async () => {
+  lynx.userInput("Find the latest invoice policy");
+  lynx.decision("search internal docs first");
+});
+```
+
+```bash
+LYNX_CLIENT_ID=support-api
+LYNX_API_KEY=lynx_sk_...
+LYNX_WORKSPACE_ID=...
+LYNX_ENVIRONMENT=production
+```
+
+## Production Delivery Model
+
+The SDK prioritizes your application over event delivery.
+
+Production-oriented defaults:
+
+| Option | Default |
+| --- | --- |
+| `endpoint` | `https://api.lynxops.co` |
+| `delivery.mode` | `BACKGROUND` |
+| `delivery.timeoutMs` | `1000` |
+| `delivery.flushOnRunEnd` | `false` |
+| `delivery.flushIntervalMs` | `3000` |
+| `delivery.batchSize` | `50` |
+| `delivery.maxQueueSize` | `1000` |
+| `delivery.overflowStrategy` | `DROP_OLDEST` |
+| `circuitBreaker.enabled` | `true` |
+| `circuitBreaker.failureThreshold` | `3` |
+| `circuitBreaker.cooldownMs` | `30000` |
+
+Recommended production configuration:
 
 ```ts
 const lynx = new LynxTracer({
   clientId: "support-api",
   apiKey: process.env.LYNX_API_KEY,
+  workspaceId: process.env.LYNX_WORKSPACE_ID,
 
   delivery: {
     mode: "BACKGROUND",
@@ -69,77 +132,162 @@ const lynx = new LynxTracer({
 });
 ```
 
-### Option Reference
+If the Lynx API is unavailable, the SDK:
 
-| Option                            | Default                    | Description                                                                                                  |
-| --------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `endpoint`                        | `"https://api.lynxops.co"` | Lynx server URL. Override this for self-hosted or local development.                                         |
-| `delivery.mode`                   | `"BACKGROUND"`             | `"BACKGROUND"` keeps HTTP delivery out of `run()`; `"BLOCKING"` may flush when the batch size is reached.    |
-| `delivery.timeoutMs`              | `1000`                     | Maximum duration for one telemetry HTTP request.                                                             |
-| `delivery.flushOnRunEnd`          | `false`                    | When `true`, `run()` tries to flush after the wrapped agent work finishes.                                   |
-| `delivery.flushIntervalMs`        | `3000`                     | Background flush interval in milliseconds.                                                                   |
-| `delivery.batchSize`              | `50`                       | Number of newly queued events that can trigger a flush in blocking mode.                                     |
-| `delivery.maxQueueSize`           | `1000`                     | Maximum number of queued telemetry events kept in memory.                                                    |
-| `delivery.overflowStrategy`       | `DROP_OLDEST`              | `DROP_OLDEST` keeps the newest events. `DROP_NEWEST` preserves the existing queue and drops incoming events. |
-| `circuitBreaker.enabled`          | `true`                     | Enables circuit breaker protection for telemetry delivery.                                                   |
-| `circuitBreaker.failureThreshold` | `3`                        | Number of consecutive failed sends before the breaker opens.                                                 |
-| `circuitBreaker.cooldownMs`       | `30000`                    | Time to wait before allowing another send attempt after the breaker opens.                                   |
+- catches network, timeout, and non-2xx delivery errors
+- queues events in memory
+- retries with backoff
+- opens a circuit breaker after repeated failures
+- drops events according to the configured overflow strategy when the queue is
+  full
 
-## What Happens If the Lynx Server Is Down?
+With the default background delivery mode, `run()` does not wait for event
+HTTP requests.
 
-The AI service keeps running.
+## Capturing Agent Runs
 
-When delivery fails, the SDK:
-
-- catches network, timeout, and non-2xx response errors
-- stores events in an in-memory retry buffer
-- applies exponential backoff
-- opens the circuit breaker after repeated failures
-- drops events according to `delivery.overflowStrategy` if the queue reaches `delivery.maxQueueSize`
-
-With the defaults, `run()` only records telemetry locally. HTTP delivery happens from the background timer, explicit `flush()`, or `shutdown()`.
-
-## Flush, Shutdown, and Status
-
-Use `flush()` when you want to send the current queue and keep using the SDK.
+Use `run()` as the unit of work for one agent execution.
 
 ```ts
-await lynx.flush();
+await lynx.run(
+  "InvoiceAgent",
+  async () => {
+    lynx.userInput("Can this invoice be paid?");
+    lynx.decision("verify vendor and payment policy");
+  },
+  {
+    workspaceId: "workspace_123",
+    agentId: "agent_invoice",
+    sessionId: "session_456",
+  },
+);
 ```
 
-Use `shutdown()` when the process is about to exit, when a serverless handler ends, or in tests. It clears the SDK timer and waits for pending telemetry sends. Pass `timeoutMs` to avoid waiting indefinitely.
+Useful identifiers:
+
+| Field | Purpose |
+| --- | --- |
+| `runId` | Unique execution id for one agent run. Generated automatically unless provided. |
+| `sessionId` | Groups multiple runs or events into a user-visible session. |
+| `workspaceId` | Tenant boundary for Lynx ingestion and dashboards. |
+| `agentId` | Stable agent identifier. |
+| `agentName` | Human-readable agent name shown in debugging views. |
+| `environment` | Runtime environment such as `production`, `staging`, or `local`. |
+| `appVersion` | Application release metadata. |
+| `deploymentId` | Deployment metadata for incident correlation. |
+| `promptVersion` | Prompt version metadata attached to LLM and reasoning events. |
+| `policyVersion` | Guardrail or policy version metadata. |
+
+## Semantic Events
+
+Prefer semantic helpers over raw event logging. They make Lynx debugging views
+more useful.
 
 ```ts
-await lynx.shutdown({ timeoutMs: 1000 });
+lynx.userInput("Book a flight to Seoul", { userId: "usr_123" });
+
+lynx.context("calendar-availability", {
+  daysLoaded: 14,
+  source: "calendar-api",
+});
+
+lynx.decision({
+  name: "choose_booking_tool",
+  selected: "flight_search",
+  alternatives: ["email_assistant", "manual_handoff"],
+  confidence: 0.76,
+  reason: "The user requested a travel booking action",
+});
+
+lynx.log("tool.timeout", {
+  error: "Travel API timed out",
+  toolName: "travel.search",
+});
+
+lynx.outcome({
+  status: "FAILED",
+  businessStatus: "FAILED",
+  reason: "The external travel API timed out",
+  userImpact: "MEDIUM",
+});
 ```
 
-Use `getStatus()` for local diagnostics.
+## Record LLM calls
+
+Use `instrumentLLM()` to wrap a model client. The returned proxy preserves the
+original client shape while recording supported model calls.
 
 ```ts
-const status = lynx.getStatus();
-console.log(status.circuitState, status.queueSize);
+const instrumentedClient = lynx.instrumentLLM(client, {
+  modelLabel: "openai.gpt-4.1-mini",
+});
+
+await lynx.run("SupportAgent", async () => {
+  await instrumentedClient.responses.create({
+    model: "gpt-4.1-mini",
+    input: "Summarize this support ticket",
+    metadata: {
+      promptVersion: "support-summary-v3",
+    },
+  });
+});
 ```
 
-## Guardrails
+## Record tool calls
 
-`guardTool()` evaluates policy locally through your `beforeCall` callback. Lynx server availability does not decide whether the tool is blocked.
+Use `instrumentTool()` to wrap a reusable tool function.
 
 ```ts
-import { LynxPolicyError } from "@repo/sdk";
+const postSlackMessage = lynx.instrumentTool(
+  "slack.postMessage",
+  async (input: { channel: string; text: string }) => {
+    return await slack.chat.postMessage(input);
+  },
+  {
+    sideEffect: true,
+    riskLevel: "MEDIUM",
+    externalTarget: "slack",
+  },
+);
+
+await postSlackMessage({
+  channel: "C123",
+  text: "Refund approved",
+});
+```
+
+## Local Guardrails
+
+`guardTool()` evaluates your policy locally before a tool runs. Lynx server
+availability does not decide whether the tool is blocked.
+
+```ts
+import { LynxPolicyError } from "@lynxops/sdk";
 
 const refund = lynx.guardTool(
-  "refund",
-  async ({ amount }: { amount: number }) => ({ refunded: amount }),
+  "refund.create",
+  async ({ amount }: { amount: number }) => {
+    return { refunded: amount };
+  },
   {
-    riskLevel: "HIGH",
     sideEffect: true,
+    riskLevel: "HIGH",
     failureMode: "FAIL_CLOSED",
-    beforeCall: ({ input }) => ({
-      action: input.amount <= 100 ? "ALLOW" : "BLOCK",
-      policyId: "refund-limit",
-      reason: "Refund amount is over the limit",
-      severity: "HIGH",
-    }),
+    beforeCall: ({ input }) => {
+      if (input.amount > 100) {
+        return {
+          action: "BLOCK",
+          policyId: "refund-limit",
+          reason: "Refund amount is over the approved limit",
+          severity: "HIGH",
+        };
+      }
+
+      return {
+        action: "ALLOW",
+        policyId: "refund-limit",
+      };
+    },
   },
 );
 
@@ -152,43 +300,171 @@ try {
 }
 ```
 
-If `beforeCall` returns `action: "BLOCK"` or `action: "REQUIRE_APPROVAL"`, the SDK blocks the tool call and records policy events. If the Lynx server is unavailable, those events are retried later, but the local block still happens.
+Policy behavior:
 
-If policy evaluation itself throws, `failureMode` decides what to do:
+| Policy result | Behavior |
+| --- | --- |
+| `ALLOW` | Runs the tool and records policy evaluation metadata. |
+| `WARN` | Runs the tool and records a warning. |
+| `BLOCK` | Blocks the tool and throws `LynxPolicyError`. |
+| `REQUIRE_APPROVAL` | Blocks the tool and throws `LynxPolicyError`. |
 
-| Failure Mode       | Behavior                                     |
-| ------------------ | -------------------------------------------- |
-| `FAIL_OPEN`        | Allow the tool call and record policy error. |
-| `FAIL_CLOSED`      | Block the tool call.                         |
-| `REQUIRE_APPROVAL` | Block with `action: "REQUIRE_APPROVAL"`.     |
+If policy evaluation itself throws, `failureMode` decides the fallback:
+
+| Failure mode | Behavior |
+| --- | --- |
+| `FAIL_OPEN` | Allows the tool call and records the policy error. |
+| `FAIL_CLOSED` | Blocks the tool call. |
+| `REQUIRE_APPROVAL` | Blocks with `action: "REQUIRE_APPROVAL"`. |
+
+## Capture Modes
+
+Lynx does not require you to store full payloads.
+
+| Mode | Behavior |
+| --- | --- |
+| `full` | Captures input and output payloads according to `captureInput` and `captureOutput`. |
+| `metadata-only` | Keeps structure, timing, token usage, cost, status, errors, tool names, and trace metadata without raw content. |
+| `smart` | Captures metadata for normal events and preserves richer detail for failures, policy violations, and abnormal latency. |
+
+```ts
+const lynx = new LynxTracer({
+  clientId: "support-api",
+  apiKey: process.env.LYNX_API_KEY,
+  captureMode: "smart",
+  maxPayloadLength: 16_000,
+});
+```
+
+## Flush, Shutdown, and Health
+
+Use `flush()` to send the current queue while keeping the SDK active.
+
+```ts
+await lynx.flush();
+```
+
+Use `shutdown()` when the process is about to exit, in serverless handlers, or
+in tests.
+
+```ts
+await lynx.shutdown({ timeoutMs: 1000 });
+```
+
+Use `getStatus()` for local diagnostics.
+
+```ts
+const status = lynx.getStatus();
+
+console.log({
+  queueSize: status.queueSize,
+  droppedEvents: status.droppedEvents,
+  circuitState: status.circuitState,
+  pendingTransmissions: status.pendingTransmissions,
+});
+```
+
+## Configuration Reference
+
+```ts
+const lynx = new LynxTracer({
+  clientId: "support-api",
+  endpoint: "https://api.lynxops.co",
+  workspaceId: "workspace_123",
+  agentId: "agent_support",
+  apiKey: process.env.LYNX_API_KEY,
+  appVersion: "2026.06.29",
+  deploymentId: "deploy_123",
+  environment: "production",
+  policyVersion: "policy_2026_06",
+  sampleRate: 1,
+  captureInput: true,
+  captureOutput: true,
+  captureMode: "smart",
+  maxPayloadLength: 16_000,
+  delivery: {
+    mode: "BACKGROUND",
+    timeoutMs: 1000,
+    flushOnRunEnd: false,
+    flushIntervalMs: 3000,
+    batchSize: 50,
+    maxQueueSize: 1000,
+    overflowStrategy: "DROP_OLDEST",
+  },
+  circuitBreaker: {
+    enabled: true,
+    failureThreshold: 3,
+    cooldownMs: 30_000,
+  },
+});
+```
+
+| Option | Description |
+| --- | --- |
+| `clientId` | Required service or client identifier. |
+| `endpoint` | Lynx API endpoint. Defaults to `https://api.lynxops.co`. |
+| `workspaceId` | Default workspace id attached to events. |
+| `agentId` | Default agent id attached to events. |
+| `apiKey` | Lynx ingestion API key. Sent as a bearer token. |
+| `appVersion` | Application version metadata. |
+| `deploymentId` | Deployment id metadata. |
+| `environment` | Runtime environment metadata. |
+| `policyVersion` | Default policy version metadata. |
+| `sampleRate` | Trace sampling ratio from `0` to `1`. |
+| `captureInput` | Whether input payloads can be captured. |
+| `captureOutput` | Whether output payloads can be captured. |
+| `captureMode` | `full`, `metadata-only`, or `smart`. |
+| `maxPayloadLength` | Maximum serialized payload length per event. |
+| `delivery.mode` | `BACKGROUND` or `BLOCKING`. |
+| `delivery.timeoutMs` | Timeout for one event delivery request. |
+| `delivery.flushOnRunEnd` | Whether `run()` tries to flush after the wrapped work finishes. |
+| `delivery.flushIntervalMs` | Background flush interval. |
+| `delivery.batchSize` | Batch size for delivery. |
+| `delivery.maxQueueSize` | Maximum queued events in memory. |
+| `delivery.overflowStrategy` | `DROP_OLDEST` or `DROP_NEWEST`. |
+| `circuitBreaker.enabled` | Enables delivery circuit breaker protection. |
+| `circuitBreaker.failureThreshold` | Consecutive delivery failures before opening the breaker. |
+| `circuitBreaker.cooldownMs` | Cooldown before retrying after the breaker opens. |
 
 ## Environment Variables
 
-The default `lynx` export reads these environment variables:
+The default `lynx` export reads these variables:
 
-| Variable                                 | Description                                                                      |
-| ---------------------------------------- | -------------------------------------------------------------------------------- |
-| `LYNX_CLIENT_ID`                         | Client or service identifier.                                                    |
-| `LYNX_ENDPOINT`                          | Optional override for the Lynx server URL. Defaults to `https://api.lynxops.co`. |
-| `LYNX_API_KEY`                           | API key used for ingestion.                                                      |
-| `LYNX_WORKSPACE_ID`                      | Default workspace id.                                                            |
-| `LYNX_AGENT_ID`                          | Default agent id.                                                                |
-| `LYNX_SAMPLE_RATE`                       | Sampling rate from `0` to `1`.                                                   |
-| `LYNX_CAPTURE_INPUT`                     | Whether to capture inputs.                                                       |
-| `LYNX_CAPTURE_OUTPUT`                    | Whether to capture outputs.                                                      |
-| `LYNX_CAPTURE_MODE`                      | `full`, `metadata-only`, or `smart`.                                             |
-| `LYNX_MAX_PAYLOAD_LENGTH`                | Maximum payload string length.                                                   |
-| `LYNX_APP_VERSION`                       | Application version metadata.                                                    |
-| `LYNX_DEPLOYMENT_ID`                     | Deployment id metadata.                                                          |
-| `LYNX_ENVIRONMENT`                       | Runtime environment metadata.                                                    |
-| `LYNX_POLICY_VERSION`                    | Policy version metadata.                                                         |
-| `LYNX_DELIVERY_MODE`                     | `BLOCKING` or `BACKGROUND`.                                                      |
-| `LYNX_DELIVERY_TIMEOUT_MS`               | Delivery timeout in milliseconds.                                                |
-| `LYNX_DELIVERY_FLUSH_ON_RUN_END`         | `true` or `false`.                                                               |
-| `LYNX_DELIVERY_FLUSH_INTERVAL_MS`        | Flush interval in milliseconds.                                                  |
-| `LYNX_DELIVERY_BATCH_SIZE`               | Batch size for blocking-mode flush triggers.                                     |
-| `LYNX_DELIVERY_MAX_QUEUE_SIZE`           | Maximum queued event count.                                                      |
-| `LYNX_DELIVERY_OVERFLOW_STRATEGY`        | `DROP_OLDEST` or `DROP_NEWEST`.                                                  |
-| `LYNX_CIRCUIT_BREAKER_ENABLED`           | `true` or `false`.                                                               |
-| `LYNX_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | Consecutive failure count before opening the breaker.                            |
-| `LYNX_CIRCUIT_BREAKER_COOLDOWN_MS`       | Circuit breaker cooldown in milliseconds.                                        |
+| Variable | Description |
+| --- | --- |
+| `LYNX_CLIENT_ID` | Client or service identifier. Defaults to `local_dev_env`. |
+| `LYNX_ENDPOINT` | Optional Lynx API endpoint override. |
+| `LYNX_API_KEY` | Lynx ingestion API key. |
+| `LYNX_WORKSPACE_ID` | Default workspace id. |
+| `LYNX_AGENT_ID` | Default agent id. |
+| `LYNX_SESSION_ID` | Default session id when `run()` does not receive one. |
+| `LYNX_SAMPLE_RATE` | Sampling rate from `0` to `1`. |
+| `LYNX_CAPTURE_INPUT` | `true` or `false`. |
+| `LYNX_CAPTURE_OUTPUT` | `true` or `false`. |
+| `LYNX_CAPTURE_MODE` | `full`, `metadata-only`, or `smart`. |
+| `LYNX_MAX_PAYLOAD_LENGTH` | Maximum payload string length. |
+| `LYNX_APP_VERSION` | Application version metadata. |
+| `LYNX_DEPLOYMENT_ID` | Deployment id metadata. |
+| `LYNX_ENVIRONMENT` | Runtime environment metadata. Falls back to `NODE_ENV`. |
+| `LYNX_POLICY_VERSION` | Default policy version metadata. |
+| `LYNX_DELIVERY_MODE` | `BACKGROUND` or `BLOCKING`. |
+| `LYNX_DELIVERY_TIMEOUT_MS` | Delivery timeout in milliseconds. |
+| `LYNX_DELIVERY_FLUSH_ON_RUN_END` | `true` or `false`. |
+| `LYNX_DELIVERY_FLUSH_INTERVAL_MS` | Flush interval in milliseconds. |
+| `LYNX_DELIVERY_BATCH_SIZE` | Batch size. |
+| `LYNX_DELIVERY_MAX_QUEUE_SIZE` | Maximum queued event count. |
+| `LYNX_DELIVERY_OVERFLOW_STRATEGY` | `DROP_OLDEST` or `DROP_NEWEST`. |
+| `LYNX_CIRCUIT_BREAKER_ENABLED` | `true` or `false`. |
+| `LYNX_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | Consecutive failure count before opening the breaker. |
+| `LYNX_CIRCUIT_BREAKER_COOLDOWN_MS` | Circuit breaker cooldown in milliseconds. |
+
+## Development
+
+```bash
+pnpm install
+pnpm build
+pnpm test
+```
+
+The SDK is ESM-first and also publishes a CommonJS build through package
+exports.

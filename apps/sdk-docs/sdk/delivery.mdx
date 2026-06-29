@@ -1,28 +1,36 @@
 ---
 title: "Delivery and reliability"
-description: "Understand background delivery, flushing, timeouts, retries, and circuit breaker behavior."
+description: "Understand background delivery, timeouts, flush behavior, queues, and the circuit breaker."
 ---
 
-Lynx is designed so telemetry failures do not stop your AI service by default.
+Lynx delivery is designed so event delivery problems do not stop your AI service by default.
+
+## When to use this
+
+Read this page before using the SDK in production, serverless functions, workers, or request paths where event delivery should not block user traffic.
+
+## How it works
+
+The SDK keeps events in memory and sends them in batches. Delivery runs in the background by default. If delivery fails, events move to a retry buffer and the SDK backs off. After repeated failures, the circuit breaker opens and pauses delivery attempts for a cooldown period.
 
 ## Production defaults
 
-| Option                            | Default         |
-| --------------------------------- | --------------- |
-| `delivery.mode`                   | `"BACKGROUND"`  |
-| `delivery.timeoutMs`              | `1000`          |
-| `delivery.flushOnRunEnd`          | `false`         |
-| `delivery.flushIntervalMs`        | `3000`          |
-| `delivery.batchSize`              | `50`            |
-| `delivery.maxQueueSize`           | `1000`          |
-| `delivery.overflowStrategy`       | `"DROP_OLDEST"` |
-| `circuitBreaker.enabled`          | `true`          |
-| `circuitBreaker.failureThreshold` | `3`             |
-| `circuitBreaker.cooldownMs`       | `30000`         |
+| Option | Default |
+| --- | --- |
+| `delivery.mode` | `"BACKGROUND"` |
+| `delivery.timeoutMs` | `1000` |
+| `delivery.flushOnRunEnd` | `false` |
+| `delivery.flushIntervalMs` | `3000` |
+| `delivery.batchSize` | `50` |
+| `delivery.maxQueueSize` | `1000` |
+| `delivery.overflowStrategy` | `"DROP_OLDEST"` |
+| `circuitBreaker.enabled` | `true` |
+| `circuitBreaker.failureThreshold` | `3` |
+| `circuitBreaker.cooldownMs` | `30000` |
 
 ## Background delivery
 
-In background mode, `run()` records events locally and returns without waiting for telemetry delivery. The SDK sends events from a timer, from explicit `flush()`, or from `shutdown()`.
+In background mode, `run()` records events locally and returns without waiting for event delivery.
 
 ```ts
 const lynx = new LynxTracer({
@@ -36,9 +44,15 @@ const lynx = new LynxTracer({
 });
 ```
 
-## Blocking delivery
+The SDK sends events from:
 
-Use blocking mode only when the current process must make a send attempt during the request lifecycle.
+- The background flush timer
+- An explicit `flush()` call
+- A `shutdown()` call
+
+## Blocking mode
+
+Use `BLOCKING` mode only when the current process should attempt delivery during the request lifecycle.
 
 ```ts
 const lynx = new LynxTracer({
@@ -52,13 +66,17 @@ const lynx = new LynxTracer({
 });
 ```
 
+Delivery errors are still handled inside the SDK. They do not become agent workflow errors.
+
 ## Flush and shutdown
+
+Use `flush()` when you want to send the current queue and keep using the SDK.
 
 ```ts
 await lynx.flush();
 ```
 
-Use `shutdown()` before the process exits.
+Use `shutdown()` before a process exits or at the end of a serverless handler when you want a best-effort final send.
 
 ```ts
 await lynx.shutdown({ timeoutMs: 1000 });
@@ -66,16 +84,36 @@ await lynx.shutdown({ timeoutMs: 1000 });
 
 ## Local status
 
+Use `getStatus()` to inspect local SDK delivery state.
+
 ```ts
 const status = lynx.getStatus();
 
 console.log(status.queueSize);
 console.log(status.circuitState);
 console.log(status.droppedEvents);
+console.log(status.pendingTransmissions);
 ```
 
-## If the Lynx server is down
+## If the Lynx API is unavailable
 
-The SDK catches network, timeout, and non-2xx response errors. Failed batches move to an in-memory retry queue. After repeated failures, the circuit breaker opens and pauses delivery attempts until the cooldown passes.
+Your service keeps running by default.
 
-If the queue reaches `maxQueueSize`, the SDK drops events according to `overflowStrategy`.
+The SDK:
+
+- Catches network, timeout, and non-2xx response errors
+- Moves failed batches into an in-memory retry queue
+- Uses backoff before retrying
+- Opens the circuit breaker after repeated failures
+- Drops events according to `overflowStrategy` when the queue is full
+
+## Notes
+
+Events are stored in memory, not on disk. If the process exits before events are sent, unsent events may be lost. Use `shutdown()` when graceful exit matters.
+
+Guardrail decisions run locally. The Lynx API being unavailable does not decide whether a guarded tool call is allowed or blocked.
+
+## Next steps
+
+- [Configure capture and delivery](/sdk/configuration)
+- [Use local guardrails](/sdk/guardrails)

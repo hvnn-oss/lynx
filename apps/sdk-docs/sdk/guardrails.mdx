@@ -1,15 +1,35 @@
 ---
 title: "Guardrails"
-description: "Evaluate local policy before risky tool calls run."
+description: "Run a local policy check before a risky tool call is executed."
 ---
 
-`guardTool()` wraps a tool function with a local policy check. The policy runs before the tool call. If the policy blocks, the tool function is not executed.
+`guardTool()` wraps a tool function with a local policy check. The policy runs before the tool call. If the policy blocks, the original tool function is not executed.
+
+## When to use this
+
+Use guardrails for tool calls that can have side effects, cost impact, or user impact.
+
+Examples:
+
+- Sending an email or Slack message
+- Writing to a database
+- Issuing a refund
+- Calling an external API
+- Running a destructive or high-cost action
+
+## How it works
+
+You provide a `beforeCall` callback. The SDK calls it before the tool runs. The callback returns a policy decision such as `ALLOW`, `WARN`, `BLOCK`, or `REQUIRE_APPROVAL`.
+
+The decision is recorded as part of the session. If the decision blocks the call, the SDK throws `LynxPolicyError`.
+
+## Example
 
 ```ts
-import { LynxPolicyError } from "@lynx/sdk";
+import { LynxPolicyError } from "@lynxops/sdk";
 
 const refund = lynx.guardTool(
-  "refund",
+  "refund.create",
   async ({ amount }: { amount: number }) => {
     return { refunded: amount };
   },
@@ -17,12 +37,21 @@ const refund = lynx.guardTool(
     riskLevel: "HIGH",
     sideEffect: true,
     failureMode: "FAIL_CLOSED",
-    beforeCall: ({ input }) => ({
-      action: input.amount <= 100 ? "ALLOW" : "BLOCK",
-      policyId: "refund-limit",
-      reason: "Refund amount is over the limit",
-      severity: "HIGH",
-    }),
+    beforeCall: ({ input }) => {
+      if (input.amount > 100) {
+        return {
+          action: "BLOCK",
+          policyId: "refund-limit",
+          reason: "Refund amount is over the approved limit",
+          severity: "HIGH",
+        };
+      }
+
+      return {
+        action: "ALLOW",
+        policyId: "refund-limit",
+      };
+    },
   },
 );
 
@@ -37,16 +66,14 @@ try {
 
 ## Policy decisions
 
-`beforeCall` can return these actions:
-
 | Action | Behavior |
 | --- | --- |
-| `ALLOW` | Run the tool. |
-| `WARN` | Run the tool and record the warning. |
-| `BLOCK` | Block the tool and throw `LynxPolicyError`. |
-| `REQUIRE_APPROVAL` | Block the tool and throw `LynxPolicyError`. |
-| `REDACT` | Record the decision. Apply redaction in your policy callback before allowing the tool. |
-| `MODIFY` | Record the decision. Apply modifications in your policy callback before allowing the tool. |
+| `ALLOW` | Runs the tool and records the policy decision. |
+| `WARN` | Runs the tool and records a warning. |
+| `BLOCK` | Blocks the tool and throws `LynxPolicyError`. |
+| `REQUIRE_APPROVAL` | Blocks the tool and throws `LynxPolicyError`. |
+| `REDACT` | Records the decision. Apply redaction in your callback before allowing the tool. |
+| `MODIFY` | Records the decision. Apply modifications in your callback before allowing the tool. |
 
 ## Failure modes
 
@@ -54,10 +81,29 @@ If policy evaluation itself throws, `failureMode` decides what happens.
 
 | Failure mode | Behavior |
 | --- | --- |
-| `FAIL_OPEN` | Allow the tool call and record a policy error. |
-| `FAIL_CLOSED` | Block the tool call. |
-| `REQUIRE_APPROVAL` | Block with `REQUIRE_APPROVAL`. |
+| `FAIL_OPEN` | Allows the tool call and records the policy error. |
+| `FAIL_CLOSED` | Blocks the tool call. |
+| `REQUIRE_APPROVAL` | Blocks with `REQUIRE_APPROVAL`. |
+
+## What you can see in Lynx
+
+Lynx can show:
+
+- The policy decision for a tool call
+- Whether a tool was allowed, warned, blocked, or required approval
+- The policy ID and policy version
+- The blocked tool call in the session timeline
+- Related errors and root cause candidates
 
 ## Server availability
 
-Guardrail decisions are local. If the Lynx server is unavailable, the SDK still evaluates the policy. Telemetry for the policy decision is queued and retried later.
+Guardrail decisions are local. If the Lynx API is unavailable, the SDK still evaluates your policy callback. The policy decision event is queued and retried later.
+
+## Notes
+
+Use `FAIL_CLOSED` for high-risk actions where running the tool without a valid policy decision would be unsafe. Use `FAIL_OPEN` for low-risk actions where availability is more important than strict blocking.
+
+## Next steps
+
+- [Wrap LLMs and tools](/sdk/instrumentation)
+- [Understand delivery behavior](/sdk/delivery)

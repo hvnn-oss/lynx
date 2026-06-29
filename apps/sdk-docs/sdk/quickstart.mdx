@@ -1,40 +1,47 @@
 ---
 title: "Quickstart"
-description: "Install Lynx SDK and capture your first AI agent run."
+description: "Install the Lynx SDK and record your first AI agent session."
 ---
 
-## Prerequisites
+This page shows the shortest path from installing the SDK to seeing an agent run in Lynx.
 
-- Node.js 18 or later
-- A Lynx API key
+## When to use this
 
-## Install
+Use this guide when you want to connect a TypeScript service and record one agent run with user input, context, a decision, and an outcome.
 
-```bash
-npm install @lynx/sdk
-```
+## Setup
 
-You can also use your package manager of choice:
+Install the SDK.
 
 ```bash
-pnpm add @lynx/sdk
-yarn add @lynx/sdk
+npm install @lynxops/sdk
 ```
 
-## Create a tracer
+You can also use pnpm or Yarn.
+
+```bash
+pnpm add @lynxops/sdk
+yarn add @lynxops/sdk
+```
+
+Create a tracer.
 
 ```ts
-import { LynxTracer } from "@lynx/sdk";
+import { LynxTracer } from "@lynxops/sdk";
 
 const lynx = new LynxTracer({
   clientId: "support-api",
   apiKey: process.env.LYNX_API_KEY,
+  workspaceId: process.env.LYNX_WORKSPACE_ID,
+  environment: "production",
 });
 ```
 
-## Trace an agent run
+If you omit `endpoint`, the SDK sends events to `https://api.lynxops.co`.
 
-Wrap your agent workflow in `run()`. Events captured inside the callback are attached to the same run context.
+## Example
+
+Wrap one agent execution in `run()`. Events recorded inside the callback are attached to the same run and session.
 
 ```ts
 await lynx.run("SupportAgent", async () => {
@@ -55,13 +62,24 @@ await lynx.run("SupportAgent", async () => {
   lynx.outcome({
     status: "COMPLETED",
     businessStatus: "SUCCEEDED",
+    reason: "Refund request was accepted",
   });
 });
 ```
 
-## Shut down gracefully
+## What you can see in Lynx
 
-For servers, call `shutdown()` in your process shutdown hook. For serverless functions, call it before the handler exits if you need a best-effort final flush.
+After the SDK sends events, Lynx can show:
+
+- The session timeline
+- The user input that started the run
+- Context loaded by the agent
+- Agent decisions and reasons
+- The final technical and business outcome
+
+## Shut down safely
+
+For long-running servers, call `shutdown()` in your shutdown hook. For serverless handlers, call it before the handler exits if you want a best-effort final flush.
 
 ```ts
 process.on("SIGTERM", () => {
@@ -70,6 +88,12 @@ process.on("SIGTERM", () => {
 ```
 
 <Note>
-  The default delivery mode is background-only. Telemetry failures do not throw
+  Delivery is background-only by default. Failed event delivery does not throw
   from your agent workflow.
 </Note>
+
+## Next steps
+
+- [Configure capture and delivery](/sdk/configuration)
+- [Track agent runs](/sdk/tracing)
+- [Wrap LLMs and tools](/sdk/instrumentation)

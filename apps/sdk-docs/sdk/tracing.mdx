@@ -1,21 +1,58 @@
 ---
-title: "Tracing agent runs"
-description: "Capture user input, context, decisions, memory access, and outcomes."
+title: "Track agent runs"
+description: "Record user input, context, decisions, memory access, and outcomes as one agent session."
 ---
 
-## Run context
+Use `run()` to create the execution context for one agent run. Events recorded inside the callback are connected to the same run and session.
 
-`run()` creates an async context. Every Lynx event recorded inside the callback is attached to the same run.
+## When to use this
+
+Use run tracking when you want to inspect the full path from user input to final outcome.
+
+## How it works
+
+`run()` creates an async context. The SDK attaches `runId`, `sessionId`, `workspaceId`, `agentId`, `spanId`, and `parentSpanId` to events recorded inside that context.
+
+Nested `run()` calls inherit the parent run and create child span relationships.
+
+## Example
 
 ```ts
 await lynx.run(
   {
     agentName: "SupportAgent",
     workspaceId: "workspace_123",
+    agentId: "agent_support",
     sessionId: "session_123",
   },
   async () => {
-    lynx.userInput("Where is my order?");
+    lynx.userInput("Where is my order?", { userId: "usr_123" });
+    lynx.setAttributes({ orderId: "order_123" });
+
+    lynx.context("account-state", {
+      plan: "pro",
+      renewalDate: "2026-07-01",
+    });
+
+    lynx.decision({
+      name: "choose_support_path",
+      selected: "lookup_order",
+      alternatives: ["ask_clarifying_question", "handoff"],
+      confidence: 0.81,
+      reason: "The user is asking about a specific order",
+    });
+
+    lynx.memory("read", {
+      key: "usr_123",
+      hit: true,
+      store: "customer-profile",
+    });
+
+    lynx.outcome({
+      status: "COMPLETED",
+      businessStatus: "SUCCEEDED",
+      reason: "The order status was returned to the user",
+    });
   },
 );
 ```
@@ -28,59 +65,34 @@ await lynx.run("SupportAgent", async () => {
 });
 ```
 
-## Semantic events
+## Semantic helpers
 
-Use semantic helpers instead of generic logs when possible.
+| Helper | Use it for |
+| --- | --- |
+| `userInput(input, metadata?)` | The user request or command that influenced the run. |
+| `context(label, data, metadata?)` | RAG results, loaded records, summaries, or selected context. |
+| `decision(reasonOrDecision, options?)` | A workflow choice, tool choice, branch, or reasoning step. |
+| `memory(operation, data, metadata?)` | Memory read, write, search, hit, or miss information. |
+| `outcome(options)` | The final technical and business result. |
+| `setAttributes(attributes)` | IDs and metadata that should be attached to later events. |
+| `annotate(label, payload)` | A custom breadcrumb for debugging. |
+| `log(label, payload)` | A custom context event when no semantic helper fits. |
 
-```ts
-lynx.userInput("I want to cancel my subscription", {
-  userId: "usr_123",
-});
+## What you can see in Lynx
 
-lynx.context("account-state", {
-  plan: "pro",
-  renewalDate: "2026-07-01",
-});
+Run tracking powers:
 
-lynx.decision({
-  name: "choose_retention_offer",
-  selected: "discount_offer",
-  alternatives: ["cancel_now", "pause_subscription"],
-  confidence: 0.74,
-  reason: "User has high engagement and renewal is soon",
-});
+- Session timelines
+- Agent decision history
+- Context and memory snapshots
+- Error and slow-step analysis
+- Root cause candidates with evidence
 
-lynx.memory("customer-profile", {
-  operation: "read",
-  key: "usr_123",
-  hit: true,
-});
+## Notes
 
-lynx.outcome({
-  status: "COMPLETED",
-  businessStatus: "SUCCEEDED",
-  reason: "Customer accepted the retention offer",
-});
-```
+Keep stable identifiers stable. Use the same `agentId` for the same agent across deployments. Use `appVersion`, `deploymentId`, and `promptVersion` when you need to compare behavior before and after a change.
 
-## Attributes
+## Next steps
 
-Use `setAttributes()` to attach stable request or business IDs to later events.
-
-```ts
-lynx.setAttributes({
-  tenantId: "tenant_123",
-  orderId: "order_123",
-});
-```
-
-## Custom annotations
-
-Use `annotate()` or `log()` for custom breadcrumbs that do not fit a semantic helper.
-
-```ts
-lynx.annotate("routing.selected", {
-  queue: "billing",
-  score: 0.91,
-});
-```
+- [Wrap LLMs and tools](/sdk/instrumentation)
+- [Use local guardrails](/sdk/guardrails)

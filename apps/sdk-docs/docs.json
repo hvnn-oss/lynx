@@ -27,16 +27,16 @@
           "primary": {
             "type": "button",
             "label": "Dashboard",
-            "href": "https://app.lynx.dev"
+            "href": "https://app.lynxops.co"
           }
         },
         "groups": [
           {
-            "group": "Get started",
+            "group": "Getting started",
             "pages": ["index", "sdk/quickstart", "sdk/configuration"]
           },
           {
-            "group": "Use the SDK",
+            "group": "SDK guides",
             "pages": [
               "sdk/tracing",
               "sdk/instrumentation",
@@ -80,7 +80,7 @@
             ]
           },
           {
-            "group": "레퍼런스",
+            "group": "API 레퍼런스",
             "pages": ["ko/sdk/api-reference"]
           }
         ]

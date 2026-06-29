@@ -1,26 +1,63 @@
 ---
-title: "에이전트 실행 추적"
-description: "사용자 입력, 컨텍스트, 판단, 메모리 접근, 결과를 기록합니다."
+title: "에이전트 실행 추적하기"
+description: "사용자 입력, 컨텍스트, 판단, 메모리 접근, 결과를 하나의 세션으로 기록합니다."
 ---
 
-## Run context
+`run()`은 하나의 에이전트 실행을 기록하는 기준입니다. callback 안에서 기록한 이벤트는 같은 실행과 세션에 연결됩니다.
 
-`run()`은 async context를 만듭니다. callback 안에서 기록한 모든 Lynx 이벤트는 같은 run에 연결됩니다.
+## 언제 사용하나요
+
+사용자 입력부터 최종 결과까지 어떤 흐름으로 실행됐는지 나중에 확인하고 싶을 때 사용합니다.
+
+## 동작 방식
+
+`run()`은 async context를 만듭니다. SDK는 그 안에서 기록된 이벤트에 `runId`, `sessionId`, `workspaceId`, `agentId`, `spanId`, `parentSpanId`를 붙입니다.
+
+중첩된 `run()`은 부모 실행을 이어받고, 자식 실행 단계(span)로 연결됩니다.
+
+## 예시
 
 ```ts
 await lynx.run(
   {
     agentName: "SupportAgent",
     workspaceId: "workspace_123",
+    agentId: "agent_support",
     sessionId: "session_123",
   },
   async () => {
-    lynx.userInput("주문이 어디 있나요?");
+    lynx.userInput("주문이 어디 있나요?", { userId: "usr_123" });
+    lynx.setAttributes({ orderId: "order_123" });
+
+    lynx.context("account-state", {
+      plan: "pro",
+      renewalDate: "2026-07-01",
+    });
+
+    lynx.decision({
+      name: "choose_support_path",
+      selected: "lookup_order",
+      alternatives: ["ask_clarifying_question", "handoff"],
+      confidence: 0.81,
+      reason: "사용자가 특정 주문 상태를 묻고 있습니다",
+    });
+
+    lynx.memory("read", {
+      key: "usr_123",
+      hit: true,
+      store: "customer-profile",
+    });
+
+    lynx.outcome({
+      status: "COMPLETED",
+      businessStatus: "SUCCEEDED",
+      reason: "주문 상태를 사용자에게 안내했습니다",
+    });
   },
 );
 ```
 
-Agent 이름만 넘겨도 됩니다.
+에이전트 이름만 넘길 수도 있습니다.
 
 ```ts
 await lynx.run("SupportAgent", async () => {
@@ -28,59 +65,36 @@ await lynx.run("SupportAgent", async () => {
 });
 ```
 
-## Semantic event
+## Semantic helper
 
-가능하면 generic log보다 semantic helper를 사용하세요. 나중에 대시보드와 디버깅 화면에서 훨씬 잘 읽힙니다.
+가능하면 일반 로그보다 의미가 분명한 helper를 사용하세요. Lynx 화면에서 실행 흐름을 더 쉽게 읽을 수 있습니다.
 
-```ts
-lynx.userInput("구독을 취소하고 싶어요", {
-  userId: "usr_123",
-});
+| Helper | 사용 목적 |
+| --- | --- |
+| `userInput(input, metadata?)` | 실행에 영향을 준 사용자 요청이나 명령입니다. |
+| `context(label, data, metadata?)` | RAG 결과, 로드한 레코드, 요약, 선택된 컨텍스트입니다. |
+| `decision(reasonOrDecision, options?)` | 워크플로우 선택, 도구 선택, 분기, 판단 단계입니다. |
+| `memory(operation, data, metadata?)` | 메모리 읽기, 쓰기, 검색, hit, miss 정보입니다. |
+| `outcome(options)` | 최종 기술 결과와 비즈니스 결과입니다. |
+| `setAttributes(attributes)` | 이후 이벤트에 붙일 공통 ID나 메타데이터입니다. |
+| `annotate(label, payload)` | 디버깅에 도움이 되는 커스텀 breadcrumb입니다. |
+| `log(label, payload)` | 다른 helper로 표현하기 어려운 커스텀 이벤트입니다. |
 
-lynx.context("account-state", {
-  plan: "pro",
-  renewalDate: "2026-07-01",
-});
+## Lynx에서 확인할 수 있는 것
 
-lynx.decision({
-  name: "choose_retention_offer",
-  selected: "discount_offer",
-  alternatives: ["cancel_now", "pause_subscription"],
-  confidence: 0.74,
-  reason: "사용자의 사용량이 높고 갱신일이 가깝습니다",
-});
+실행 추적 데이터는 다음 화면의 기반이 됩니다.
 
-lynx.memory("customer-profile", {
-  operation: "read",
-  key: "usr_123",
-  hit: true,
-});
+- 세션 타임라인
+- 에이전트 판단 이력
+- 컨텍스트와 메모리 스냅샷
+- 오류와 느린 실행 단계 분석
+- 관련 근거가 있는 원인 후보
 
-lynx.outcome({
-  status: "COMPLETED",
-  businessStatus: "SUCCEEDED",
-  reason: "고객이 retention offer를 수락했습니다",
-});
-```
+## 주의할 점
 
-## Attributes
+같은 에이전트는 배포가 바뀌어도 같은 `agentId`를 사용하는 것이 좋습니다. 변경 전후 동작을 비교해야 한다면 `appVersion`, `deploymentId`, `promptVersion`을 함께 기록하세요.
 
-`setAttributes()`로 이후 이벤트에 공통 request ID나 business ID를 붙일 수 있습니다.
+## 다음 단계
 
-```ts
-lynx.setAttributes({
-  tenantId: "tenant_123",
-  orderId: "order_123",
-});
-```
-
-## Custom annotation
-
-Semantic helper로 표현하기 어려운 breadcrumb는 `annotate()` 또는 `log()`를 사용하세요.
-
-```ts
-lynx.annotate("routing.selected", {
-  queue: "billing",
-  score: 0.91,
-});
-```
+- [LLM과 도구 연결하기](/ko/sdk/instrumentation)
+- [가드레일 사용하기](/ko/sdk/guardrails)

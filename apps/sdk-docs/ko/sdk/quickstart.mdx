@@ -1,44 +1,51 @@
 ---
-title: "?쒖옉?섍린"
-description: "Lynx SDK瑜??ㅼ튂?섍퀬 泥?踰덉㎏ AI ?먯씠?꾪듃 ?ㅽ뻾??湲곕줉?⑸땲??"
+title: "시작하기"
+description: "Lynx SDK를 설치하고 첫 번째 AI 에이전트 세션을 기록합니다."
 ---
 
-## 以鍮꾨Ъ
+이 문서는 SDK 설치부터 첫 번째 에이전트 실행을 Lynx에서 확인하는 단계까지 안내합니다.
 
-- Node.js 18 ?댁긽
-- Lynx API key
+## 언제 사용하나요
 
-## ?ㅼ튂
+TypeScript 서비스에 Lynx를 처음 연결하고, 사용자 입력, 컨텍스트, 판단, 결과가 하나의 세션으로 기록되는지 확인할 때 사용합니다.
 
-```bash
-npm install @lynx/sdk
-```
+## 설정하기
 
-?ㅻⅨ ?⑦궎吏 留ㅻ땲?瑜??ъ슜?대룄 ?⑸땲??
+SDK를 설치합니다.
 
 ```bash
-pnpm add @lynx/sdk
-yarn add @lynx/sdk
+npm install @lynxops/sdk
 ```
 
-## Tracer 留뚮뱾湲?
+pnpm이나 Yarn도 사용할 수 있습니다.
+
+```bash
+pnpm add @lynxops/sdk
+yarn add @lynxops/sdk
+```
+
+tracer를 만듭니다.
 
 ```ts
-import { LynxTracer } from "@lynx/sdk";
+import { LynxTracer } from "@lynxops/sdk";
 
 const lynx = new LynxTracer({
   clientId: "support-api",
   apiKey: process.env.LYNX_API_KEY,
+  workspaceId: process.env.LYNX_WORKSPACE_ID,
+  environment: "production",
 });
 ```
 
-## ?먯씠?꾪듃 ?ㅽ뻾 異붿쟻?섍린
+`endpoint`를 생략하면 SDK는 `https://api.lynxops.co`로 이벤트를 보냅니다.
 
-?먯씠?꾪듃 workflow瑜?`run()`?쇰줈 媛먯떥?몄슂. callback ?덉뿉??湲곕줉???대깽?몃뒗 紐⑤몢 媛숈? ?ㅽ뻾 而⑦뀓?ㅽ듃???곌껐?⑸땲??
+## 예시
+
+하나의 에이전트 실행을 `run()`으로 감쌉니다. callback 안에서 기록한 이벤트는 같은 실행과 세션에 연결됩니다.
 
 ```ts
 await lynx.run("SupportAgent", async () => {
-  lynx.userInput("?섎텋?섍퀬 ?띠뼱??, { userId: "usr_123" });
+  lynx.userInput("환불하고 싶어요", { userId: "usr_123" });
   lynx.setAttributes({ orderId: "order_123" });
 
   lynx.context("refund-policy", {
@@ -49,19 +56,30 @@ await lynx.run("SupportAgent", async () => {
     name: "select_refund_workflow",
     selected: "refund",
     confidence: 0.82,
-    reason: "二쇰Ц???섎텋 媛??湲곌컙 ?덉뿉 ?덉뒿?덈떎",
+    reason: "주문이 환불 가능 기간 안에 있습니다",
   });
 
   lynx.outcome({
     status: "COMPLETED",
     businessStatus: "SUCCEEDED",
+    reason: "환불 요청을 접수했습니다",
   });
 });
 ```
 
-## ?덉쟾?섍쾶 醫낅즺?섍린
+## Lynx에서 확인할 수 있는 것
 
-?쒕쾭?먯꽌???꾨줈?몄뒪 醫낅즺 hook?먯꽌 `shutdown()`???몄텧?섏꽭?? ?쒕쾭由ъ뒪 ?⑥닔?먯꽌??handler媛 ?앸굹湲??꾩뿉 留덉?留??꾩넚??理쒕???留덈Т由ы빐???????몄텧?섎㈃ ?⑸땲??
+SDK가 이벤트를 보내면 Lynx에서 다음 정보를 확인할 수 있습니다.
+
+- 세션 타임라인
+- 실행을 시작한 사용자 입력
+- 에이전트가 사용한 컨텍스트
+- 에이전트 판단과 이유
+- 최종 실행 결과와 비즈니스 결과
+
+## 안전하게 종료하기
+
+서버에서는 종료 hook에서 `shutdown()`을 호출합니다. 서버리스 함수에서는 마지막 전송을 최대한 마무리하고 싶을 때 handler가 끝나기 전에 호출합니다.
 
 ```ts
 process.on("SIGTERM", () => {
@@ -70,6 +88,12 @@ process.on("SIGTERM", () => {
 ```
 
 <Note>
-  湲곕낯 ?꾩넚 諛⑹떇? background-only?낅땲?? ?섏쭛 ?곗씠???꾩넚???ㅽ뙣?대룄
-  ?먯씠?꾪듃 workflow???덉쇅濡??꾪뙆?섏? ?딆뒿?덈떎.
+  기본 전송 방식은 백그라운드 전송입니다. 이벤트 전송에 실패해도 에이전트
+  실행 흐름에 예외를 던지지 않습니다.
 </Note>
+
+## 다음 단계
+
+- [설정하기](/ko/sdk/configuration)
+- [에이전트 실행 추적하기](/ko/sdk/tracing)
+- [LLM과 도구 연결하기](/ko/sdk/instrumentation)
