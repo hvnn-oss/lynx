@@ -21,6 +21,7 @@ const tsconfigPath = join(sdkRepoPath, "tsconfig.json");
 const rootTypesPath = join(sdkRepoPath, "src", "types.ts");
 const coreTypesPath = join(sdkRepoPath, "src", "core", "types.ts");
 const indexPath = join(sdkRepoPath, "src", "index.ts");
+const versionPath = join(sdkRepoPath, "src", "version.ts");
 
 const packageJson = readJson(packageJsonPath);
 const nextVersion =
@@ -50,22 +51,27 @@ packageJson.repository = {
 packageJson.bugs = {
   url: "https://github.com/hvnn-oss/lynx-sdk/issues",
 };
-packageJson.homepage = "https://github.com/hvnn-oss/lynx-sdk#readme";
+packageJson.homepage = "https://docs.lynxops.co";
 packageJson.publishConfig = {
   access: "public",
   provenance: true,
 };
+packageJson.engines = {
+  node: ">=18",
+};
+packageJson.sideEffects = false;
 
 packageJson.dependencies = removeInternalPackages(packageJson.dependencies);
 delete packageJson.scripts?.prebuild;
+delete packageJson.scripts?.obfuscate;
+delete packageJson.scripts?.["build:prod"];
 packageJson.devDependencies = {
   ...removeInternalPackages(packageJson.devDependencies),
   "@types/node": packageJson.devDependencies?.["@types/node"] ?? "^25.9.1",
-  "javascript-obfuscator":
-    packageJson.devDependencies?.["javascript-obfuscator"] ?? "^4.1.1",
   tsup: packageJson.devDependencies?.tsup ?? "^8.3.5",
   typescript: packageJson.devDependencies?.typescript ?? "^5.9.2",
 };
+delete packageJson.devDependencies["javascript-obfuscator"];
 
 writeJson(packageJsonPath, packageJson);
 writeJson(tsconfigPath, {
@@ -94,6 +100,7 @@ writeFileSync(
   `// Generated from packages/sdk-types during OSS sync.\n${sdkTypesSource}`,
 );
 writeFileSync(coreTypesPath, `export * from "../types.js";\n`);
+writeFileSync(versionPath, `export const SDK_VERSION = "${nextVersion}";\n`);
 
 replaceSdkTypeImportsRecursively(join(sdkRepoPath, "src"));
 replaceInFile(indexPath, [[/@repo\/sdk/g, publicPackageName]]);
