@@ -4,15 +4,14 @@ import type {
   AdminOrganizationSearchItem,
   AdminOrganizationSearchResponse,
   AdminPlan,
+  AdminUpdateWorkspace,
   AdminWorkspace,
 } from "@/lib/admin-types";
 import { Button } from "@repo/ui/components/ui/button";
 import { Input } from "@repo/ui/components/ui/input";
 import { Label } from "@repo/ui/components/ui/label";
 import { Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { useFormStatus } from "react-dom";
-import { updateWorkspace } from "@/app/admin/actions";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 const SEARCH_DEBOUNCE_MS = 300;
 const SEARCH_LIMIT = 10;
@@ -33,7 +32,6 @@ export function OrganizationWorkspacePlanManager({
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
-  const [refreshVersion, setRefreshVersion] = useState(0);
 
   const activePlans = useMemo(
     () => plans.filter((plan) => plan.isActive),
@@ -101,7 +99,26 @@ export function OrganizationWorkspacePlanManager({
     void searchOrganizations();
 
     return () => controller.abort();
-  }, [debouncedQuery, refreshVersion]);
+  }, [debouncedQuery]);
+
+  function replaceWorkspace(updatedWorkspace: AdminWorkspace) {
+    setOrganizations((currentOrganizations) =>
+      currentOrganizations.map((organization) => {
+        if (organization.id !== updatedWorkspace.organization.id) {
+          return organization;
+        }
+
+        return {
+          ...organization,
+          workspaces: organization.workspaces.map((workspace) =>
+            workspace.id === updatedWorkspace.id ? updatedWorkspace : workspace,
+          ),
+        };
+      }),
+    );
+    setSelectedOrganizationId(updatedWorkspace.organization.id);
+    setSelectedWorkspaceId(updatedWorkspace.id);
+  }
 
   useEffect(() => {
     if (organizations.length === 0) {
@@ -269,7 +286,7 @@ export function OrganizationWorkspacePlanManager({
               plans={plans}
               workspace={selectedWorkspace}
               organizationId={selectedOrganization.id}
-              onSaved={() => setRefreshVersion((version) => version + 1)}
+              onSaved={replaceWorkspace}
             />
           </div>
         )}
@@ -289,8 +306,11 @@ function WorkspacePlanForm({
   plans: AdminPlan[];
   workspace?: AdminWorkspace;
   organizationId: string;
-  onSaved: () => void;
+  onSaved: (workspace: AdminWorkspace) => void;
 }) {
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
   if (!workspace) {
     return (
       <div className="flex min-h-56 items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">
@@ -302,13 +322,54 @@ function WorkspacePlanForm({
   const currentPlan = plans.find((plan) => plan.code === workspace.plan);
   const isCurrentPlanActive = currentPlan?.isActive ?? false;
 
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!workspace) {
+      return;
+    }
+
+    const formData = new FormData(event.currentTarget);
+    const body: AdminUpdateWorkspace = {
+      name: String(formData.get("name") ?? "").trim(),
+      organizationId: String(formData.get("organizationId") ?? "").trim(),
+      plan: String(formData.get("plan") ?? "").trim(),
+    };
+
+    setIsSaving(true);
+    setErrorMessage("");
+
+    try {
+      const response = await fetch(`/api/admin/workspaces/${workspace.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "워크스페이스 플랜 저장에 실패했습니다.");
+      }
+
+      const updatedWorkspace = (await response.json()) as AdminWorkspace;
+      onSaved(updatedWorkspace);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "워크스페이스 플랜 저장 중 문제가 발생했습니다.",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   return (
     <form
-      key={workspace.id}
-      action={async (formData) => {
-        await updateWorkspace(formData);
-        onSaved();
-      }}
+      key={`${workspace.id}:${workspace.plan}`}
+      onSubmit={handleSubmit}
       className="rounded-md border p-3"
     >
       <input type="hidden" name="id" value={workspace.id} />
@@ -362,9 +423,21 @@ function WorkspacePlanForm({
           )}
         </div>
         <div className="flex items-end">
-          <SubmitButton disabled={activePlans.length === 0} />
+          <Button
+            type="submit"
+            size="sm"
+            disabled={activePlans.length === 0 || isSaving}
+          >
+            {isSaving ? "저장 중" : "저장"}
+          </Button>
         </div>
       </div>
+
+      {errorMessage ? (
+        <p className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+          {errorMessage}
+        </p>
+      ) : null}
 
       <div className="mt-4 grid gap-2 text-xs text-muted-foreground md:grid-cols-3">
         <Metric label="현재 플랜" value={workspace.plan} />
@@ -386,16 +459,6 @@ function WorkspacePlanForm({
         />
       </div>
     </form>
-  );
-}
-
-function SubmitButton({ disabled }: { disabled: boolean }) {
-  const { pending } = useFormStatus();
-
-  return (
-    <Button type="submit" size="sm" disabled={disabled || pending}>
-      {pending ? "저장 중" : "저장"}
-    </Button>
   );
 }
 

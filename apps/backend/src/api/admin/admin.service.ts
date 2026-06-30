@@ -344,6 +344,7 @@ export class AdminService {
     workspace.name = dto.name;
     workspace.organization = organization;
     workspace.plan = plan.code as WorkspaceEntity['plan'];
+    workspace.planConfig = plan;
 
     await workspaceRepository.save(workspace);
     const reloaded = await workspaceRepository.findOneOrFail({

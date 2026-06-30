@@ -2,8 +2,10 @@
   "common": {
     "copy": "복사",
     "copied": "복사됨",
-    "saveChanges": "변경 사항 저장",
+    "saveChanges": "변경사항 저장",
     "saving": "저장 중",
+    "cancel": "취소",
+    "close": "닫기",
     "recommendedSetup": "권장 설정"
   },
   "empty": {
@@ -34,31 +36,87 @@
     },
     "security": {
       "title": "설정 원칙",
-      "description": "Lynx 설정은 관측 데이터 수집과 운영 제어를 분리합니다. SDK에는 최소 권한 키만 넣고, 정책·알림·통합 설정은 워크스페이스에서 관리하는 구조를 기준으로 합니다."
+      "description": "Lynx 설정은 실행 데이터 수집과 운영 제어를 분리합니다. SDK에는 최소 권한 키만 넣고, 정책·알림·통합 설정은 워크스페이스에서 관리하는 구조를 기준으로 합니다."
     }
   },
   "general": {
     "form": {
       "title": "워크스페이스 기본 정보",
-      "description": "운영 환경에서 표시되는 이름과 플랜을 관리합니다.",
+      "description": "운영 환경에서 표시되는 워크스페이스 이름을 관리합니다.",
       "name": "워크스페이스 이름",
-      "plan": "플랜"
+      "plan": "플랜",
+      "planReadonly": "요금제는 결제 완료 또는 관리자 승인 후에만 변경됩니다."
     }
   },
   "apiKeys": {
-    "current": {
-      "title": "수집 API 키",
-      "description": "SDK가 이벤트를 보낼 때 사용하는 워크스페이스 키입니다.",
-      "label": "현재 키",
-      "rotate": "키 회전",
-      "rotating": "회전 중"
+    "title": "API 키",
+    "description": "SDK가 이벤트를 보낼 때 사용하는 워크스페이스 키를 생성하고 관리합니다.",
+    "search": "이름, Tracking ID, 생성자로 검색",
+    "loading": "API 키를 불러오는 중입니다.",
+    "empty": "표시할 API 키가 없습니다.",
+    "never": "없음",
+    "results": "{count}개 결과",
+    "summary": "활성 키 {active}개 / 전체 {total}개",
+    "confirmRevoke": "이 API 키를 폐기할까요? 폐기된 키로는 더 이상 이벤트를 보낼 수 없습니다.",
+    "actions": {
+      "create": "새 secret key 만들기",
+      "edit": "API 키 수정",
+      "revoke": "API 키 폐기"
+    },
+    "filters": {
+      "active": "Active",
+      "all": "전체"
+    },
+    "created": {
+      "title": "새 API 키가 생성되었습니다.",
+      "description": "이 secret은 지금 한 번만 표시됩니다. 안전한 서버 환경 변수나 시크릿 매니저에 저장해 주세요."
+    },
+    "table": {
+      "name": "Name",
+      "status": "Status",
+      "trackingId": "Tracking ID",
+      "secret": "Secret Key",
+      "created": "Created",
+      "lastUsed": "Last used",
+      "createdBy": "Created by",
+      "permission": "Permissions",
+      "monthlySpend": "Monthly spend",
+      "actions": "Actions"
+    },
+    "status": {
+      "ACTIVE": "Active",
+      "REVOKED": "Revoked",
+      "EXPIRED": "Expired"
+    },
+    "permissions": {
+      "ALL": {
+        "label": "All",
+        "description": "이벤트 수집, 설정 조회, 정책 조회 권한을 모두 포함합니다."
+      },
+      "RESTRICTED": {
+        "label": "Restricted",
+        "description": "SDK 이벤트 수집에 필요한 events:write 권한만 포함합니다."
+      },
+      "READ_ONLY": {
+        "label": "Read only",
+        "description": "설정과 정책 조회만 허용합니다. 이벤트 수집에는 사용할 수 없습니다."
+      }
+    },
+    "dialog": {
+      "createTitle": "Create new secret key",
+      "editTitle": "Edit secret key",
+      "createDescription": "이 키는 선택한 워크스페이스에 묶입니다. 서버 환경 변수나 시크릿 매니저에서만 사용하세요.",
+      "editDescription": "키 이름과 권한 범위를 수정합니다. 이미 발급된 secret 값은 다시 표시되지 않습니다.",
+      "name": "Name",
+      "namePlaceholder": "예: production-ingest",
+      "permissions": "Permissions"
     },
     "safety": {
       "title": "키 운영 체크리스트",
       "items": {
-        "1": "서버 환경 변수나 시크릿 매니저에만 저장합니다.",
-        "2": "브라우저 번들, 클라이언트 로그, 공개 저장소에 포함하지 않습니다.",
-        "3": "유출이 의심되면 키를 회전하고 기존 배포 환경을 다시 시작합니다."
+        "1": "키는 서버 환경 변수나 시크릿 매니저에만 저장합니다.",
+        "2": "브라우저 번들, 클라이언트 로그, 공개 저장소에는 포함하지 않습니다.",
+        "3": "노출이 의심되면 새 키를 만든 뒤 기존 키를 즉시 폐기합니다."
       }
     }
   },
@@ -91,7 +149,7 @@
       "panelTitle": "멤버 운영 모델",
       "panelDescription": "현재 백엔드 권한 모델에 맞춰 Owner와 Admin 중심으로 워크스페이스 변경 권한을 분리합니다.",
       "items": {
-        "1": "Owner와 Admin만 API 키 회전, 플랜 변경, 워크스페이스 삭제를 수행합니다.",
+        "1": "Owner와 Admin만 API 키, 플랜, 워크스페이스 삭제를 관리합니다.",
         "2": "Member는 운영 데이터를 조회하되 설정 변경은 제한합니다.",
         "3": "초대, 비활성화, 역할 변경 이력은 조직 감사 로그에 남기는 구조가 적합합니다.",
         "4": "운영 대시보드 접근과 SDK 수집 키 관리는 별도 권한으로 분리할 수 있게 둡니다."
@@ -102,7 +160,7 @@
       "description": "설정 변경, 데이터 조회, 통합 관리 권한을 역할별로 정리합니다.",
       "status": "준비 중",
       "panelTitle": "권한 설계",
-      "panelDescription": "Datadog/Sentry처럼 역할별로 설정 변경 범위를 명확히 나누는 구조입니다.",
+      "panelDescription": "Datadog/Sentry처럼 역할별 설정 변경 범위를 명확히 나누는 구조입니다.",
       "items": {
         "1": "Owner는 조직·결제·워크스페이스 삭제를 포함한 전체 권한을 가집니다.",
         "2": "Admin은 워크스페이스 설정, API 키, 알림, 통합을 관리합니다.",
@@ -112,10 +170,10 @@
     },
     "billing": {
       "title": "플랜 및 결제",
-      "description": "플랜, 보존 기간, 사용량 한도를 운영 관점에서 확인합니다.",
+      "description": "플랜, 보존 기간, 사용량 한도를 운영 관리자에서 확인합니다.",
       "status": "준비 중",
       "panelTitle": "플랜 기준",
-      "panelDescription": "초기 제품에서는 플랜이 이벤트 보존 기간과 사용량 한도의 기준이 됩니다.",
+      "panelDescription": "초기 제품에서는 플랜을 이벤트 보존 기간과 사용량 한도 기준으로 관리합니다.",
       "items": {
         "1": "Free는 짧은 보존 기간과 제한된 이벤트 수로 개발·검증에 맞춥니다.",
         "2": "Pro는 운영 대시보드와 디버깅 기록을 충분히 볼 수 있는 기본 플랜입니다.",
@@ -138,11 +196,11 @@
       "description": "에러 그룹, 정책 차단, 비용 급증 같은 운영 이벤트를 외부 시스템으로 보냅니다.",
       "status": "준비 중",
       "panelTitle": "Webhook 설계",
-      "panelDescription": "장애 대응 도구나 내부 운영 시스템으로 Lynx 이벤트를 전달하는 설정입니다.",
+      "panelDescription": "알림 대상 도구나 내부 운영 시스템으로 Lynx 이벤트를 전달하는 설정입니다.",
       "items": {
-        "1": "전송 대상 URL, 서명 시크릿, 이벤트 타입 필터를 분리합니다.",
-        "2": "전송 실패는 재시도하고, 실패가 계속되면 통합 상태를 degraded로 표시합니다.",
-        "3": "raw payload 대신 이슈 요약, traceId, sessionId, severity 중심으로 보냅니다.",
+        "1": "전송 대상 URL, 서명 시크릿, 이벤트 대상 필터를 분리합니다.",
+        "2": "전송 실패는 재시도하고 실패가 계속되면 통합 상태를 degraded로 표시합니다.",
+        "3": "raw payload 대신 요약, traceId, sessionId, severity 중심으로 보냅니다.",
         "4": "정책 차단과 비용 급증 이벤트는 별도 채널로 라우팅할 수 있게 둡니다."
       }
     },
@@ -155,7 +213,7 @@
       "items": {
         "1": "Critical 이슈, 가드레일 차단, 실패율 급증만 기본 알림 대상으로 둡니다.",
         "2": "각 메시지에는 원인 후보, 영향받은 세션 수, 관련 trace 링크를 포함합니다.",
-        "3": "환경별 채널을 분리해 개발 알림이 프로덕션 대응 채널을 오염시키지 않게 합니다.",
+        "3": "환경별 채널을 분리해 개발 알림이 프로덕션 대응 채널을 어지럽히지 않게 합니다.",
         "4": "반복 알림은 그룹화하고 해결 상태가 바뀔 때만 다시 보냅니다."
       }
     },
@@ -166,7 +224,7 @@
       "panelTitle": "채널 운영",
       "panelDescription": "채널은 목적지이고, 어떤 이벤트를 보낼지는 알림 규칙에서 결정합니다.",
       "items": {
-        "1": "프로덕션 장애, 비용, 정책 위반 채널을 분리합니다.",
+        "1": "프로덕션 알림, 비용, 정책 위반 채널을 분리합니다.",
         "2": "채널별 전송 실패 상태와 마지막 성공 시간을 보여줍니다.",
         "3": "민감한 payload는 알림에 포함하지 않고 Lynx 상세 화면 링크로 연결합니다.",
         "4": "야간·주말 알림은 심각도 기준으로 제한할 수 있게 둡니다."
@@ -177,11 +235,11 @@
       "description": "실패율, 지연 시간, 비용, 정책 차단 기준으로 알림을 만듭니다.",
       "status": "준비 중",
       "panelTitle": "규칙 기준",
-      "panelDescription": "알림은 로그 건수가 아니라 운영자가 행동해야 하는 변화 중심으로 잡습니다.",
+      "panelDescription": "알림은 로그 건수가 아니라 운영자가 행동해야 하는 변화 중심으로 만듭니다.",
       "items": {
         "1": "실패율 급증, p95 지연 증가, 비용 급증, 정책 차단 증가를 기본 조건으로 둡니다.",
         "2": "조건은 워크스페이스, 환경, 에이전트, 모델, 도구 단위로 좁힐 수 있어야 합니다.",
-        "3": "동일 원인 반복은 하나의 이슈로 묶고 알림 피로도를 낮춥니다.",
+        "3": "동일 원인 반복은 하나의 이슈로 묶고 알림 피로를 줄입니다.",
         "4": "알림에는 항상 원인 후보와 관련 세션/trace 링크를 포함합니다."
       }
     },
@@ -192,7 +250,7 @@
       "panelTitle": "개인 수신 정책",
       "panelDescription": "팀 공통 알림 규칙과 개인 수신 선호를 분리해 운영 부담을 줄입니다.",
       "items": {
-        "1": "사용자는 자신이 담당하는 에이전트와 환경만 구독할 수 있습니다.",
+        "1": "사용자는 자신에게 해당하는 에이전트와 환경만 구독할 수 있습니다.",
         "2": "Critical 알림은 기본 수신, Warning 알림은 선택 수신으로 둡니다.",
         "3": "조용한 시간에는 Critical 외 알림을 묶어서 보냅니다.",
         "4": "주간 요약은 실패 패턴, 비용 변화, 정책 차단 추세 중심으로 구성합니다."

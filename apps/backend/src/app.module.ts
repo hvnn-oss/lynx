@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppDataSource } from '@repo/database';
+import type { LoggerOptions } from 'typeorm';
 import { PostgresConnectionCredentialsOptions } from 'typeorm/driver/postgres/PostgresConnectionCredentialsOptions.js';
 import { AdminModule } from './api/admin/admin.module';
 import { AgentModule } from './api/agent/agent.module';
@@ -39,6 +40,50 @@ function shouldEnableDemoModule() {
   return process.env.NODE_ENV !== 'production';
 }
 
+function parseTypeOrmLogging(
+  value: string | boolean | undefined,
+): LoggerOptions {
+  if (typeof value === 'boolean') {
+    return value ? ['error', 'warn', 'schema'] : false;
+  }
+
+  if (!value) {
+    return false;
+  }
+
+  const normalizedValue = value.trim().toLowerCase();
+  if (
+    !normalizedValue ||
+    ['false', '0', 'off', 'none'].includes(normalizedValue)
+  ) {
+    return false;
+  }
+
+  if (['true', '1', 'on'].includes(normalizedValue)) {
+    return ['error', 'warn', 'schema'];
+  }
+
+  if (normalizedValue === 'all') {
+    return true;
+  }
+
+  const allowedValues = new Set([
+    'query',
+    'error',
+    'schema',
+    'warn',
+    'info',
+    'log',
+    'migration',
+  ]);
+  const selectedValues = normalizedValue
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => allowedValues.has(item));
+
+  return selectedValues.length > 0 ? (selectedValues as LoggerOptions) : false;
+}
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -73,7 +118,7 @@ function shouldEnableDemoModule() {
             configService.get<string>('NODE_ENV') === 'production'
               ? false
               : parseBooleanEnv(configService.get<string>('DB_SYNCHRONIZE')),
-          logging: parseBooleanEnv(configService.get<string>('DB_LOGGING')),
+          logging: parseTypeOrmLogging(configService.get<string>('DB_LOGGING')),
         };
       },
     }),

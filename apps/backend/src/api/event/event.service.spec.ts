@@ -567,14 +567,78 @@ describe('EventService', () => {
         payload: {},
         timestamp: Date.now(),
         workspaceId: 'ws-1',
-        agentId: 'new-agent-uuid-11111111111111111111',
-        sessionId: 'new-session-uuid-22222222222222222222',
+        agentId: '11111111-1111-4111-8111-111111111111',
+        sessionId: '22222222-2222-4222-8222-222222222222',
       };
 
       const result = await service.ingestEvent(dto, 'test-api-key');
       expect(result.success).toBe(true);
-      expect(mockAgentRepository.create).toHaveBeenCalled();
-      expect(mockSessionRepository.create).toHaveBeenCalled();
+      expect(mockAgentRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: '11111111-1111-4111-8111-111111111111',
+          name: 'Brand New Agent',
+        }),
+      );
+      expect(mockSessionRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: '22222222-2222-4222-8222-222222222222',
+          name: 'trace-1',
+        }),
+      );
+    });
+
+    it('should treat non-uuid agent and session identifiers as names', async () => {
+      mockAgentRepository.findOne.mockResolvedValueOnce(null as any);
+      mockSessionRepository.findOne.mockResolvedValueOnce(null as any);
+      mockAgentRepository.create.mockClear();
+      mockSessionRepository.create.mockClear();
+
+      const dto: LynxEventDto = {
+        clientId: 'client-1',
+        runId: 'trace-1',
+        agentName: 'Acme Support GPT',
+        eventType: 'LLM_REASONING' as LynxEventType,
+        label: 'gpt-4o',
+        payload: {},
+        timestamp: Date.now(),
+        workspaceId: 'ws-1',
+        agentId: 'acme-support-gpt',
+        sessionId: 'acme-ai-demo-session',
+      };
+
+      const result = await service.ingestEvent(dto, 'test-api-key');
+
+      expect(result.success).toBe(true);
+      expect(mockAgentRepository.findOne).toHaveBeenCalledWith({
+        where: [
+          { name: 'Acme Support GPT', workspace: { id: 'ws-1' } },
+          { name: 'acme-support-gpt', workspace: { id: 'ws-1' } },
+        ],
+      });
+      expect(mockAgentRepository.findOne).not.toHaveBeenCalledWith({
+        where: { id: 'acme-support-gpt', workspace: { id: 'ws-1' } },
+      });
+      expect(mockSessionRepository.findOne).toHaveBeenCalledWith({
+        where: [
+          { name: 'acme-ai-demo-session', workspace: { id: 'ws-1' } },
+          { name: 'trace-1', workspace: { id: 'ws-1' } },
+        ],
+      });
+      expect(mockSessionRepository.findOne).not.toHaveBeenCalledWith({
+        where: { id: 'acme-ai-demo-session', workspace: { id: 'ws-1' } },
+      });
+      expect(mockAgentRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: undefined,
+          name: 'Acme Support GPT',
+        }),
+      );
+      expect(mockSessionRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: undefined,
+          name: 'trace-1',
+        }),
+      );
     });
   });
 });

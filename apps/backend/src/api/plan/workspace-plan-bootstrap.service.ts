@@ -22,7 +22,9 @@ export class WorkspacePlanBootstrapService implements OnApplicationBootstrap {
         continue;
       }
 
-      await planRepository.insert(defaultPlan);
+      await planRepository.save(
+        Object.assign(new WorkspacePlanEntity(), defaultPlan),
+      );
       insertedCount += 1;
     }
 

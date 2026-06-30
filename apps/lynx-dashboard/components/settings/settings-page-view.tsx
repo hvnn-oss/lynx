@@ -1,8 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Check, Copy, KeyRound, RotateCcw, Save } from "lucide-react";
+import {
+  Check,
+  Copy,
+  KeyRound,
+  Pencil,
+  Plus,
+  Save,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 import { Button } from "@repo/ui/components/ui/button";
 import { Input } from "@repo/ui/components/ui/input";
 import { Label } from "@repo/ui/components/ui/label";
@@ -11,9 +21,17 @@ import {
   DashboardPageHeader,
   DashboardPanel,
 } from "@repo/ui/components/dashboard/panel";
-import type { WorkspaceDetailDto, WorkspacePlanValue } from "@repo/dto";
+import type {
+  WorkspaceApiKeyDto,
+  WorkspaceApiKeyPermission,
+  WorkspaceDetailDto,
+  WorkspacePlanValue,
+} from "@repo/dto";
 import {
-  useRotateWorkspaceApiKeyMutation,
+  useCreateWorkspaceApiKeyMutation,
+  useRevokeWorkspaceApiKeyMutation,
+  useUpdateWorkspaceApiKeyMutation,
+  useWorkspaceApiKeysQuery,
   useUpdateWorkspaceMutation,
   useWorkspaceDetailQuery,
 } from "@/hooks/queries/workspace";
@@ -34,12 +52,6 @@ export type SettingsPageKind =
   | "notification-rules"
   | "notification-preferences";
 
-const defaultWorkspacePlans: WorkspacePlanValue[] = [
-  "FREE",
-  "PRO",
-  "ENTERPRISE",
-];
-
 const demoWorkspace = {
   id: "00000000-0000-4000-8000-000000000001",
   name: "Production",
@@ -50,6 +62,51 @@ const demoWorkspace = {
     name: "Lynx Demo",
   },
 };
+
+const demoApiKeys: WorkspaceApiKeyDto[] = [
+  {
+    id: "00000000-0000-4000-8000-000000000101",
+    trackingId: "key_demo_prod_ingest",
+    name: "production-ingest",
+    status: "ACTIVE",
+    prefix: "lynx_demo_prod_",
+    secretPreview: "lynx_demo_prod_...",
+    scopes: ["events:write"],
+    permission: "RESTRICTED",
+    createdAt: "2026-06-30T10:00:00.000Z",
+    lastUsedAt: "2026-06-30T11:24:00.000Z",
+    createdByName: "Demo Admin",
+    monthlySpend: 12.48,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000000102",
+    trackingId: "key_demo_sdk_read",
+    name: "sdk-read-config",
+    status: "ACTIVE",
+    prefix: "lynx_demo_read_",
+    secretPreview: "lynx_demo_read_...",
+    scopes: ["config:read", "policies:read"],
+    permission: "READ_ONLY",
+    createdAt: "2026-06-24T09:12:00.000Z",
+    createdByName: "Demo Admin",
+    monthlySpend: 0,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000000103",
+    trackingId: "key_demo_old",
+    name: "old-secret",
+    status: "REVOKED",
+    prefix: "lynx_demo_old_",
+    secretPreview: "lynx_demo_old_...",
+    scopes: ["events:write"],
+    permission: "RESTRICTED",
+    createdAt: "2026-05-12T07:40:00.000Z",
+    lastUsedAt: "2026-06-01T15:10:00.000Z",
+    revokedAt: "2026-06-11T08:30:00.000Z",
+    createdByName: "Demo Admin",
+    monthlySpend: 3.92,
+  },
+];
 
 type SettingsWorkspace = WorkspaceDetailDto;
 
@@ -158,18 +215,13 @@ function GeneralSettings({
   t: ReturnType<typeof useTranslations<"settings">>;
 }) {
   const [name, setName] = useState(workspace.name);
-  const [plan, setPlan] = useState<WorkspacePlanValue>(workspace.plan);
   const updateMutation = useUpdateWorkspaceMutation(workspace.id);
-  const planOptions = useMemo(() => {
-    return Array.from(new Set([...defaultWorkspacePlans, workspace.plan]));
-  }, [workspace.plan]);
 
   useEffect(() => {
     setName(workspace.name);
-    setPlan(workspace.plan);
-  }, [workspace.name, workspace.plan]);
+  }, [workspace.name]);
 
-  const hasChanges = name.trim() !== workspace.name || plan !== workspace.plan;
+  const hasChanges = name.trim() !== workspace.name;
 
   return (
     <DashboardPanel>
@@ -192,20 +244,15 @@ function GeneralSettings({
 
         <div className="space-y-2">
           <Label htmlFor="workspace-plan">{t("general.form.plan")}</Label>
-          <select
+          <Input
             id="workspace-plan"
-            value={plan}
-            onChange={(event) =>
-              setPlan(event.target.value as WorkspacePlanValue)
-            }
-            className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-          >
-            {planOptions.map((value) => (
-              <option key={value} value={value}>
-                {getPlanLabel(value, t)}
-              </option>
-            ))}
-          </select>
+            value={getPlanLabel(workspace.plan, t)}
+            readOnly
+            aria-readonly="true"
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("general.form.planReadonly")}
+          </p>
         </div>
       </div>
 
@@ -215,7 +262,6 @@ function GeneralSettings({
           onClick={() =>
             updateMutation.mutate({
               name: name.trim(),
-              plan,
             })
           }
         >
@@ -247,55 +293,385 @@ function ApiKeySettings({
   workspace: SettingsWorkspace;
   t: ReturnType<typeof useTranslations<"settings">>;
 }) {
-  const rotateMutation = useRotateWorkspaceApiKeyMutation(workspace.id);
-  const apiKey = rotateMutation.data?.apiKey ?? workspace.apiKey ?? "";
+  const apiKeysQuery = useWorkspaceApiKeysQuery(workspace.id);
+  const createMutation = useCreateWorkspaceApiKeyMutation(workspace.id);
+  const updateMutation = useUpdateWorkspaceApiKeyMutation(workspace.id);
+  const revokeMutation = useRevokeWorkspaceApiKeyMutation(workspace.id);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"ACTIVE" | "ALL">("ACTIVE");
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [editingKey, setEditingKey] = useState<WorkspaceApiKeyDto | null>(null);
+  const [createdSecret, setCreatedSecret] = useState<string | null>(null);
+  const apiKeys =
+    apiKeysQuery.data ?? (runtimeConfig.demoMode ? demoApiKeys : []);
+
+  const filteredApiKeys = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+
+    return apiKeys.filter((apiKey) => {
+      const matchesStatus =
+        statusFilter === "ALL" || apiKey.status === statusFilter;
+      const matchesSearch =
+        !normalizedSearch ||
+        [
+          apiKey.name,
+          apiKey.trackingId,
+          apiKey.secretPreview,
+          apiKey.createdByName,
+        ]
+          .filter(Boolean)
+          .some((value) => value!.toLowerCase().includes(normalizedSearch));
+
+      return matchesStatus && matchesSearch;
+    });
+  }, [apiKeys, search, statusFilter]);
+
+  const activeCount = apiKeys.filter((apiKey) => apiKey.status === "ACTIVE")
+    .length;
 
   return (
     <DashboardPanel>
-      <div className="flex flex-col gap-1">
-        <h2 className="text-base font-semibold">
-          {t("apiKeys.current.title")}
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          {t("apiKeys.current.description")}
-        </p>
+      <div className="flex flex-col gap-4 border-b border-border/60 pb-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-base font-semibold">{t("apiKeys.title")}</h2>
+          <p className="max-w-2xl text-sm text-muted-foreground">
+            {t("apiKeys.description")}
+          </p>
+        </div>
+        <Button
+          onClick={() => {
+            setCreatedSecret(null);
+            setIsCreateOpen(true);
+          }}
+        >
+          <Plus />
+          {t("apiKeys.actions.create")}
+        </Button>
       </div>
 
-      <div className="mt-5 rounded-lg border border-border/60 bg-muted/20 p-3">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-muted-foreground">
-              {t("apiKeys.current.label")}
-            </p>
-            <p className="mt-1 truncate font-mono text-sm">
-              {maskApiKey(apiKey)}
-            </p>
-          </div>
-          <div className="flex shrink-0 gap-2">
+      <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="relative min-w-0 md:w-80">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder={t("apiKeys.search")}
+            className="pl-9"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <Button
+            type="button"
+            variant={statusFilter === "ACTIVE" ? "secondary" : "outline"}
+            onClick={() => setStatusFilter("ACTIVE")}
+          >
+            <Check />
+            {t("apiKeys.filters.active")}
+          </Button>
+          <Button
+            type="button"
+            variant={statusFilter === "ALL" ? "secondary" : "outline"}
+            onClick={() => setStatusFilter("ALL")}
+          >
+            {t("apiKeys.filters.all")}
+          </Button>
+          <span>
+            {t("apiKeys.results", { count: filteredApiKeys.length })}
+          </span>
+        </div>
+      </div>
+
+      {createdSecret ? (
+        <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="min-w-0">
+              <p className="font-medium">{t("apiKeys.created.title")}</p>
+              <p className="mt-1 text-emerald-800">
+                {t("apiKeys.created.description")}
+              </p>
+              <p className="mt-2 truncate font-mono text-xs">
+                {createdSecret}
+              </p>
+            </div>
             <CopyButton
-              value={apiKey}
+              value={createdSecret}
               label={t("common.copy")}
               copiedLabel={t("common.copied")}
             />
-            <Button
-              variant="outline"
-              disabled={rotateMutation.isPending}
-              onClick={() => rotateMutation.mutate()}
-            >
-              <RotateCcw />
-              {rotateMutation.isPending
-                ? t("apiKeys.current.rotating")
-                : t("apiKeys.current.rotate")}
-            </Button>
           </div>
         </div>
+      ) : null}
+
+      <div className="mt-4 overflow-x-auto rounded-lg border border-border/60">
+        <div className="grid min-w-[1280px] grid-cols-[minmax(180px,1.5fr)_110px_minmax(190px,1fr)_minmax(160px,1fr)_120px_minmax(120px,0.8fr)_minmax(140px,0.8fr)_110px_120px_76px] bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground">
+          <span>{t("apiKeys.table.name")}</span>
+          <span>{t("apiKeys.table.status")}</span>
+          <span>{t("apiKeys.table.trackingId")}</span>
+          <span>{t("apiKeys.table.secret")}</span>
+          <span>{t("apiKeys.table.created")}</span>
+          <span>{t("apiKeys.table.lastUsed")}</span>
+          <span>{t("apiKeys.table.createdBy")}</span>
+          <span>{t("apiKeys.table.permission")}</span>
+          <span>{t("apiKeys.table.monthlySpend")}</span>
+          <span className="text-right">{t("apiKeys.table.actions")}</span>
+        </div>
+
+        {apiKeysQuery.isLoading && !runtimeConfig.demoMode ? (
+          <div className="px-3 py-8 text-center text-sm text-muted-foreground">
+            {t("apiKeys.loading")}
+          </div>
+        ) : filteredApiKeys.length === 0 ? (
+          <div className="px-3 py-8 text-center text-sm text-muted-foreground">
+            {t("apiKeys.empty")}
+          </div>
+        ) : (
+          filteredApiKeys.map((apiKey) => (
+            <div
+              key={apiKey.id}
+              className="grid min-w-[1280px] grid-cols-[minmax(180px,1.5fr)_110px_minmax(190px,1fr)_minmax(160px,1fr)_120px_minmax(120px,0.8fr)_minmax(140px,0.8fr)_110px_120px_76px] items-center border-t border-border/60 px-3 py-3 text-sm"
+            >
+              <span className="truncate font-medium">{apiKey.name}</span>
+              <span>
+                <ApiKeyStatusBadge apiKey={apiKey} t={t} />
+              </span>
+              <span className="truncate font-mono text-xs text-muted-foreground">
+                {apiKey.trackingId}
+              </span>
+              <span className="truncate font-mono text-xs">
+                {apiKey.secretPreview}
+              </span>
+              <span className="text-muted-foreground">
+                {formatDate(apiKey.createdAt)}
+              </span>
+              <span className="text-muted-foreground">
+                {apiKey.lastUsedAt
+                  ? formatDate(apiKey.lastUsedAt)
+                  : t("apiKeys.never")}
+              </span>
+              <span className="truncate text-muted-foreground">
+                {apiKey.createdByName ?? "-"}
+              </span>
+              <span>{getPermissionLabel(apiKey.permission, t)}</span>
+              <span className="text-muted-foreground">
+                {formatCurrency(apiKey.monthlySpend)}
+              </span>
+              <div className="flex justify-end gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  disabled={apiKey.status !== "ACTIVE"}
+                  aria-label={t("apiKeys.actions.edit")}
+                  onClick={() => setEditingKey(apiKey)}
+                >
+                  <Pencil className="size-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  disabled={
+                    apiKey.status !== "ACTIVE" || revokeMutation.isPending
+                  }
+                  aria-label={t("apiKeys.actions.revoke")}
+                  onClick={() => {
+                    if (window.confirm(t("apiKeys.confirmRevoke"))) {
+                      revokeMutation.mutate(apiKey.id);
+                    }
+                  }}
+                >
+                  <Trash2 className="size-4 text-destructive" />
+                </Button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="mt-3 text-xs text-muted-foreground">
+        {t("apiKeys.summary", {
+          active: activeCount,
+          total: apiKeys.length,
+        })}
       </div>
 
       <SettingsChecklist
         title={t("apiKeys.safety.title")}
         items={getTranslatedList(t, "apiKeys.safety.items", 3)}
       />
+
+      {isCreateOpen ? (
+        <ApiKeyDialog
+          mode="create"
+          title={t("apiKeys.dialog.createTitle")}
+          submitLabel={t("apiKeys.actions.create")}
+          isPending={createMutation.isPending}
+          onClose={() => setIsCreateOpen(false)}
+          onSubmit={(values) => {
+            createMutation.mutate(values, {
+              onSuccess: (result) => {
+                setCreatedSecret(result.apiKey);
+                setIsCreateOpen(false);
+              },
+            });
+          }}
+          t={t}
+        />
+      ) : null}
+
+      {editingKey ? (
+        <ApiKeyDialog
+          mode="edit"
+          title={t("apiKeys.dialog.editTitle")}
+          submitLabel={t("common.saveChanges")}
+          initialName={editingKey.name}
+          initialPermission={editingKey.permission}
+          isPending={updateMutation.isPending}
+          onClose={() => setEditingKey(null)}
+          onSubmit={(values) => {
+            updateMutation.mutate(
+              { apiKeyId: editingKey.id, body: values },
+              {
+                onSuccess: () => setEditingKey(null),
+              },
+            );
+          }}
+          t={t}
+        />
+      ) : null}
     </DashboardPanel>
+  );
+}
+
+function ApiKeyDialog({
+  mode,
+  title,
+  submitLabel,
+  initialName = "",
+  initialPermission = "RESTRICTED",
+  isPending,
+  onClose,
+  onSubmit,
+  t,
+}: {
+  mode: "create" | "edit";
+  title: string;
+  submitLabel: string;
+  initialName?: string;
+  initialPermission?: WorkspaceApiKeyPermission;
+  isPending: boolean;
+  onClose: () => void;
+  onSubmit: (values: {
+    name: string;
+    permission: WorkspaceApiKeyPermission;
+  }) => void;
+  t: ReturnType<typeof useTranslations<"settings">>;
+}) {
+  const [name, setName] = useState(initialName);
+  const [permission, setPermission] =
+    useState<WorkspaceApiKeyPermission>(initialPermission);
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    onSubmit({
+      name: name.trim(),
+      permission,
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4">
+      <form
+        onSubmit={handleSubmit}
+        className="w-full max-w-md rounded-lg border border-border bg-background p-5 shadow-xl"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold">{title}</h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              {mode === "create"
+                ? t("apiKeys.dialog.createDescription")
+                : t("apiKeys.dialog.editDescription")}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={t("common.close")}
+            onClick={onClose}
+          >
+            <X className="size-4" />
+          </Button>
+        </div>
+
+        <div className="mt-5 space-y-2">
+          <Label htmlFor="api-key-name">{t("apiKeys.dialog.name")}</Label>
+          <Input
+            id="api-key-name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder={t("apiKeys.dialog.namePlaceholder")}
+            maxLength={120}
+          />
+        </div>
+
+        <div className="mt-5 space-y-2">
+          <Label>{t("apiKeys.dialog.permissions")}</Label>
+          <div className="grid grid-cols-3 rounded-lg border border-border bg-muted/40 p-1">
+            {(["ALL", "RESTRICTED", "READ_ONLY"] as const).map((item) => (
+              <button
+                key={item}
+                type="button"
+                className={`rounded-md px-2 py-2 text-sm font-medium transition ${
+                  permission === item
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => setPermission(item)}
+              >
+                {getPermissionLabel(item, t)}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs leading-5 text-muted-foreground">
+            {t(`apiKeys.permissions.${permission}.description`)}
+          </p>
+        </div>
+
+        <div className="mt-8 flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            {t("common.cancel")}
+          </Button>
+          <Button type="submit" disabled={isPending}>
+            {isPending ? t("common.saving") : submitLabel}
+          </Button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function ApiKeyStatusBadge({
+  apiKey,
+  t,
+}: {
+  apiKey: WorkspaceApiKeyDto;
+  t: ReturnType<typeof useTranslations<"settings">>;
+}) {
+  const className =
+    apiKey.status === "ACTIVE"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      : apiKey.status === "EXPIRED"
+        ? "border-amber-200 bg-amber-50 text-amber-700"
+        : "border-border bg-muted/40 text-muted-foreground";
+
+  return (
+    <span
+      className={`inline-flex h-6 items-center rounded-full border px-2 text-xs font-medium ${className}`}
+    >
+      {t(`apiKeys.status.${apiKey.status}`)}
+    </span>
   );
 }
 
@@ -572,10 +948,27 @@ function getTranslatedList(
   return Array.from({ length: count }, (_, index) => t(`${key}.${index + 1}`));
 }
 
-function maskApiKey(apiKey: string) {
-  if (!apiKey) return "";
-  if (apiKey.length <= 12) return apiKey;
-  return `${apiKey.slice(0, 10)}...${apiKey.slice(-6)}`;
+function getPermissionLabel(
+  permission: WorkspaceApiKeyPermission,
+  t: ReturnType<typeof useTranslations<"settings">>,
+) {
+  return t(`apiKeys.permissions.${permission}.label`);
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("ko-KR", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  }).format(new Date(value));
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  }).format(value);
 }
 
 function getClientEndpoint() {

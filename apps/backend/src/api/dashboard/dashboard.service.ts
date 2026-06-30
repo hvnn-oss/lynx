@@ -115,9 +115,13 @@ export class DashboardService {
 
       const currentRaw = (await sessionRepository
         .createQueryBuilder('s')
+        .leftJoin('s.agent', 'a')
         .select('COUNT(s.id)', 'runs')
         .addSelect('SUM(s.totalCost)', 'cost')
-        .addSelect('COUNT(DISTINCT s.agentId)', 'activeAgents')
+        .addSelect(
+          'COUNT(DISTINCT COALESCE(NULLIF(a.name, \'\'), s."agentId"::text))',
+          'activeAgents',
+        )
         .addSelect(
           "SUM(CASE WHEN s.status = 'COMPLETED' THEN 1 ELSE 0 END)",
           'completedRuns',
@@ -189,8 +193,8 @@ export class DashboardService {
       const agentHealthRaw = (await sessionRepository
         .createQueryBuilder('s')
         .innerJoin('s.agent', 'a')
-        .select('a.id', 'agentId')
-        .addSelect('a.name', 'agentName')
+        .select('MIN(a.id::text)', 'agentId')
+        .addSelect("COALESCE(NULLIF(a.name, ''), 'Unknown Agent')", 'agentName')
         .addSelect('COUNT(s.id)', 'totalRuns')
         .addSelect(
           "SUM(CASE WHEN s.status = 'FAILED' THEN 1 ELSE 0 END)",
@@ -198,7 +202,7 @@ export class DashboardService {
         )
         .where('s.workspaceId = :workspaceId', { workspaceId })
         .andWhere('s.startedAt >= :tMinus24h', { tMinus24h })
-        .groupBy('a.id, a.name')
+        .groupBy("COALESCE(NULLIF(a.name, ''), 'Unknown Agent')")
         .getRawMany()) as unknown as RawAgentHealth[];
 
       const healthScores = agentHealthRaw.map((row) => {
@@ -267,7 +271,7 @@ export class DashboardService {
         .createQueryBuilder('e')
         .innerJoin('e.session', 's')
         .leftJoin('s.agent', 'a')
-        .select('MIN(e.id)', 'id')
+        .select('MIN(e.id::text)', 'id')
         .addSelect('a.name', 'agentName')
         .addSelect(
           "COALESCE(NULLIF(e.label, ''), 'Execution Error')",
@@ -406,7 +410,7 @@ export class DashboardService {
       const agentSessionsRaw = (await sessionRepository
         .createQueryBuilder('s')
         .innerJoin('s.agent', 'a')
-        .select('a.id', 'agentId')
+        .select('MIN(a.id::text)', 'agentId')
         .addSelect(
           "SUM(CASE WHEN s.status = 'FAILED' THEN 1 ELSE 0 END)",
           'failedRuns',
@@ -414,7 +418,7 @@ export class DashboardService {
         .addSelect('COUNT(s.id)', 'totalRuns')
         .where('s.workspaceId = :workspaceId', { workspaceId })
         .andWhere('s.startedAt >= :tMinus24h', { tMinus24h })
-        .groupBy('a.id')
+        .groupBy("COALESCE(NULLIF(a.name, ''), 'Unknown Agent')")
         .getRawMany()) as unknown as Array<{
         agentId: string;
         failedRuns: string;

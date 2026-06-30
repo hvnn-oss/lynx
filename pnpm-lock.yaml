@@ -18,6 +18,61 @@ importers:
         specifier: 5.9.2
         version: 5.9.2
 
+  apps/acme-ai:
+    dependencies:
+      '@repo/eslint-config':
+        specifier: workspace:^
+        version: link:../../packages/eslint-config
+      '@repo/sdk':
+        specifier: workspace:^
+        version: link:../../sdks/lynx-sdk
+      '@repo/tailwind-config':
+        specifier: workspace:^
+        version: link:../../packages/tailwind-config
+      '@repo/typescript-config':
+        specifier: workspace:^
+        version: link:../../packages/typescript-config
+      '@repo/ui':
+        specifier: workspace:^
+        version: link:../../packages/ui
+      lucide-react:
+        specifier: ^1.7.0
+        version: 1.17.0(react@19.2.4)
+      next:
+        specifier: 16.2.7
+        version: 16.2.7(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      react:
+        specifier: 19.2.4
+        version: 19.2.4
+      react-dom:
+        specifier: 19.2.4
+        version: 19.2.4(react@19.2.4)
+    devDependencies:
+      '@tailwindcss/postcss':
+        specifier: ^4.1.18
+        version: 4.3.0
+      '@types/node':
+        specifier: ^20
+        version: 20.19.42
+      '@types/react':
+        specifier: ^19
+        version: 19.2.2
+      '@types/react-dom':
+        specifier: ^19
+        version: 19.2.2(@types/react@19.2.2)
+      eslint:
+        specifier: ^9
+        version: 9.39.1(jiti@2.7.0)
+      eslint-config-next:
+        specifier: 16.2.7
+        version: 16.2.7(eslint@9.39.1(jiti@2.7.0))(typescript@5.9.2)
+      tailwindcss:
+        specifier: ^4
+        version: 4.3.0
+      typescript:
+        specifier: ^5
+        version: 5.9.2
+
   apps/backend:
     dependencies:
       '@nestjs/common':

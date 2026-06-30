@@ -11,12 +11,17 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import {
+  CreateWorkspaceApiKeyDto,
   CreateWorkspaceDto,
+  UpdateWorkspaceApiKeyDto,
   UpdateWorkspaceDto,
+  WorkspaceApiKeyIdParamDto,
   WorkspaceIdParamDto,
 } from '@repo/dto';
 import type {
+  CreatedWorkspaceApiKeyDto,
   SuccessResponseDto,
+  WorkspaceApiKeyDto,
   WorkspaceApiKeyResponseDto,
   WorkspaceDetailDto,
   WorkspaceSummaryDto,
@@ -88,6 +93,56 @@ export class WorkspaceController {
   ): Promise<WorkspaceApiKeyResponseDto> {
     return await this.workspaceService.rotateApiKey(
       params.workspaceId,
+      req.user!.sub,
+    );
+  }
+
+  @Get(':workspaceId/api-keys')
+  async listApiKeys(
+    @Param() params: WorkspaceIdParamDto,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<WorkspaceApiKeyDto[]> {
+    return await this.workspaceService.listApiKeys(
+      params.workspaceId,
+      req.user!.sub,
+    );
+  }
+
+  @Post(':workspaceId/api-keys')
+  async createApiKey(
+    @Param() params: WorkspaceIdParamDto,
+    @Req() req: AuthenticatedRequest,
+    @Body() body: CreateWorkspaceApiKeyDto,
+  ): Promise<CreatedWorkspaceApiKeyDto> {
+    return await this.workspaceService.createApiKey(
+      params.workspaceId,
+      req.user!.sub,
+      body,
+    );
+  }
+
+  @Patch(':workspaceId/api-keys/:apiKeyId')
+  async updateApiKey(
+    @Param() params: WorkspaceApiKeyIdParamDto,
+    @Req() req: AuthenticatedRequest,
+    @Body() body: UpdateWorkspaceApiKeyDto,
+  ): Promise<WorkspaceApiKeyDto> {
+    return await this.workspaceService.updateApiKey(
+      params.workspaceId,
+      params.apiKeyId,
+      req.user!.sub,
+      body,
+    );
+  }
+
+  @Delete(':workspaceId/api-keys/:apiKeyId')
+  async revokeApiKey(
+    @Param() params: WorkspaceApiKeyIdParamDto,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<SuccessResponseDto> {
+    return await this.workspaceService.revokeApiKey(
+      params.workspaceId,
+      params.apiKeyId,
       req.user!.sub,
     );
   }

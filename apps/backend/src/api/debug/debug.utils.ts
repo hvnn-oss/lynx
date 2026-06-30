@@ -44,8 +44,8 @@ const MAX_PREVIEW_LENGTH = 240;
 export const isRecord = (value: unknown): value is EventPayload =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-export const getPayload = (event: EventEntity): EventPayload =>
-  isRecord(event.payload) ? event.payload : {};
+export const getPayload = (event?: EventEntity): EventPayload =>
+  event && isRecord(event.payload) ? event.payload : {};
 
 export const getPayloadString = (
   payload: EventPayload,

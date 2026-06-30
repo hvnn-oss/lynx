@@ -1,5 +1,7 @@
 import {
   IsNotEmpty,
+  IsIn,
+  IsArray,
   IsOptional,
   IsString,
   IsUUID,
@@ -15,6 +17,12 @@ export class WorkspaceIdParamDto {
   workspaceId!: string;
 }
 
+export class WorkspaceApiKeyIdParamDto extends WorkspaceIdParamDto {
+  @IsNotEmpty()
+  @IsUUID()
+  apiKeyId!: string;
+}
+
 export class CreateWorkspaceDto {
   @IsNotEmpty()
   @IsUUID()
@@ -25,11 +33,6 @@ export class CreateWorkspaceDto {
   @MinLength(2)
   @MaxLength(80)
   name!: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(40)
-  plan?: WorkspacePlanValue;
 }
 
 export class UpdateWorkspaceDto {
@@ -38,11 +41,40 @@ export class UpdateWorkspaceDto {
   @MinLength(2)
   @MaxLength(80)
   name?: string;
+}
 
+export type WorkspaceApiKeyPermission = "ALL" | "RESTRICTED" | "READ_ONLY";
+
+export class CreateWorkspaceApiKeyDto {
   @IsOptional()
   @IsString()
-  @MaxLength(40)
-  plan?: WorkspacePlanValue;
+  @MaxLength(120)
+  name?: string;
+
+  @IsOptional()
+  @IsIn(["ALL", "RESTRICTED", "READ_ONLY"])
+  permission?: WorkspaceApiKeyPermission;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  scopes?: string[];
+}
+
+export class UpdateWorkspaceApiKeyDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  name?: string;
+
+  @IsOptional()
+  @IsIn(["ALL", "RESTRICTED", "READ_ONLY"])
+  permission?: WorkspaceApiKeyPermission;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  scopes?: string[];
 }
 
 export interface WorkspaceSummaryDto {
@@ -74,4 +106,27 @@ export interface WorkspacePlanConfigDto {
 export interface WorkspaceApiKeyResponseDto {
   workspaceId: string;
   apiKey: string;
+}
+
+export interface WorkspaceApiKeyDto {
+  id: string;
+  trackingId: string;
+  name: string;
+  status: "ACTIVE" | "REVOKED" | "EXPIRED";
+  prefix: string;
+  secretPreview: string;
+  scopes: string[];
+  permission: WorkspaceApiKeyPermission;
+  createdAt: string;
+  lastUsedAt?: string;
+  revokedAt?: string;
+  expiresAt?: string;
+  createdByName?: string;
+  monthlySpend: number;
+}
+
+export interface CreatedWorkspaceApiKeyDto {
+  workspaceId: string;
+  apiKey: string;
+  key: WorkspaceApiKeyDto;
 }

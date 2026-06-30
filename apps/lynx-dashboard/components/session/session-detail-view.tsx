@@ -39,11 +39,12 @@ import {
 type TimelineTab = "timeline" | "flow" | "raw";
 
 const FLOW_LANES = ["Input", "Context", "LLM", "Tool", "Outcome"] as const;
-const FLOW_LANE_HEIGHT = 104;
+const FLOW_LANE_HEIGHT = 126;
 const FLOW_TOP_OFFSET = 78;
 const FLOW_LEFT_OFFSET = 148;
-const FLOW_NODE_GAP = 190;
-const FLOW_NODE_WIDTH = 208;
+const FLOW_NODE_GAP = 96;
+const FLOW_NODE_WIDTH = 280;
+const FLOW_NODE_HEIGHT = 96;
 
 export function SessionDetailView({ sessionId }: { sessionId?: string }) {
   const t = useTranslations("session");
@@ -204,7 +205,13 @@ export function SessionDetailView({ sessionId }: { sessionId?: string }) {
         ]}
       />
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div
+        className={
+          activeTab === "flow"
+            ? "grid grid-cols-1 gap-4"
+            : "grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_440px]"
+        }
+      >
         <div className="min-w-0 space-y-3">
           <TimelineTabs activeTab={activeTab} onChange={setActiveTab} />
           {activeTab === "timeline" ? (
@@ -227,7 +234,11 @@ export function SessionDetailView({ sessionId }: { sessionId?: string }) {
             />
           )}
         </div>
-        <div className="xl:sticky xl:top-20 xl:self-start">
+        <div
+          className={
+            activeTab === "flow" ? "min-w-0" : "min-w-0 2xl:sticky 2xl:top-20 2xl:self-start"
+          }
+        >
           <SessionNodeDetailPanel node={selectedNode} />
         </div>
       </div>
@@ -524,10 +535,10 @@ function SessionFlowView({
                 <FlowEdge
                   key={edge.id}
                   sourceX={source.x + FLOW_NODE_WIDTH}
-                  sourceY={source.y + 43}
+                  sourceY={source.y + FLOW_NODE_HEIGHT / 2}
                   status={edge.status}
                   targetX={target.x}
-                  targetY={target.y + 43}
+                  targetY={target.y + FLOW_NODE_HEIGHT / 2}
                 />
               );
             })}
@@ -613,16 +624,21 @@ function FlowNode({
 
   return (
     <button
-      className={`absolute h-[86px] w-52 rounded-lg border bg-background p-3 text-left transition hover:bg-muted/30 ${nodeSurfaceClass(
+      className={`absolute overflow-hidden rounded-lg border bg-background p-3 text-left transition hover:bg-muted/30 ${nodeSurfaceClass(
         tone,
       )} ${isSelected ? "border-primary ring-2 ring-primary/15" : "border-border/60"}`}
-      style={{ left: x, top: y }}
+      style={{
+        height: FLOW_NODE_HEIGHT,
+        left: x,
+        top: y,
+        width: FLOW_NODE_WIDTH,
+      }}
       type="button"
       onClick={onClick}
     >
       <div className="flex items-center justify-between gap-3">
-        <span className={`rounded-md p-1.5 ${iconToneClass(tone)}`}>
-          <Icon className="size-4" />
+        <span className={`rounded-md p-1 ${iconToneClass(tone)}`}>
+          <Icon className="size-3.5" />
         </span>
         <div className="flex items-center gap-1.5">
           {isCritical ? (
@@ -636,11 +652,13 @@ function FlowNode({
           </span>
         </div>
       </div>
-      <p className="mt-2 truncate text-sm font-semibold">{node.label}</p>
-      <p className="mt-1 line-clamp-1 text-xs leading-5 text-muted-foreground">
+      <p className="mt-2 line-clamp-1 break-all text-sm font-semibold leading-5">
+        {node.label}
+      </p>
+      <p className="mt-1 line-clamp-2 break-all text-xs leading-4 text-muted-foreground [overflow-wrap:anywhere]">
         {node.preview ?? "-"}
       </p>
-      <div className="mt-2 flex flex-wrap gap-1.5">
+      <div className="mt-2 flex min-w-0 flex-wrap gap-1.5 overflow-hidden">
         {node.issueBadges.length > 0 ? (
           node.issueBadges
             .slice(0, 1)
@@ -711,11 +729,15 @@ function SessionNodeDetailPanel({ node }: { node?: SessionFlowNodeDto }) {
   const outputPreview = readDetailString(node.detail, "outputPreview");
 
   return (
-    <DashboardPanel>
+    <DashboardPanel className="min-w-0 overflow-hidden">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold">{node.label}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{node.type}</p>
+          <p className="break-words text-base font-semibold leading-6 [overflow-wrap:anywhere]">
+            {node.label}
+          </p>
+          <p className="mt-1 break-all text-xs text-muted-foreground">
+            {node.type}
+          </p>
         </div>
         <SessionIssueBadge
           badge={{
@@ -731,7 +753,7 @@ function SessionNodeDetailPanel({ node }: { node?: SessionFlowNodeDto }) {
         />
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3">
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <DetailMetric label="latency" value={formatMs(node.latencyMs)} />
         <DetailMetric label="token" value={formatNumber(node.tokenCount)} />
         <DetailMetric label="cost" value={formatCost(node.cost)} />
@@ -758,7 +780,7 @@ function SessionNodeDetailPanel({ node }: { node?: SessionFlowNodeDto }) {
           <summary className="cursor-pointer list-none px-3 py-2 text-sm font-semibold">
             Raw JSON
           </summary>
-          <pre className="max-h-72 overflow-auto border-t border-border/60 bg-background p-3 text-xs leading-5">
+          <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words border-t border-border/60 bg-background p-3 text-xs leading-5 [overflow-wrap:anywhere]">
             {JSON.stringify(node.detail, null, 2)}
           </pre>
         </details>
@@ -795,9 +817,9 @@ function SessionNodeDetailPanel({ node }: { node?: SessionFlowNodeDto }) {
 
 function DetailMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-border/60 bg-muted/20 p-3">
+    <div className="min-w-0 rounded-md border border-border/60 bg-muted/20 p-3">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold tabular-nums">
+      <p className="mt-1 break-words text-sm font-semibold tabular-nums [overflow-wrap:anywhere]">
         {value}
       </p>
     </div>
@@ -807,9 +829,11 @@ function DetailMetric({ label, value }: { label: string; value: string }) {
 function PreviewBlock({ label, value }: { label: string; value?: string }) {
   if (!value) return null;
   return (
-    <div className="rounded-md border border-border/60 bg-muted/20 p-3">
+    <div className="min-w-0 rounded-md border border-border/60 bg-muted/20 p-3">
       <p className="text-xs font-semibold text-muted-foreground">{label}</p>
-      <p className="mt-2 text-sm leading-6">{value}</p>
+      <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 [overflow-wrap:anywhere]">
+        {value}
+      </p>
     </div>
   );
 }
@@ -839,19 +863,30 @@ function getDefaultSelectedNodeId(timeline: SessionTimelineResponseDto) {
 }
 
 function buildTimelineLayout(nodes: SessionFlowNodeDto[]) {
+  const nextXByLane = new Map<number, number>();
+  const laidOutNodes = nodes.map((node, index) => {
+    const laneIndex = laneIndexForNode(node);
+    const baseX = FLOW_LEFT_OFFSET + index * (FLOW_NODE_WIDTH + FLOW_NODE_GAP);
+    const x = Math.max(baseX, nextXByLane.get(laneIndex) ?? FLOW_LEFT_OFFSET);
+    nextXByLane.set(laneIndex, x + FLOW_NODE_WIDTH + FLOW_NODE_GAP);
+
+    return {
+      node,
+      x,
+      y: FLOW_TOP_OFFSET + laneIndex * FLOW_LANE_HEIGHT + 13,
+    };
+  });
+  const maxNodeX = laidOutNodes.reduce(
+    (max, item) => Math.max(max, item.x + FLOW_NODE_WIDTH),
+    FLOW_LEFT_OFFSET,
+  );
+
   return {
     lanes: FLOW_LANES,
     laneHeight: FLOW_LANE_HEIGHT,
-    width: Math.max(980, FLOW_LEFT_OFFSET + nodes.length * FLOW_NODE_GAP + 120),
+    width: Math.max(980, maxNodeX + 120),
     height: FLOW_TOP_OFFSET + FLOW_LANES.length * FLOW_LANE_HEIGHT + 28,
-    nodes: nodes.map((node, index) => {
-      const laneIndex = laneIndexForNode(node);
-      return {
-        node,
-        x: FLOW_LEFT_OFFSET + index * FLOW_NODE_GAP,
-        y: FLOW_TOP_OFFSET + laneIndex * FLOW_LANE_HEIGHT + 10,
-      };
-    }),
+    nodes: laidOutNodes,
   };
 }
 

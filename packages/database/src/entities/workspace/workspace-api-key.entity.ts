@@ -24,6 +24,12 @@ export class WorkspaceApiKeyEntity {
   @Column({ type: "varchar", length: 120, nullable: true })
   name?: string;
 
+  @Column({ type: "uuid", nullable: true })
+  createdByUserId?: string;
+
+  @Column({ type: "varchar", length: 120, nullable: true })
+  createdByName?: string;
+
   @Column({ type: "text", array: true, default: () => "ARRAY['events:write']" })
   scopes!: string[];
 

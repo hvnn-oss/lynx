@@ -181,7 +181,7 @@ export function AgentPageView({ kind }: { kind: AgentViewKind }) {
               {[
                 "status:active",
                 "status:warning",
-                "agent:{ResearchBot}",
+                "agent:ResearchBot",
                 "env:production",
                 "tool:slack",
               ].map((filter) => (
@@ -681,4 +681,3 @@ function toneClass(tone: "neutral" | "good" | "warning" | "bad") {
   if (tone === "bad") return "text-rose-700";
   return "";
 }
-

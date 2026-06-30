@@ -36,6 +36,13 @@ const fallbackPlanRetentionDays: Record<string, number> = {
   ENTERPRISE: 365,
 };
 
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string | undefined): value is string {
+  return typeof value === 'string' && uuidPattern.test(value);
+}
+
 @Injectable()
 export class EventService {
   private readonly logger = new Logger(EventService.name);
@@ -127,7 +134,8 @@ export class EventService {
       })
       .getOne();
 
-    let workspace = workspaceApiKey?.workspace;
+    let workspace: WorkspaceEntity | null | undefined =
+      workspaceApiKey?.workspace;
 
     if (!workspace) {
       workspace = await this.dataSource.getRepository(WorkspaceEntity).findOne({
@@ -302,22 +310,32 @@ export class EventService {
   ) {
     const agentRepository = this.dataSource.getRepository(AgentEntity);
     const cacheKey = agentId || agentName || 'default';
-    const cached = context.agentsByKey.get(cacheKey);
-    if (cached) return cached;
+    const lookupKeys = this.getUniqueValues([agentId, agentName, cacheKey]);
+    for (const key of lookupKeys) {
+      const cached = context.agentsByKey.get(key);
+      if (cached) return cached;
+    }
 
-    let agent = agentId
+    let agent = isUuid(agentId)
       ? await agentRepository.findOne({
           where: { id: agentId, workspace: { id: workspace.id } },
         })
       : null;
-    if (!agent && agentId) {
-      agent = await agentRepository.findOne({
-        where: { name: agentId, workspace: { id: workspace.id } },
-      });
+    if (!agent) {
+      const names = this.getUniqueValues([agentName, agentId]);
+      agent =
+        names.length > 0
+          ? await agentRepository.findOne({
+              where: names.map((name) => ({
+                name,
+                workspace: { id: workspace.id },
+              })),
+            })
+          : null;
     }
     if (!agent) {
       agent = agentRepository.create({
-        id: agentId && agentId.length === 36 ? agentId : undefined,
+        id: isUuid(agentId) ? agentId : undefined,
         name: agentName || agentId || 'Default Agent',
         defaultModel: 'gpt-4o',
         workspace,
@@ -325,10 +343,22 @@ export class EventService {
       await agentRepository.save(agent);
     }
 
-    context.agentsByKey.set(cacheKey, agent);
+    for (const key of lookupKeys) {
+      context.agentsByKey.set(key, agent);
+    }
     context.agentsByKey.set(agent.id, agent);
     context.agentsByKey.set(agent.name, agent);
     return agent;
+  }
+
+  private getUniqueValues(values: Array<string | undefined>): string[] {
+    return Array.from(
+      new Set(
+        values
+          .map((value) => value?.trim())
+          .filter((value): value is string => Boolean(value)),
+      ),
+    );
   }
 
   private async findOrCreateSession(
@@ -345,23 +375,29 @@ export class EventService {
     const cached = context.sessionsByKey.get(cacheKey);
     if (cached) return cached;
 
-    let session = sessionId
+    let session = isUuid(sessionId)
       ? await sessionRepository.findOne({
           where: { id: sessionId, workspace: { id: workspace.id } },
         })
       : null;
     if (!session && sessionKey) {
+      const sessionWhere = [
+        ...(isUuid(sessionKey)
+          ? [{ id: sessionKey, workspace: { id: workspace.id } }]
+          : []),
+        { name: sessionKey, workspace: { id: workspace.id } },
+        ...(sessionKey !== runId
+          ? [{ name: runId, workspace: { id: workspace.id } }]
+          : []),
+      ];
+
       session = await sessionRepository.findOne({
-        where: [
-          { id: sessionKey, workspace: { id: workspace.id } },
-          { name: sessionKey, workspace: { id: workspace.id } },
-          { name: runId, workspace: { id: workspace.id } },
-        ],
+        where: sessionWhere,
       });
     }
     if (!session) {
       session = sessionRepository.create({
-        id: sessionId && sessionId.length === 36 ? sessionId : undefined,
+        id: isUuid(sessionId) ? sessionId : undefined,
         name: runId,
         startedAt: eventDate,
         status: SESSION_STATUS.RUNNING,

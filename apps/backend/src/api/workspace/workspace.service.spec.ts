@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   OrganizationEntity,
   OrganizationUserEntity,
+  UserEntity,
   WorkspaceApiKeyEntity,
   WorkspaceEntity,
   WorkspacePlanEntity,
@@ -30,8 +31,13 @@ describe('WorkspaceService', () => {
     findOne: jest.Mock;
   };
   let workspaceApiKeyRepository: {
+    find: jest.Mock;
+    findOne: jest.Mock;
     save: jest.Mock;
     createQueryBuilder: jest.Mock;
+  };
+  let userRepository: {
+    findOne: jest.Mock;
   };
 
   const organization = {
@@ -81,8 +87,15 @@ describe('WorkspaceService', () => {
       execute: jest.fn(() => Promise.resolve({ affected: 1 })),
     };
     workspaceApiKeyRepository = {
+      find: jest.fn(),
+      findOne: jest.fn(),
       save: jest.fn((input) => Promise.resolve(input)),
       createQueryBuilder: jest.fn(() => revokeApiKeyQueryBuilder),
+    };
+    userRepository = {
+      findOne: jest.fn(() =>
+        Promise.resolve({ id: 'user-1', name: 'Damie Lee' }),
+      ),
     };
 
     const dataSource = {
@@ -93,6 +106,7 @@ describe('WorkspaceService', () => {
         if (entity === WorkspaceEntity) return workspaceRepository;
         if (entity === WorkspacePlanEntity) return workspacePlanRepository;
         if (entity === WorkspaceApiKeyEntity) return workspaceApiKeyRepository;
+        if (entity === UserEntity) return userRepository;
         throw new Error('Unexpected repository');
       }),
       transaction: jest.fn((callback) => callback(dataSource)),

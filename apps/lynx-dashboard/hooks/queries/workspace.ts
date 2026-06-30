@@ -1,17 +1,26 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { CreateOrganizationDto, CreateWorkspaceDto } from "@repo/dto";
+import type {
+  CreateOrganizationDto,
+  CreateWorkspaceApiKeyDto,
+  CreateWorkspaceDto,
+  UpdateWorkspaceApiKeyDto,
+  UpdateWorkspaceDto,
+} from "@repo/dto";
 import {
+  createWorkspaceApiKey,
   createOrganization,
   createWorkspace,
+  getWorkspaceApiKeys,
   getWorkspace,
   getOrganizations,
   getWorkspaces,
+  revokeWorkspaceApiKey,
   rotateWorkspaceApiKey,
+  updateWorkspaceApiKey,
   updateWorkspace,
 } from "@/services/workspace.service";
-import type { UpdateWorkspaceDto } from "@repo/dto";
 
 export const workspaceQueryKeys = {
   all: ["workspace"] as const,
@@ -19,6 +28,8 @@ export const workspaceQueryKeys = {
   organizations: () => [...workspaceQueryKeys.all, "organizations"] as const,
   detail: (workspaceId: string | undefined) =>
     [...workspaceQueryKeys.all, "detail", workspaceId] as const,
+  apiKeys: (workspaceId: string | undefined) =>
+    [...workspaceQueryKeys.all, "api-keys", workspaceId] as const,
 };
 
 export function useOrganizationsQuery() {
@@ -39,6 +50,14 @@ export function useWorkspaceDetailQuery(workspaceId: string | undefined) {
   return useQuery({
     queryKey: workspaceQueryKeys.detail(workspaceId),
     queryFn: () => getWorkspace(workspaceId!),
+    enabled: Boolean(workspaceId),
+  });
+}
+
+export function useWorkspaceApiKeysQuery(workspaceId: string | undefined) {
+  return useQuery({
+    queryKey: workspaceQueryKeys.apiKeys(workspaceId),
+    queryFn: () => getWorkspaceApiKeys(workspaceId!),
     enabled: Boolean(workspaceId),
   });
 }
@@ -102,6 +121,72 @@ export function useRotateWorkspaceApiKeyMutation(
       void queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.list() });
       void queryClient.invalidateQueries({
         queryKey: workspaceQueryKeys.detail(workspaceId),
+      });
+    },
+  });
+}
+
+export function useCreateWorkspaceApiKeyMutation(
+  workspaceId: string | undefined,
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: CreateWorkspaceApiKeyDto) => {
+      if (!workspaceId) {
+        throw new Error("Workspace is not selected.");
+      }
+      return createWorkspaceApiKey(workspaceId, body);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: workspaceQueryKeys.apiKeys(workspaceId),
+      });
+    },
+  });
+}
+
+export function useUpdateWorkspaceApiKeyMutation(
+  workspaceId: string | undefined,
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      apiKeyId,
+      body,
+    }: {
+      apiKeyId: string;
+      body: UpdateWorkspaceApiKeyDto;
+    }) => {
+      if (!workspaceId) {
+        throw new Error("Workspace is not selected.");
+      }
+      return updateWorkspaceApiKey(workspaceId, apiKeyId, body);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: workspaceQueryKeys.apiKeys(workspaceId),
+      });
+    },
+  });
+}
+
+export function useRevokeWorkspaceApiKeyMutation(
+  workspaceId: string | undefined,
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (apiKeyId: string) => {
+      if (!workspaceId) {
+        throw new Error("Workspace is not selected.");
+      }
+      return revokeWorkspaceApiKey(workspaceId, apiKeyId);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: workspaceQueryKeys.apiKeys(workspaceId),
       });
     },
   });

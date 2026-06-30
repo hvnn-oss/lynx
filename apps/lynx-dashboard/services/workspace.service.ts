@@ -1,9 +1,13 @@
 import type {
+  CreatedWorkspaceApiKeyDto,
+  CreateWorkspaceApiKeyDto,
   CreateOrganizationDto,
   CreateWorkspaceDto,
   OrganizationDetailDto,
   OrganizationSummaryDto,
+  UpdateWorkspaceApiKeyDto,
   UpdateWorkspaceDto,
+  WorkspaceApiKeyDto,
   WorkspaceApiKeyResponseDto,
   WorkspaceDetailDto,
   WorkspaceSummaryDto,
@@ -47,6 +51,42 @@ export async function updateWorkspace(
 export async function rotateWorkspaceApiKey(workspaceId: string) {
   const response = await api.post<WorkspaceApiKeyResponseDto>(
     `/workspace/${workspaceId}/api-key/rotate`,
+  );
+  return response.data;
+}
+
+export function getWorkspaceApiKeys(workspaceId: string) {
+  return getJson<WorkspaceApiKeyDto[]>(`/workspace/${workspaceId}/api-keys`);
+}
+
+export function createWorkspaceApiKey(
+  workspaceId: string,
+  body: CreateWorkspaceApiKeyDto,
+) {
+  return postJson<CreatedWorkspaceApiKeyDto, CreateWorkspaceApiKeyDto>(
+    `/workspace/${workspaceId}/api-keys`,
+    body,
+  );
+}
+
+export async function updateWorkspaceApiKey(
+  workspaceId: string,
+  apiKeyId: string,
+  body: UpdateWorkspaceApiKeyDto,
+) {
+  const response = await api.patch<WorkspaceApiKeyDto>(
+    `/workspace/${workspaceId}/api-keys/${apiKeyId}`,
+    body,
+  );
+  return response.data;
+}
+
+export async function revokeWorkspaceApiKey(
+  workspaceId: string,
+  apiKeyId: string,
+) {
+  const response = await api.delete<{ success: boolean }>(
+    `/workspace/${workspaceId}/api-keys/${apiKeyId}`,
   );
   return response.data;
 }

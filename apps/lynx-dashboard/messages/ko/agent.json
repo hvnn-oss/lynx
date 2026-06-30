@@ -117,7 +117,7 @@
   "filters": {
     "basic": "필터",
     "active": "적용된 필터",
-    "placeholder": "status:active agent:{ResearchBot} tool:slack",
+    "placeholder": "status:active agent:ResearchBot tool:slack",
     "help": "status, agent, agentId, env, group, model, tool, search를 사용할 수 있습니다. 공백이 있는 값은 중괄호로 감싸세요.",
     "add": "추가",
     "clear": "초기화",
@@ -172,4 +172,3 @@
     "sessions": "세션 화면 보기"
   }
 }
-

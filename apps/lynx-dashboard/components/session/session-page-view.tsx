@@ -180,7 +180,7 @@ export function SessionPageView({ kind }: { kind: SessionViewKind }) {
               {[
                 "status:live",
                 "status:failed",
-                "agent:{ResearchBot}",
+                "agent:ResearchBot",
                 "env:production",
                 "trace:trace-3100",
               ].map((filter) => (

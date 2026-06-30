@@ -159,17 +159,38 @@ export class SessionService {
     const nodes = events.map((event, index) =>
       this.toFlowNode(event, index, events),
     );
-    const nodeIds = new Set(nodes.map((node) => node.id));
-    const edges = nodes
+    const spanNodeIds = new Map<string, string>();
+    events.forEach((event, index) => {
+      const spanId = getSpanId(event);
+      if (spanId && !spanNodeIds.has(spanId)) {
+        spanNodeIds.set(spanId, nodes[index].id);
+      }
+    });
+    const normalizedNodes = nodes.map((node, index) => {
+      const parentSpanId = getPayloadString(
+        getPayload(events[index]),
+        'parentSpanId',
+      );
+      const parentId = parentSpanId
+        ? spanNodeIds.get(parentSpanId)
+        : node.parentId;
+
+      return {
+        ...node,
+        parentId: parentId && parentId !== node.id ? parentId : undefined,
+      };
+    });
+    const nodeIds = new Set(normalizedNodes.map((node) => node.id));
+    const edges = normalizedNodes
       .map((node, index): SessionFlowEdgeDto | undefined => {
-        const previous = nodes[index - 1];
+        const previous = normalizedNodes[index - 1];
         const source =
           node.parentId && nodeIds.has(node.parentId)
             ? node.parentId
             : previous?.id;
         if (!source) return undefined;
         return {
-          id: `${source}->${node.id}`,
+          id: `${source}->${node.id}-${index}`,
           source,
           target: node.id,
           status: this.toEdgeStatus(node),
@@ -177,14 +198,14 @@ export class SessionService {
         };
       })
       .filter((edge): edge is SessionFlowEdgeDto => Boolean(edge));
-    const failedNode = nodes.find((node) => node.status === 'error');
-    const criticalNodeIds = nodes
+    const failedNode = normalizedNodes.find((node) => node.status === 'error');
+    const criticalNodeIds = normalizedNodes
       .filter((node) => node.status === 'error' || node.issueBadges.length > 0)
       .map((node) => node.id);
 
     return {
       session: this.toDetail({ ...session, events } as SessionEntity),
-      nodes,
+      nodes: normalizedNodes,
       edges,
       criticalNodeIds,
       failedNodeId: failedNode?.id,
@@ -409,7 +430,7 @@ export class SessionService {
         : getPayloadNumber(payload, 'totalTokens');
 
     return {
-      id: getSpanId(event) ?? event.id,
+      id: event.id,
       eventId: event.id,
       type,
       label: event.label,
@@ -423,9 +444,7 @@ export class SessionService {
       toolName: getPayloadString(payload, 'toolName'),
       parentId:
         getPayloadString(payload, 'parentSpanId') ??
-        (index > 0
-          ? (getSpanId(events[index - 1]) ?? events[index - 1].id)
-          : undefined),
+        (index > 0 ? events[index - 1].id : undefined),
       issueBadges: issues.map((issue) => ({
         label: issue.type.replace(/_/g, ' '),
         type: issue.type,

@@ -48,10 +48,11 @@ async function seedWorkspacePlans() {
 
     const planRepository = AppDataSource.getRepository(WorkspacePlanEntity);
 
-    await planRepository.upsert(DEFAULT_WORKSPACE_PLANS, {
-      conflictPaths: ["code"],
-      skipUpdateIfNoValuesChanged: true,
-    });
+    await planRepository.save(
+      DEFAULT_WORKSPACE_PLANS.map((plan) =>
+        Object.assign(new WorkspacePlanEntity(), plan),
+      ),
+    );
 
     if (await tableExists("workspace")) {
       // 플랜 테이블에 존재하지 않는 오래된 코드만 기본 플랜으로 보정합니다.
