@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale, getMessages } from "next-intl/server";
 import "@/styles/globals.css";
 
 const pretendard = localFont({
@@ -8,18 +10,25 @@ const pretendard = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "링스",
-  description: "AI 옵저빌리티 서비스, 링스의 랜딩 페이지입니다.",
+  title: "Lynx",
+  description: "Lynx product introduction page.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const locale = await getLocale();
+  const messages = await getMessages();
+
   return (
-    <html lang="ko-KR" className={`${pretendard.className} h-full antialiased`}>
-      <body className="min-h-full flex flex-col">{children}</body>
+    <html lang={locale} className={`${pretendard.className} h-full antialiased`}>
+      <body className="min-h-full flex flex-col">
+        <NextIntlClientProvider messages={messages}>
+          {children}
+        </NextIntlClientProvider>
+      </body>
     </html>
   );
 }
