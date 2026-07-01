@@ -8,7 +8,7 @@ import { ArrowRight, Filter, GitBranch, Search } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import type {
   DebugBottleneckItemDto,
   DebugErrorGroupDto,
@@ -17,6 +17,7 @@ import type {
   DebugLatencyBucketDto,
   DebugLlmCallItemDto,
   DebugMemoryAccessDto,
+  DebugReproduceResponseDto,
   DebugReproduceStepDto,
   DebugRootCauseCandidateDto,
   DebugSeverity,
@@ -36,6 +37,7 @@ import {
   useDebugSessionsQuery,
   useDebugTimelineQuery,
   useDebugToolCallsQuery,
+  useDebugReproduceMutation,
 } from "@/hooks/queries/debug";
 import { runtimeConfig } from "@/config/runtime";
 import { useDashboardUiStore } from "@/stores/dashboard-ui-store";
@@ -129,7 +131,7 @@ export function DebugPageView({ kind }: { kind: DebugPageKind }) {
       ) : kind === "failure-patterns" ? (
         <FailurePatternsView query={query} />
       ) : kind === "reproduce" ? (
-        <ReproduceView />
+        <ReproduceView sessionId={selectedSessionId} workspaceId={workspaceId} />
       ) : kind === "bottleneck" ? (
         <BottleneckView query={query} />
       ) : kind === "latency" ? (
@@ -1041,9 +1043,25 @@ function FailurePatternsView({
   );
 }
 
-function ReproduceView() {
+function ReproduceView({
+  sessionId,
+  workspaceId,
+}: {
+  sessionId?: string;
+  workspaceId?: string;
+}) {
   const t = useTranslations("debug");
-  const data = runtimeConfig.demoMode ? demoDebugReproduce : undefined;
+  const reproduceMutation = useDebugReproduceMutation(sessionId ?? "");
+  const shouldUseDemo =
+    runtimeConfig.demoMode && (!sessionId || sessionId.startsWith("demo-"));
+  useEffect(() => {
+    if (shouldUseDemo || !sessionId || !workspaceId) return;
+    reproduceMutation.mutate({ workspaceId, mode: "DRY_RUN" });
+    // 세션이 바뀔 때마다 원본 실행을 다시 분석해 재현 패키지를 갱신합니다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, workspaceId]);
+
+  const data = shouldUseDemo ? demoDebugReproduce : reproduceMutation.data;
   const steps = data?.steps ?? [];
   const columns = useMemo<ColumnDef<DebugReproduceStepDto>[]>(
     () => [
@@ -1106,19 +1124,142 @@ function ReproduceView() {
       ]}
     >
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" type="button">
+        <Button
+          disabled={!sessionId || !workspaceId || reproduceMutation.isPending}
+          size="sm"
+          type="button"
+          onClick={() =>
+            sessionId &&
+            workspaceId &&
+            reproduceMutation.mutate({ workspaceId, mode: "REPLAY" })
+          }
+        >
           Replay
         </Button>
-        <Button size="sm" type="button" variant="outline">
+        <Button
+          disabled={!sessionId || !workspaceId || reproduceMutation.isPending}
+          size="sm"
+          type="button"
+          variant="outline"
+          onClick={() =>
+            sessionId &&
+            workspaceId &&
+            reproduceMutation.mutate({ workspaceId, mode: "DRY_RUN" })
+          }
+        >
           Dry-run
         </Button>
       </div>
+      {data?.replayPackage ? <ReplayPackagePanel data={data} /> : null}
       <ServerDataTable
         columns={columns}
         data={steps}
         emptyText={t("empty.reproduce")}
+        isLoading={reproduceMutation.isPending && !shouldUseDemo}
       />
     </AnalysisLayout>
+  );
+}
+
+function ReplayPackagePanel({ data }: { data: DebugReproduceResponseDto }) {
+  const replayPackage = data.replayPackage;
+  if (!replayPackage) return null;
+
+  return (
+    <DashboardPanel className="space-y-4">
+      <div>
+        <p className="text-sm font-semibold">재현 패키지</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          원본 입력, 모델 설정, 도구 인자, 컨텍스트 근거를 묶어 운영 검토와
+          감사 기록에 사용할 수 있게 정리했습니다.
+        </p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <MiniFact label="입력" value={replayPackage.userInput ?? "-"} />
+        <MiniFact
+          label="프롬프트 버전"
+          value={replayPackage.promptVersion ?? "-"}
+        />
+        <MiniFact label="SDK 버전" value={replayPackage.sdkVersion ?? "-"} />
+        <MiniFact label="환경" value={replayPackage.environment ?? "-"} />
+      </div>
+      <div className="grid gap-3 lg:grid-cols-3">
+        <ReplayList
+          emptyText="기록된 모델 호출이 없습니다."
+          items={replayPackage.modelSettings.map((item) => ({
+            id: item.eventId,
+            title: item.model ?? item.provider ?? "unknown model",
+            description: item.requestPreview ?? "요청 미리보기가 없습니다.",
+          }))}
+          title="모델 설정"
+        />
+        <ReplayList
+          emptyText="기록된 도구 호출이 없습니다."
+          items={replayPackage.toolCalls.map((item) => ({
+            id: item.eventId,
+            title: item.toolName,
+            description:
+              item.argumentsPreview ??
+              (item.sideEffect ? "side effect 있음" : "read-only"),
+          }))}
+          title="도구 인자"
+        />
+        <ReplayList
+          emptyText="기록된 컨텍스트가 없습니다."
+          items={replayPackage.contextSnapshots.map((item) => ({
+            id: item.eventId,
+            title: item.label,
+            description: item.preview ?? "컨텍스트 미리보기가 없습니다.",
+          }))}
+          title="컨텍스트"
+        />
+      </div>
+    </DashboardPanel>
+  );
+}
+
+function MiniFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-md border border-border/60 bg-muted/20 p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1 line-clamp-2 break-words text-sm font-semibold [overflow-wrap:anywhere]">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function ReplayList({
+  emptyText,
+  items,
+  title,
+}: {
+  emptyText: string;
+  items: Array<{ id: string; title: string; description: string }>;
+  title: string;
+}) {
+  return (
+    <div className="min-w-0 rounded-md border border-border/60 p-3">
+      <p className="text-sm font-semibold">{title}</p>
+      <div className="mt-3 space-y-2">
+        {items.length > 0 ? (
+          items.slice(0, 5).map((item) => (
+            <div key={item.id} className="min-w-0 rounded-md bg-muted/20 p-2">
+              <p className="line-clamp-1 break-all text-xs font-semibold">
+                {item.title}
+              </p>
+              <p className="mt-1 line-clamp-2 break-words text-xs leading-5 text-muted-foreground [overflow-wrap:anywhere]">
+                {item.description}
+              </p>
+            </div>
+          ))
+        ) : (
+          <p className="py-6 text-center text-xs text-muted-foreground">
+            {emptyText}
+          </p>
+        )}
+      </div>
+    </div>
   );
 }
 

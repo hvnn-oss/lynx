@@ -497,6 +497,39 @@ export interface DebugReproduceStepDto {
   diffSummary?: string;
 }
 
+export interface DebugReproducePackageDto {
+  userInput?: string;
+  promptVersion?: string;
+  agentVersion?: string;
+  policyVersion?: string;
+  sdkVersion?: string;
+  environment?: string;
+  modelSettings: Array<{
+    eventId: string;
+    provider?: string;
+    model?: string;
+    temperature?: number;
+    maxTokens?: number;
+    requestPreview?: string;
+  }>;
+  toolCalls: Array<{
+    eventId: string;
+    toolName: string;
+    argumentsPreview?: string;
+    sideEffect: boolean;
+    riskCategory: DebugRiskCategory;
+  }>;
+  contextSnapshots: Array<{
+    eventId: string;
+    label: string;
+    preview?: string;
+  }>;
+  auditTrail: Array<{
+    label: string;
+    value: string;
+  }>;
+}
+
 export interface DebugReproduceResponseDto {
   replayId: string;
   sourceSessionId: string;
@@ -514,6 +547,7 @@ export interface DebugReproduceResponseDto {
   startedAt?: string;
   completedAt?: string;
   steps: DebugReproduceStepDto[];
+  replayPackage?: DebugReproducePackageDto;
   summary?: string;
 }
 

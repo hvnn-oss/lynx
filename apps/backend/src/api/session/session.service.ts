@@ -81,7 +81,10 @@ export class SessionService {
       qb.andWhere('session.id = :sessionId', { sessionId: query.sessionId });
     }
     if (query.runId) {
-      qb.andWhere('session.name = :runId', { runId: query.runId });
+      qb.andWhere(
+        '(session.name = :runId OR event.payload->>\'runId\' = :runId OR event.payload->>\'traceId\' = :runId)',
+        { runId: query.runId },
+      );
     }
     if (query.status) {
       qb.andWhere('session.status = :status', { status: query.status });
@@ -330,11 +333,13 @@ export class SessionService {
     ).length;
     const issueBadges = this.toIssueBadges(events);
     const primaryIssue = issues[0]?.type ?? issueBadges[0]?.type;
+    const runId = this.getSessionRunId(session, events);
+    const traceId = this.getSessionTraceId(session, events, runId);
 
     return {
       sessionId: session.id,
-      runId: session.name,
-      traceId: getPayloadString(getPayload(events[0]), 'traceId') ?? session.id,
+      runId,
+      traceId,
       agentId: session.agent?.id ?? '',
       agentName: session.agent?.name ?? 'Unknown Agent',
       status: session.status as SessionListItemDto['status'],
@@ -588,6 +593,27 @@ export class SessionService {
         kind: 'root-cause' as const,
       },
     ];
+  }
+
+  private getSessionRunId(session: SessionEntity, events: EventEntity[]) {
+    const firstPayload = getPayload(events[0]);
+    return (
+      getPayloadString(firstPayload, 'runId') ??
+      getPayloadString(firstPayload, 'traceId') ??
+      session.name
+    );
+  }
+
+  private getSessionTraceId(
+    session: SessionEntity,
+    events: EventEntity[],
+    runId: string,
+  ) {
+    return (
+      getPayloadString(getPayload(events[0]), 'traceId') ??
+      runId ??
+      session.id
+    );
   }
 
   private toNodeType(event: EventEntity): SessionFlowNodeType {

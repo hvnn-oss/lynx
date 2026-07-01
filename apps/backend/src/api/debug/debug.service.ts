@@ -30,6 +30,7 @@ import {
   DebugTimelineQueryDto,
   DebugTimelineResponseDto,
   DebugToolCallListResponseDto,
+  DebugRiskCategory,
   DebugSeverity,
 } from '@repo/dto';
 import { WorkspaceAccessService } from '../../common/services/workspace-access.service';
@@ -688,8 +689,95 @@ export class DebugService {
       startedAt: new Date().toISOString(),
       completedAt: new Date().toISOString(),
       steps,
+      replayPackage: this.createReproducePackage(sessionId, events),
       summary: `${replayableCount}/${steps.length} events are replay-plan compatible.`,
     };
+  }
+
+  private createReproducePackage(sessionId: string, events: EventEntity[]) {
+    const firstPayload = getPayload(events[0]);
+    const userInputEvent =
+      events.find((event) => event.eventType === 'USER_INPUT') ?? events[0];
+    const userInputPayload = getPayload(userInputEvent);
+    const llmEvents = events.filter((event) => event.eventType.includes('LLM'));
+    const toolEvents = events.filter((event) =>
+      event.eventType.includes('TOOL'),
+    );
+    const contextEvents = events.filter((event) => {
+      const type = event.eventType;
+      return (
+        type.includes('CONTEXT') ||
+        type.includes('MEMORY') ||
+        type.includes('RETRIEVER')
+      );
+    });
+
+    return {
+      userInput: toDebugString(userInputPayload.input ?? userInputPayload.text),
+      promptVersion:
+        getPayloadString(firstPayload, 'promptVersion') ??
+        this.findFirstPayloadString(events, 'promptVersion'),
+      agentVersion:
+        getPayloadString(firstPayload, 'agentVersion') ??
+        this.findFirstPayloadString(events, 'agentVersion'),
+      policyVersion:
+        getPayloadString(firstPayload, 'policyVersion') ??
+        this.findFirstPayloadString(events, 'policyVersion'),
+      sdkVersion:
+        getPayloadString(firstPayload, 'sdkVersion') ??
+        this.findFirstPayloadString(events, 'sdkVersion'),
+      environment:
+        getPayloadString(firstPayload, 'environment') ??
+        this.findFirstPayloadString(events, 'environment'),
+      modelSettings: llmEvents.map((event) => {
+        const payload = getPayload(event);
+        return {
+          eventId: event.id,
+          provider: getPayloadString(payload, 'provider'),
+          model: getPayloadString(payload, 'model') ?? event.label,
+          temperature: getPayloadNumber(payload, 'temperature'),
+          maxTokens: getPayloadNumber(payload, 'maxTokens'),
+          requestPreview: createPreview(payload.messages ?? payload.input),
+        };
+      }),
+      toolCalls: toolEvents.map((event) => {
+        const payload = getPayload(event);
+        return {
+          eventId: event.id,
+          toolName:
+            getPayloadString(payload, 'toolName') ??
+            getPayloadString(payload, 'name') ??
+            event.label,
+          argumentsPreview: createPreview(payload.args ?? payload.arguments),
+          sideEffect: getPayloadBoolean(payload, 'sideEffect') ?? false,
+          riskCategory: this.toRiskCategory(payload),
+        };
+      }),
+      contextSnapshots: contextEvents.map((event) => ({
+        eventId: event.id,
+        label: event.label,
+        preview: createPreview(getPayload(event)),
+      })),
+      auditTrail: [
+        { label: 'sourceSessionId', value: sessionId },
+        {
+          label: 'eventCount',
+          value: String(events.length),
+        },
+        {
+          label: 'capturedAt',
+          value: new Date().toISOString(),
+        },
+      ],
+    };
+  }
+
+  private findFirstPayloadString(events: EventEntity[], key: string) {
+    for (const event of events) {
+      const value = getPayloadString(getPayload(event), key);
+      if (value) return value;
+    }
+    return undefined;
   }
 
   async simulatePolicy(
@@ -954,7 +1042,10 @@ export class DebugService {
       qb.andWhere('session.id = :sessionId', { sessionId: query.sessionId });
     }
     if (query.runId) {
-      qb.andWhere('session.name = :runId', { runId: query.runId });
+      qb.andWhere(
+        '(session.name = :runId OR event.payload->>\'runId\' = :runId OR event.payload->>\'traceId\' = :runId)',
+        { runId: query.runId },
+      );
     }
   }
 
@@ -984,7 +1075,7 @@ export class DebugService {
 
     return {
       id: session.id,
-      runId: session.name,
+      runId: this.getSessionRunId(session, events),
       agentId: session.agent?.id ?? '',
       agentName: session.agent?.name ?? 'Unknown Agent',
       status: session.status as DebugSessionSummaryDto['status'],
@@ -1008,7 +1099,7 @@ export class DebugService {
     return {
       id: event.id,
       sessionId: session?.id ?? '',
-      runId: session?.name ?? '',
+      runId: this.getEventRunId(event),
       agentName: session?.agent?.name ?? 'Unknown Agent',
       eventType: event.eventType as DebugEventLogItemDto['eventType'],
       label: event.label,
@@ -1103,6 +1194,25 @@ export class DebugService {
     }
     if (event.eventType === 'ERROR' || payload.error) return 'error';
     return 'single';
+  }
+
+  private getSessionRunId(session: SessionEntity, events: EventEntity[]) {
+    const payload = getPayload(events[0]);
+    return (
+      getPayloadString(payload, 'runId') ??
+      getPayloadString(payload, 'traceId') ??
+      session.name
+    );
+  }
+
+  private getEventRunId(event: EventEntity) {
+    const payload = getPayload(event);
+    return (
+      getPayloadString(payload, 'runId') ??
+      getPayloadString(payload, 'traceId') ??
+      event.session?.name ??
+      ''
+    );
   }
 
   private toTimelineNode(
@@ -1213,7 +1323,7 @@ export class DebugService {
     return 'ALLOW';
   }
 
-  private toRiskCategory(payload: EventPayload) {
+  private toRiskCategory(payload: EventPayload): DebugRiskCategory {
     const explicit = getPayloadString(payload, 'riskCategory');
     if (
       explicit === 'read-only' ||

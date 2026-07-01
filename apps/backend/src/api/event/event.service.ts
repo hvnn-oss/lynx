@@ -265,15 +265,24 @@ export class EventService {
       }
     }
 
+    const eventPayload = {
+      ...(payload ?? {}),
+      runId: payload?.runId ?? runId,
+      sessionId: payload?.sessionId ?? sessionId,
+      workspaceId: payload?.workspaceId ?? workspace.id,
+      agentId: payload?.agentId ?? agent.id,
+      traceId: payload?.traceId ?? runId,
+    };
+
     const event = this.dataSource.getRepository(EventEntity).create({
       clientId,
       clientEventId: eventId,
       schemaVersion: dto.schemaVersion,
       eventType,
       label,
-      payload,
-      latency: payload?.latency,
-      cost: payload?.cost !== undefined ? Number(payload?.cost) : cost,
+      payload: eventPayload,
+      latency: eventPayload.latency,
+      cost: eventPayload.cost !== undefined ? Number(eventPayload.cost) : cost,
       timestamp: eventDate,
       session,
     });
@@ -398,7 +407,7 @@ export class EventService {
     if (!session) {
       session = sessionRepository.create({
         id: isUuid(sessionId) ? sessionId : undefined,
-        name: runId,
+        name: sessionId || runId,
         startedAt: eventDate,
         status: SESSION_STATUS.RUNNING,
         totalPromptTokens: 0,

@@ -582,7 +582,7 @@ describe('EventService', () => {
       expect(mockSessionRepository.create).toHaveBeenCalledWith(
         expect.objectContaining({
           id: '22222222-2222-4222-8222-222222222222',
-          name: 'trace-1',
+          name: '22222222-2222-4222-8222-222222222222',
         }),
       );
     });
@@ -636,7 +636,16 @@ describe('EventService', () => {
       expect(mockSessionRepository.create).toHaveBeenCalledWith(
         expect.objectContaining({
           id: undefined,
-          name: 'trace-1',
+          name: 'acme-ai-demo-session',
+        }),
+      );
+      expect(mockEventRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            runId: 'trace-1',
+            sessionId: 'acme-ai-demo-session',
+            traceId: 'trace-1',
+          }),
         }),
       );
     });
