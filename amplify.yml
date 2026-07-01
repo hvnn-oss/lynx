@@ -6,12 +6,15 @@ applications:
       phases:
         preBuild:
           commands:
-            - npm install -g pnpm@11.9.0
+            - corepack enable
+            - corepack prepare pnpm@11.9.0 --activate
+            - pnpm --version
+            - pnpm config set node-linker hoisted
             - pnpm config set store-dir .pnpm-store
             - pnpm install --frozen-lockfile --ignore-scripts
         build:
           commands:
-            - pnpm --filter lynx-landing build
+            - pnpm --filter lynx-landing run build
       artifacts:
         baseDirectory: apps/lynx-landing/.next
         files:
