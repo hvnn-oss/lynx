@@ -1,10 +1,17 @@
+import { Logger } from '@nestjs/common';
 import { ERROR_CODES } from '@repo/constants';
 import { createHash } from 'crypto';
 import { NextFunction, Request, Response } from 'express';
 import Redis from 'ioredis';
 
+const logger = new Logger('IngestionRateLimit');
+const defaultMaxRequestsPerMinute = 600;
+
 export function ingestionRateLimit(redis?: Redis) {
-  const maxRequests = Number(process.env.INGEST_RATE_LIMIT_PER_MINUTE ?? 600);
+  const maxRequests = parsePositiveInt(
+    process.env.INGEST_RATE_LIMIT_PER_MINUTE,
+    defaultMaxRequestsPerMinute,
+  );
   const windowMs = 60_000;
   const windowSeconds = Math.ceil(windowMs / 1000);
   const buckets = new Map<string, { count: number; resetAt: number }>();
@@ -73,9 +80,16 @@ async function applyRedisRateLimit(
     next();
   } catch (error) {
     // 수집 안정성이 우선이므로 Redis 장애 시 rate limit만 우회합니다.
-    console.warn('Redis ingestion rate limit failed open.', error);
+    logger.warn('Redis ingestion rate limit failed open.', error);
     next();
   }
+}
+
+function parsePositiveInt(value: string | undefined, fallback: number) {
+  if (!value) return fallback;
+
+  const parsed = parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function getRateLimitKey(req: Request) {

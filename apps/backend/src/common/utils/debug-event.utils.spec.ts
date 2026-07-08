@@ -1,11 +1,9 @@
 import { EventEntity } from '@repo/database';
-import {
-  calculateDepth,
-  createFailureSignature,
-  createPreview,
-  deriveIssues,
-  percentile,
-} from './debug.utils';
+import { createPreview } from './debug-preview.utils';
+import { deriveIssues } from './debug-issue.utils';
+import { createFailureSignature } from './fingerprint.utils';
+import { percentile } from './statistics.utils';
+import { calculateDepth } from './timeline.utils';
 
 type TestPayload = Record<string, unknown> & {
   eventType?: string;
@@ -26,7 +24,7 @@ const createEvent = (id: string, payload: TestPayload = {}): EventEntity => {
   } as EventEntity;
 };
 
-describe('debug utils', () => {
+describe('debug event utils', () => {
   it('calculates percentile with nearest-rank and empty input handling', () => {
     expect(percentile([], 0.95)).toBeNull();
     expect(percentile([100, 20, 50], 0.5)).toBe(50);

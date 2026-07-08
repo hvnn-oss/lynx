@@ -10,81 +10,37 @@ import {
   DashboardInsightsDto,
 } from '@repo/dto';
 import { WorkspaceAccessService } from '../../common/services/workspace-access.service';
+import {
+  RawAgentComparison,
+  RawAgentHealth,
+  RawEnvironmentUsage,
+  RawKpiMetrics,
+  RawLatencyMetrics,
+  RawModelMetrics,
+  RawPercentiles,
+  RawRecentIssue,
+  RawTimeSeries,
+  RawTokenMetrics,
+  RawToolMetrics,
+} from '../../common/types/dashboard-raw.types';
+import {
+  getDemoCostMetrics,
+  getDemoHomeMetrics,
+  getDemoInsights,
+  getDemoMetricsData,
+  getDemoStatusMetrics,
+  getDemoUsageMetrics,
+} from '../../common/fixtures/dashboard-demo.metrics';
+import {
+  getEmptyCostMetrics,
+  getEmptyHomeMetrics,
+  getEmptyInsights,
+  getEmptyMetricsData,
+  getEmptyStatusMetrics,
+  getEmptyUsageMetrics,
+} from '../../common/fixtures/dashboard-empty.metrics';
 
-// 타입 안정성을 위한 데이터베이스 로우 타입 정의
-interface RawKpiMetrics {
-  runs?: string;
-  cost?: string;
-  activeAgents?: string;
-  completedRuns?: string;
-  tokens?: string;
-}
-
-interface RawLatencyMetrics {
-  avg?: string;
-}
-
-interface RawAgentHealth {
-  agentId: string;
-  agentName: string;
-  totalRuns: string;
-  failedRuns: string;
-}
-
-interface RawTimeSeries {
-  hour: string;
-  count?: string;
-  failed?: string;
-}
-
-interface RawModelMetrics {
-  modelName: string | null;
-  totalCalls: string;
-  errorCalls: string;
-  avgLatency: string | null;
-}
-
-interface RawToolMetrics {
-  toolName: string | null;
-  totalCalls: string;
-  errorCalls: string;
-}
-
-interface RawPercentiles {
-  p50: string | null;
-  p95: string | null;
-  p99: string | null;
-}
-
-interface RawTokenMetrics {
-  input: string | null;
-  output: string | null;
-}
-
-interface RawAgentComparison {
-  agentName: string | null;
-  completed: string;
-  total: string;
-  cost: string | null;
-  p95Latency?: string | null;
-}
-
-interface RawRecentIssue {
-  id: string;
-  agentName: string | null;
-  issueType: string | null;
-  severity: 'CRITICAL' | 'WARNING';
-  occurrenceCount: string;
-  affectedSessionsCount: string;
-  firstSeenAt: string;
-  lastSeenAt: string;
-}
-
-interface RawEnvironmentUsage {
-  environment: string | null;
-  runs: string;
-}
-
+// 대시보드 요약 화면에서 쓰는 운영 지표를 계산합니다.
 @Injectable()
 export class DashboardService {
   private readonly logger = new Logger(DashboardService.name);
@@ -95,10 +51,8 @@ export class DashboardService {
   ) {}
 
   /**
-   * 대시보드 홈(요약) 화면에 필요한 지표 데이터를 가져옵니다.
-   * 데이터베이스에 데이터가 존재할 경우 실제 통계를 집계하고,
-   * 데이터가 충분하지 않을 경우 데모 목적의 기본 풍부한 모의(Mock) 데이터를 반환합니다.
-   * 모든 API 응답 키와 필드 메시지는 영어로 작성됩니다.
+   * 대시보드 첫 화면에 필요한 핵심 지표를 모읍니다.
+   * 최근 24시간과 이전 24시간을 비교해 변화량을 계산합니다.
    */
   async getHomeMetrics(
     workspaceId: string,
@@ -132,9 +86,9 @@ export class DashboardService {
 
       const totalRuns = parseInt(currentRaw?.runs ?? '0', 10);
 
-      // 데이터가 없을 경우 데모 모드로 전환
+      // 실행 데이터가 없으면 화면이 기대하는 빈 상태 DTO를 반환합니다.
       if (totalRuns === 0) {
-        return this.getEmptyHomeMetrics();
+        return getEmptyHomeMetrics();
       }
 
       const previousMetrics = (await sessionRepository
@@ -385,7 +339,7 @@ export class DashboardService {
   }
 
   /**
-   * 대시보드 상태(Status) 화면에 필요한 지표 데이터를 가져옵니다.
+   * 상태 화면에 필요한 에이전트, 모델, 도구 상태를 계산합니다.
    */
   async getStatusMetrics(
     workspaceId: string,
@@ -404,7 +358,7 @@ export class DashboardService {
       });
 
       if (sessionCount === 0) {
-        return this.getEmptyStatusMetrics();
+        return getEmptyStatusMetrics();
       }
 
       const agentSessionsRaw = (await sessionRepository
@@ -567,7 +521,7 @@ export class DashboardService {
   }
 
   /**
-   * 대시보드 옵저버빌리티 지표(Metrics) 화면에 필요한 통계 데이터를 가져옵니다.
+   * 성능 화면에서 쓰는 처리량, 지연 시간, 토큰, 오류 지표를 계산합니다.
    */
   async getMetricsData(
     workspaceId: string,
@@ -586,7 +540,7 @@ export class DashboardService {
       });
 
       if (sessionCount === 0) {
-        return this.getEmptyMetricsData();
+        return getEmptyMetricsData();
       }
 
       const runMetricsRaw = (await sessionRepository
@@ -749,7 +703,7 @@ export class DashboardService {
   }
 
   /**
-   * 대시보드 사용 현황(Usage) 화면에 필요한 지표 데이터를 가져옵니다.
+   * 사용량 화면에 필요한 에이전트, 환경, 도구, 모델 사용량을 계산합니다.
    */
   async getUsageMetrics(
     workspaceId: string,
@@ -767,7 +721,7 @@ export class DashboardService {
       });
 
       if (sessionCount === 0) {
-        return this.getEmptyUsageMetrics();
+        return getEmptyUsageMetrics();
       }
 
       const topAgentsRaw = (await sessionRepository
@@ -902,7 +856,7 @@ export class DashboardService {
   }
 
   /**
-   * 대시보드 비용(Cost) 화면에 필요한 지표 데이터를 가져옵니다.
+   * 비용 화면에 필요한 기간별 비용, 에이전트별 비용, 이상 비용을 계산합니다.
    */
   async getCostMetrics(
     workspaceId: string,
@@ -932,7 +886,7 @@ export class DashboardService {
       });
 
       if (sessionCount === 0) {
-        return this.getEmptyCostMetrics();
+        return getEmptyCostMetrics();
       }
 
       const costTodayRaw = (await sessionRepository
@@ -1078,7 +1032,7 @@ export class DashboardService {
   }
 
   /**
-   * 대시보드 인사이트(Insights) 화면에 필요한 데이터를 가져옵니다.
+   * 인사이트 화면에 보여줄 원인 후보와 비용/오류 이상 신호를 계산합니다.
    */
   async getInsights(
     workspaceId: string,
@@ -1097,7 +1051,7 @@ export class DashboardService {
       });
 
       if (sessionCount === 0) {
-        return this.getEmptyInsights();
+        return getEmptyInsights();
       }
 
       const insights: DashboardInsightsDto['insights'] = [];
@@ -1166,7 +1120,7 @@ export class DashboardService {
       }
 
       if (insights.length === 0) {
-        return this.getEmptyInsights();
+        return getEmptyInsights();
       }
 
       return { insights };
@@ -1180,460 +1134,27 @@ export class DashboardService {
     }
   }
 
-  private getEmptyHomeMetrics(): DashboardHomeMetricsDto {
-    return {
-      kpis: {
-        agentRuns: { value: 0, change: 0, trend: 'up' },
-        successRate: { value: 0, change: 0, trend: 'up' },
-        avgLatency: { value: 0, change: 0, trend: 'up' },
-        cost: { value: 0, change: 0, trend: 'up' },
-        activeAgents: { value: 0 },
-        criticalAlerts: { value: 0, change: 0, trend: 'up' },
-      },
-      healthScores: [],
-      runVolume: [],
-      failureTrend: [],
-      recentIssues: [],
-    };
-  }
-
-  private getEmptyStatusMetrics(): DashboardStatusMetricsDto {
-    return {
-      agentStatus: {
-        healthy: 0,
-        warning: 0,
-        critical: 0,
-        offline: 0,
-      },
-      modelStatus: [],
-      toolStatus: [],
-      recentOutages: [],
-      slo: {
-        metricName: 'Success Rate',
-        target: 95,
-        current: 0,
-        status: 'NON_COMPLIANT',
-      },
-    };
-  }
-
-  private getEmptyMetricsData(): DashboardMetricsDataDto {
-    return {
-      runMetrics: {
-        runsPerSec: 0,
-        tokensPerSec: 0,
-        requestsPerSec: 0,
-      },
-      latencyDistribution: {
-        p50: 0,
-        p95: 0,
-        p99: 0,
-      },
-      tokenMetrics: {
-        inputTokens: 0,
-        outputTokens: 0,
-      },
-      errorRate: {
-        toolError: 0,
-        llmError: 0,
-        validationError: 0,
-      },
-      agentComparison: [],
-    };
-  }
-
-  private getEmptyUsageMetrics(): DashboardUsageMetricsDto {
-    return {
-      topAgents: [],
-      heatmap: [],
-      environmentUsage: [],
-      toolUsage: [],
-      modelUsage: [],
-    };
-  }
-
-  private getEmptyCostMetrics(): DashboardCostMetricsDto {
-    return {
-      totalCost: {
-        today: 0,
-        thisWeek: 0,
-        thisMonth: 0,
-      },
-      costBreakdown: {
-        model: 0,
-        tool: 0,
-        storage: 0,
-      },
-      costByAgent: [],
-      costPerRun: {
-        average: 0,
-        timeSeries: [],
-      },
-      costAnomalies: [],
-    };
-  }
-
-  private getEmptyInsights(): DashboardInsightsDto {
-    return {
-      insights: [],
-    };
-  }
-
   getDemoHomeMetrics(): DashboardHomeMetricsDto {
-    const agentNames = [
-      'ResearchBot',
-      'SupportBot',
-      'SalesOps Agent',
-      'InvoiceBot',
-      'PolicyReview Agent',
-      'DataOps Agent',
-      'ComplianceBot',
-      'CustomerSuccess Agent',
-      'Retriever Agent',
-      'IncidentTriage Agent',
-      'BillingBot',
-      'Onboarding Agent',
-      'SearchQA Agent',
-      'EscalationBot',
-      'KnowledgeSync Agent',
-      'WorkflowPlanner',
-    ];
-    const issues = [
-      ['Slack API Timeout', 'ResearchBot', 'CRITICAL', 214, 386],
-      [
-        'Tool retry loop detected',
-        'IncidentTriage Agent',
-        'CRITICAL',
-        168,
-        244,
-      ],
-      ['Prompt injection attempt blocked', 'SupportBot', 'CRITICAL', 142, 198],
-      ['CRM enrichment latency spike', 'SalesOps Agent', 'WARNING', 126, 176],
-      ['Context window truncation', 'Retriever Agent', 'WARNING', 118, 141],
-      ['Payment data access denied', 'ComplianceBot', 'CRITICAL', 86, 112],
-      ['Memory miss rate increased', 'KnowledgeSync Agent', 'WARNING', 74, 98],
-      [
-        'Policy approval queue backlog',
-        'PolicyReview Agent',
-        'WARNING',
-        69,
-        83,
-      ],
-      ['Database read timeout', 'DataOps Agent', 'CRITICAL', 58, 71],
-      ['Model fallback activated', 'CustomerSuccess Agent', 'WARNING', 43, 52],
-    ] as const;
-    const hours = Array.from({ length: 72 }).map((_, i) => {
-      const d = new Date();
-      d.setHours(d.getHours() - (71 - i));
-      d.setMinutes(0, 0, 0);
-      return d.toISOString();
-    });
-
-    return {
-      kpis: {
-        agentRuns: { value: 428640, change: 18.7, trend: 'up' as const },
-        successRate: { value: 96.8, change: -1.1, trend: 'down' as const },
-        avgLatency: { value: 2.84, change: 0.42, trend: 'up' as const },
-        cost: { value: 12842.72, change: 16.4, trend: 'up' as const },
-        activeAgents: { value: 184 },
-        criticalAlerts: { value: 37, change: 12, trend: 'up' as const },
-      },
-      healthScores: agentNames.map((agentName, index) => {
-        const score = Math.max(52, 99 - index * 3 - (index % 4) * 4);
-        return {
-          agentId: `demo-agent-${index + 1}`,
-          agentName,
-          score,
-          status:
-            score >= 90
-              ? ('HEALTHY' as const)
-              : score >= 75
-                ? ('WARNING' as const)
-                : ('CRITICAL' as const),
-        };
-      }),
-      runVolume: hours.map((hour, idx) => {
-        const eventHour = new Date(hour).getHours();
-        const businessHourBoost =
-          eventHour >= 8 && eventHour <= 20 ? 2800 : 850;
-        const dailyWave = Math.max(0, Math.sin(idx / 5)) * 1450;
-        const incidentSpike = idx >= 58 && idx <= 66 ? 1800 : 0;
-        const count = Math.floor(
-          4200 + businessHourBoost + dailyWave + incidentSpike,
-        );
-        const failureRatio =
-          idx >= 58 && idx <= 66
-            ? 0.082 + (idx - 58) * 0.004
-            : 0.024 + (idx % 7) * 0.002;
-        const failedCount = Math.floor(count * failureRatio);
-        const successCount = count - failedCount;
-
-        return {
-          time: hour,
-          count: successCount + failedCount,
-          successCount,
-          failedCount,
-        };
-      }),
-      failureTrend: hours.map((hour, idx) => {
-        const incident = idx >= 58 && idx <= 66;
-        const rate = incident
-          ? 8.2 + (idx - 58) * 0.7
-          : 2.1 + Math.max(0, Math.sin(idx / 6)) * 1.4;
-        const previousRate = incident
-          ? 3.1 + (idx - 58) * 0.15
-          : 1.8 + Math.max(0, Math.cos(idx / 7)) * 1.1;
-
-        return {
-          time: hour,
-          rate: parseFloat(rate.toFixed(2)),
-          previousRate: parseFloat(previousRate.toFixed(2)),
-        };
-      }),
-      recentIssues: issues.map(
-        (
-          [
-            issueType,
-            agentName,
-            severity,
-            occurrenceCount,
-            affectedSessionsCount,
-          ],
-          index,
-        ) => ({
-          id: `demo-issue-${index + 1}`,
-          agentName,
-          issueType,
-          severity,
-          timestamp: new Date(
-            Date.now() - (index * 11 + 6) * 60 * 1000,
-          ).toISOString(),
-          occurrenceCount,
-          affectedSessionsCount,
-          lastSeenAt: new Date(
-            Date.now() - (index * 7 + 3) * 60 * 1000,
-          ).toISOString(),
-        }),
-      ),
-    };
-  }
-
-  private getDefaultModelStatus() {
-    return [
-      { model: 'GPT-5', successRate: 99.4, avgLatency: 3.1 },
-      { model: 'Claude Sonnet', successRate: 96.2, avgLatency: 2.8 },
-      { model: 'Gemini', successRate: 98.1, avgLatency: 1.9 },
-    ];
-  }
-
-  private getDefaultToolStatus() {
-    return [
-      { tool: 'Notion', successRate: 99.1 },
-      { tool: 'Slack', successRate: 94.5 },
-      { tool: 'CRM', successRate: 98.0 },
-      { tool: 'Database', successRate: 100.0 },
-    ];
+    return getDemoHomeMetrics();
   }
 
   getDemoStatusMetrics(): DashboardStatusMetricsDto {
-    return {
-      agentStatus: {
-        healthy: 12,
-        warning: 4,
-        critical: 2,
-        offline: 0,
-      },
-      modelStatus: this.getDefaultModelStatus(),
-      toolStatus: this.getDefaultToolStatus(),
-      recentOutages: [
-        {
-          timestamp: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
-          component: 'Slack API Integration',
-          error: 'Slack API Timeout (504 Gateway Timeout)',
-        },
-        {
-          timestamp: new Date(Date.now() - 37 * 60 * 1000).toISOString(),
-          component: 'GPT-5 Model',
-          error: 'Context Overflow (Token Limit Exceeded)',
-        },
-      ],
-      slo: {
-        metricName: 'Success Rate',
-        target: 95.0,
-        current: 96.2,
-        status: 'COMPLIANT' as const,
-      },
-    };
-  }
-
-  private getDefaultAgentComparison() {
-    return [
-      {
-        agentName: 'SupportBot',
-        successRate: 98.2,
-        p95Latency: 2.5,
-        cost: 42.1,
-      },
-      { agentName: 'SalesBot', successRate: 92.4, p95Latency: 5.8, cost: 76.5 },
-    ];
+    return getDemoStatusMetrics();
   }
 
   getDemoMetricsData(): DashboardMetricsDataDto {
-    return {
-      runMetrics: {
-        runsPerSec: 15.4,
-        tokensPerSec: 84200,
-        requestsPerSec: 32.1,
-      },
-      latencyDistribution: {
-        p50: 1.8,
-        p95: 4.5,
-        p99: 9.2,
-      },
-      tokenMetrics: {
-        inputTokens: 48200100,
-        outputTokens: 12840900,
-      },
-      errorRate: {
-        toolError: 42,
-        llmError: 18,
-        validationError: 5,
-      },
-      agentComparison: this.getDefaultAgentComparison(),
-    };
-  }
-
-  private getDefaultTopAgents() {
-    return [
-      { name: 'Customer Support', count: 6420 },
-      { name: 'Sales Agent', count: 3120 },
-      { name: 'Research Agent', count: 1890 },
-    ];
-  }
-
-  private getDefaultToolUsage() {
-    return [
-      { name: 'Slack', count: 12800 },
-      { name: 'Notion', count: 4820 },
-      { name: 'Google Drive', count: 2100 },
-    ];
-  }
-
-  private getDefaultModelUsage() {
-    return [
-      { name: 'GPT-5', count: 15400, tokens: 84200000 },
-      { name: 'Claude', count: 8900, tokens: 32100000 },
-      { name: 'Gemini', count: 4200, tokens: 1540000 },
-    ];
+    return getDemoMetricsData();
   }
 
   getDemoUsageMetrics(): DashboardUsageMetricsDto {
-    const heatmap: Array<{ day: number; hour: number; count: number }> = [];
-    for (let day = 0; day < 7; day++) {
-      for (let hour = 0; hour < 24; hour++) {
-        const weight = hour >= 9 && hour <= 18 ? 5.0 : 1.0;
-        heatmap.push({
-          day,
-          hour,
-          count: Math.floor(Math.random() * 50 * weight),
-        });
-      }
-    }
-
-    return {
-      topAgents: this.getDefaultTopAgents(),
-      heatmap,
-      environmentUsage: [
-        { environment: 'production', runs: 520 },
-        { environment: 'staging', runs: 190 },
-        { environment: 'preview', runs: 60 },
-      ],
-      toolUsage: this.getDefaultToolUsage(),
-      modelUsage: this.getDefaultModelUsage(),
-    };
-  }
-
-  private getDefaultCostByAgent() {
-    return [
-      { agentName: 'SupportBot', cost: 34.0 },
-      { agentName: 'ResearchBot', cost: 82.0 },
-    ];
-  }
-
-  private getDefaultCostAnomalies() {
-    return [
-      {
-        timestamp: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-        model: 'GPT-5',
-        percentageIncrease: 47.0,
-        description:
-          'Today GPT cost increased by 47% (Potential massive retry loop detected)',
-      },
-    ];
+    return getDemoUsageMetrics();
   }
 
   getDemoCostMetrics(): DashboardCostMetricsDto {
-    return {
-      totalCost: {
-        today: 127.42,
-        thisWeek: 842.1,
-        thisMonth: 3240.5,
-      },
-      costBreakdown: {
-        model: 84.22,
-        tool: 32.1,
-        storage: 11.1,
-      },
-      costByAgent: this.getDefaultCostByAgent(),
-      costPerRun: {
-        average: 0.0125,
-        timeSeries: [
-          {
-            date: new Date(Date.now() - 24 * 60 * 60 * 1000)
-              .toISOString()
-              .split('T')[0],
-            avgCost: 0.012,
-          },
-          { date: new Date().toISOString().split('T')[0], avgCost: 0.0125 },
-        ],
-      },
-      costAnomalies: this.getDefaultCostAnomalies(),
-    };
+    return getDemoCostMetrics();
   }
 
   getDemoInsights(): DashboardInsightsDto {
-    return {
-      insights: [
-        {
-          id: 'ins-901',
-          type: 'Failure Spike Detected',
-          severity: 'CRITICAL' as const,
-          timestamp: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
-          cause: 'After deployment of Prompt v23',
-          impact: 'Success rate collapsed from 96% to 82%',
-          affectedAgentsCount: 5,
-          details: {
-            summary:
-              'SalesBot and 4 other agents experienced successive Intent Misclassification and validation errors immediately following the deployment of Prompt version v23.',
-            rcaLink: '/debug/root-cause?issueId=ins-901',
-          },
-        },
-        {
-          id: 'ins-902',
-          type: 'Cost Spike Warning',
-          severity: 'WARNING' as const,
-          timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-          cause: 'Google Drive Tool Infinite Loop',
-          impact:
-            'Average agent execution cost increased from $0.012 to $0.085',
-          affectedAgentsCount: 2,
-          details: {
-            summary:
-              'Missing retry backoff parameters caused an infinite loop in file search API invocations during Google Drive connection timeouts.',
-            rcaLink: '/debug/bottleneck?issueId=ins-902',
-          },
-        },
-      ],
-    };
+    return getDemoInsights();
   }
 }

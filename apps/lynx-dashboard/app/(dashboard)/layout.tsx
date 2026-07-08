@@ -1,27 +1,20 @@
-import DashboardFooter from "@/components/layouts/dashboard/footer";
-import { DashboardHeader } from "@/components/layouts/dashboard/header";
-import { DashboardSidebar } from "@/components/layouts/dashboard/sidebar";
+import DashboardLayout from "@/components/layout/global/layout";
+import SidebarInner from "@/components/layout/global/sidebar/sidebar-inner";
 import AuthGuard from "@/components/util/auth-guard";
-import WorkspaceGuard from "@/components/util/workspace-guard";
 
-// 대시보드 내부 영역은 로그인과 워크스페이스 선택이 끝난 뒤에만 렌더링합니다.
-export default function RootLayout({
+export default function DashboardPageLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
     <AuthGuard>
-      <WorkspaceGuard>
-        <div className="flex">
-          <DashboardSidebar />
-          <div className="flex-1">
-            <DashboardHeader />
-            {children}
-            <DashboardFooter />
-          </div>
+      <DashboardLayout>
+        <div className="flex w-full h-full overflow-hidden">
+          <SidebarInner />
+          <div className="flex-1 min-h-0 overflow-y-scroll">{children}</div>
         </div>
-      </WorkspaceGuard>
+      </DashboardLayout>
     </AuthGuard>
   );
 }

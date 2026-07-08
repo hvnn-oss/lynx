@@ -23,29 +23,26 @@ import {
 import { WorkspaceAccessService } from '../../common/services/workspace-access.service';
 import {
   createPreview,
-  deriveIssues,
+  toDebugString,
+} from '../../common/utils/debug-preview.utils';
+import { deriveIssues } from '../../common/utils/debug-issue.utils';
+import {
   getPayload,
   getPayloadBoolean,
   getPayloadNumber,
   getPayloadString,
-  toDebugString,
-} from '../debug/debug.utils';
-
-interface CursorValue {
-  name: string;
-  id: string;
-}
-
-interface AgentRuntimeStats {
-  sessions: SessionEntity[];
-  events: EventEntity[];
-}
-
-const DEFAULT_AGENT_LIMIT = 25;
-const MAX_AGENT_LIMIT = 100;
-const AGENT_LOOKBACK_LIMIT = 1000;
-const ACTIVE_WINDOW_MS = 24 * 60 * 60 * 1000;
-const INACTIVE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+} from '../../common/utils/event-payload.utils';
+import {
+  ACTIVE_WINDOW_MS,
+  AGENT_LOOKBACK_LIMIT,
+  DEFAULT_AGENT_LIMIT,
+  INACTIVE_WINDOW_MS,
+  MAX_AGENT_LIMIT,
+} from '../../common/constants/agent.constants';
+import {
+  AgentCursorValue,
+  AgentRuntimeStats,
+} from '../../common/types/agent.types';
 
 @Injectable()
 export class AgentService {
@@ -926,12 +923,12 @@ export class AgentService {
     };
   }
 
-  private decodeCursor(cursor?: string): CursorValue | undefined {
+  private decodeCursor(cursor?: string): AgentCursorValue | undefined {
     if (!cursor) return undefined;
     try {
       const parsed = JSON.parse(
         Buffer.from(cursor, 'base64url').toString('utf8'),
-      ) as CursorValue;
+      ) as AgentCursorValue;
       if (!parsed.name || !parsed.id) throw new Error('Invalid cursor.');
       return parsed;
     } catch {

@@ -1,4 +1,4 @@
-import LoginForm from "@/components/ui/auth/login-form";
+import LoginForm from "@/components/screen/auth/login-form";
 import { useTranslations } from "next-intl";
 
 export default function DashboardPage() {

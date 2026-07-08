@@ -19,6 +19,7 @@ import { SessionModule } from './api/session/session.module';
 import { WorkspaceModule } from './api/workspace/workspace.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { ImageStorageModule } from './providers/image-storage/image-storage.module';
 import { RedisModule } from './providers/redis/redis.module';
 import { MailerModule } from './providers/smtp/mail.module';
 
@@ -124,6 +125,7 @@ function parseTypeOrmLogging(
     }),
     MailerModule,
     RedisModule,
+    ImageStorageModule,
     AuthModule,
     OrganizationModule,
     ScheduleModule.forRoot(),

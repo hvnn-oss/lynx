@@ -61,6 +61,7 @@ export class EventService {
     return await this.ingestEventWithContext(dto, context);
   }
 
+  // 배치는 일부 이벤트가 실패해도 나머지 이벤트 수집을 계속 진행합니다.
   async ingestEvents(dtos: LynxEventDto[], apiKey?: string) {
     if (dtos.length === 0) {
       throw new BadRequestException({
@@ -134,6 +135,7 @@ export class EventService {
       })
       .getOne();
 
+    // 새 API key 테이블을 우선 사용하고, 예전 workspace.apiKey 값도 잠시 지원합니다.
     let workspace: WorkspaceEntity | null | undefined =
       workspaceApiKey?.workspace;
 
@@ -167,6 +169,7 @@ export class EventService {
     return {
       workspace,
       retentionDays: this.getRetentionDays(workspace),
+      // 한 배치 안에서 같은 에이전트/세션을 반복 조회하지 않기 위한 캐시입니다.
       agentsByKey: new Map(),
       sessionsByKey: new Map(),
     };
@@ -216,6 +219,7 @@ export class EventService {
       };
     }
 
+    // 수집 이벤트는 항상 workspace -> agent -> session -> event 순서로 연결합니다.
     const agent = await this.findOrCreateAgent(
       context,
       workspace,
@@ -249,6 +253,7 @@ export class EventService {
     }
 
     if (eventId) {
+      // SDK 재시도 때문에 같은 eventId가 다시 들어와도 성공으로 처리합니다.
       const existingEvent = await this.dataSource
         .getRepository(EventEntity)
         .createQueryBuilder('event')
@@ -281,8 +286,11 @@ export class EventService {
       eventType,
       label,
       payload: eventPayload,
-      latency: eventPayload.latency,
-      cost: eventPayload.cost !== undefined ? Number(eventPayload.cost) : cost,
+      latency: this.toOptionalFiniteNumber(eventPayload.latency),
+      cost:
+        eventPayload.cost !== undefined
+          ? this.toFiniteNumber(eventPayload.cost)
+          : cost,
       timestamp: eventDate,
       session,
     });
@@ -343,6 +351,7 @@ export class EventService {
           : null;
     }
     if (!agent) {
+      // SDK에서 처음 보는 agentId/name이 오면 자동으로 기본 에이전트를 만듭니다.
       agent = agentRepository.create({
         id: isUuid(agentId) ? agentId : undefined,
         name: agentName || agentId || 'Default Agent',
@@ -405,6 +414,7 @@ export class EventService {
       });
     }
     if (!session) {
+      // runId를 세션 이름으로 보관해 대시보드에서 Run 중심으로 다시 찾을 수 있게 합니다.
       session = sessionRepository.create({
         id: isUuid(sessionId) ? sessionId : undefined,
         name: sessionId || runId,
@@ -475,10 +485,11 @@ export class EventService {
 
     const usage = payload.usage as Record<string, any> | undefined;
     if (usage) {
-      promptTokens = Number(usage.promptTokens ?? 0);
-      completionTokens = Number(usage.completionTokens ?? 0);
-      totalTokens = Number(
-        usage.totalTokens ?? promptTokens + completionTokens,
+      promptTokens = this.toFiniteNumber(usage.promptTokens);
+      completionTokens = this.toFiniteNumber(usage.completionTokens);
+      totalTokens = this.toFiniteNumber(
+        usage.totalTokens,
+        promptTokens + completionTokens,
       );
       const modelName = (payload.model as string) || label || 'gpt-4o';
       cost = this.estimateLlmCost(modelName, promptTokens, completionTokens);
@@ -488,10 +499,22 @@ export class EventService {
     }
 
     if (payload.cost !== undefined) {
-      cost = Number(payload.cost);
+      cost = this.toFiniteNumber(payload.cost);
     }
 
     return { cost, promptTokens, completionTokens, totalTokens };
+  }
+
+  private toFiniteNumber(value: unknown, fallback = 0): number {
+    const numberValue = Number(value ?? fallback);
+    return Number.isFinite(numberValue) ? numberValue : fallback;
+  }
+
+  private toOptionalFiniteNumber(value: unknown): number | undefined {
+    if (value === undefined || value === null) return undefined;
+
+    const numberValue = Number(value);
+    return Number.isFinite(numberValue) ? numberValue : undefined;
   }
 
   private getRetentionDays(workspace: WorkspaceEntity): number {
@@ -595,7 +618,7 @@ export class EventService {
       .getRepository(EventEntity)
       .createQueryBuilder('event')
       .delete()
-      .where('event.timestamp < :limit', { limit })
+      .where('"event"."timestamp" < :limit', { limit })
       .andWhere(() => {
         const subQuery = this.dataSource
           .createQueryBuilder()
@@ -605,7 +628,7 @@ export class EventService {
           .innerJoin('s.workspace', 'w')
           .where('w.plan = :plan')
           .getQuery();
-        return 'event.sessionId IN ' + subQuery;
+        return '"event"."sessionId" IN ' + subQuery;
       })
       .setParameter('plan', plan)
       .execute();

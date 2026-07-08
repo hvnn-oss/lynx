@@ -34,35 +34,51 @@ import {
   DebugSeverity,
 } from '@repo/dto';
 import { WorkspaceAccessService } from '../../common/services/workspace-access.service';
+import { average, percentile } from '../../common/utils/statistics.utils';
 import {
-  average,
   calculateCriticalPath,
-  calculateDepth,
-  computeSeverity,
-  createFailureSignature,
+  getSpanId,
+} from '../../common/utils/timeline.utils';
+import { computeSeverity } from '../../common/utils/debug-severity.utils';
+import { createFailureSignature } from '../../common/utils/fingerprint.utils';
+import {
   createPreview,
-  deriveIssues,
-  EventPayload,
+  toDebugString,
+} from '../../common/utils/debug-preview.utils';
+import { deriveIssues } from '../../common/utils/debug-issue.utils';
+import { EventPayload } from '../../common/types/debug-event.types';
+import {
   getPayload,
   getPayloadBoolean,
   getPayloadNumber,
   getPayloadRiskLevel,
   getPayloadString,
-  getSpanId,
-  isRecord,
-  maxSeverity,
-  percentile,
-  toDebugString,
-} from './debug.utils';
-
-interface CursorValue {
-  timestamp: string;
-  id: string;
-}
-
-const MAX_DEBUG_RANGE_DAYS = 7;
-const MAX_ANALYSIS_EVENTS = 10000;
-const MAX_SESSION_EVENTS = 5000;
+} from '../../common/utils/event-payload.utils';
+import {
+  MAX_ANALYSIS_EVENTS,
+  MAX_SESSION_EVENTS,
+} from '../../common/constants/debug.constants';
+import {
+  canExposeRawDebugPayloads,
+  createDebugPageInfo,
+  decodeDebugCursor,
+  encodeDebugCursor,
+  findFirstPayloadString,
+  getDebugDateRange,
+  getDebugSeverityRank,
+  isDebugReplayable,
+  normalizeDebugLimit,
+  normalizeDebugPolicyResult,
+  toDebugBottleneckType,
+  toDebugEventLogItem,
+  toDebugLatencyBuckets,
+  toDebugLlmCallItem,
+  toDebugRootCauseCategory,
+  toDebugRiskCategory,
+  toDebugSessionSummary,
+  toDebugTimelineNode,
+  toDebugToolCallItem,
+} from '../../common/utils/debug-service.utils';
 
 @Injectable()
 export class DebugService {
@@ -77,8 +93,8 @@ export class DebugService {
   ): Promise<DebugSessionListResponseDto> {
     const workspaceId = query.workspaceId;
     await this.workspaceAccess.assertAccess(userId, workspaceId);
-    const limit = this.normalizeLimit(query.limit);
-    const cursor = this.decodeCursor(query.cursor);
+    const limit = normalizeDebugLimit(query.limit);
+    const cursor = decodeDebugCursor(query.cursor);
 
     const qb = this.dataSource
       .getRepository(SessionEntity)
@@ -115,7 +131,7 @@ export class DebugService {
     const sessions = await qb.getMany();
     const visible = sessions.slice(0, limit);
     const summaries = visible
-      .map((session) => this.toSessionSummary(session))
+      .map((session) => toDebugSessionSummary(session))
       .filter((summary) => {
         if (query.severity && summary.severity !== query.severity) {
           return false;
@@ -131,8 +147,8 @@ export class DebugService {
 
     return {
       sessions: summaries,
-      page: this.createPageInfo(sessions, limit, (session) =>
-        this.encodeCursor(session.startedAt, session.id),
+      page: createDebugPageInfo(sessions, limit, (session) =>
+        encodeDebugCursor(session.startedAt, session.id),
       ),
     };
   }
@@ -146,8 +162,8 @@ export class DebugService {
     await this.workspaceAccess.assertAccess(userId, workspaceId);
     await this.findSessionOrThrow(workspaceId, sessionId);
 
-    const limit = this.normalizeLimit(query.limit);
-    const cursor = this.decodeCursor(query.cursor);
+    const limit = normalizeDebugLimit(query.limit);
+    const cursor = decodeDebugCursor(query.cursor);
     const qb = this.dataSource
       .getRepository(EventEntity)
       .createQueryBuilder('event')
@@ -210,7 +226,7 @@ export class DebugService {
     const events = await qb.getMany();
     const visible = events.slice(0, limit);
     const mapped = visible
-      .map((event) => this.toEventLogItem(event))
+      .map((event) => toDebugEventLogItem(event))
       .filter((event) => {
         if (query.severity && event.severity !== query.severity) return false;
         return true;
@@ -218,8 +234,8 @@ export class DebugService {
 
     return {
       events: mapped,
-      page: this.createPageInfo(events, limit, (event) =>
-        this.encodeCursor(event.timestamp, event.id),
+      page: createDebugPageInfo(events, limit, (event) =>
+        encodeDebugCursor(event.timestamp, event.id),
       ),
     };
   }
@@ -233,7 +249,7 @@ export class DebugService {
     const { items, page } = await this.getPagedEvents(workspaceId, query);
 
     return {
-      events: items.map((event) => this.toEventLogItem(event)),
+      events: items.map((event) => toDebugEventLogItem(event)),
       page,
     };
   }
@@ -255,7 +271,7 @@ export class DebugService {
     );
 
     return {
-      toolCalls: items.map((event) => this.toToolCallItem(event)),
+      toolCalls: items.map((event) => toDebugToolCallItem(event)),
       page,
     };
   }
@@ -277,7 +293,7 @@ export class DebugService {
     );
 
     return {
-      llmCalls: items.map((event) => this.toLlmCallItem(event)),
+      llmCalls: items.map((event) => toDebugLlmCallItem(event)),
       page,
     };
   }
@@ -343,14 +359,14 @@ export class DebugService {
       .sort((left, right) => {
         if (right.severity !== left.severity) {
           return (
-            this.getSeverityRank(right.severity) -
-            this.getSeverityRank(left.severity)
+            getDebugSeverityRank(right.severity) -
+            getDebugSeverityRank(left.severity)
           );
         }
         return right.occurrenceCount - left.occurrenceCount;
       });
 
-    const limit = this.normalizeLimit(query.limit);
+    const limit = normalizeDebugLimit(query.limit);
     return {
       errors: errors.slice(0, limit),
       page: {
@@ -379,15 +395,15 @@ export class DebugService {
     }
 
     return {
-      session: this.toSessionSummary({
+      session: toDebugSessionSummary({
         ...session,
         events,
       } as SessionEntity),
       nodes: events.map((event) =>
-        this.toTimelineNode(
+        toDebugTimelineNode(
           event,
           eventBySpanId,
-          query.includePayload && this.canExposeRawPayloads(),
+          query.includePayload && canExposeRawDebugPayloads(),
         ),
       ),
       criticalPath: calculateCriticalPath(events),
@@ -408,7 +424,7 @@ export class DebugService {
     const candidates = issues.slice(0, 5).map((issue, index) => ({
       id: `candidate-${index + 1}`,
       title: issue.type.replace(/_/g, ' ').toLowerCase(),
-      category: this.toRootCauseCategory(issue.type),
+      category: toDebugRootCauseCategory(issue.type),
       confidence: Math.max(0.4, 0.9 - index * 0.1),
       severity: issue.severity,
       explanation: issue.reason,
@@ -575,7 +591,7 @@ export class DebugService {
         getPayloadString(payload, 'model') ??
         getPayloadString(payload, 'operation') ??
         event.label;
-      const key = `${this.toBottleneckType(event)}:${label}`;
+      const key = `${toDebugBottleneckType(event)}:${label}`;
       grouped.set(key, [...(grouped.get(key) ?? []), event]);
     }
 
@@ -635,7 +651,7 @@ export class DebugService {
             typeof value === 'number' && value >= 3000,
         ).length,
       },
-      buckets: this.toLatencyBuckets(events),
+      buckets: toDebugLatencyBuckets(events),
     };
   }
 
@@ -651,7 +667,7 @@ export class DebugService {
 
     const steps = events.map((event, index) => {
       const payload = getPayload(event);
-      const replayable = this.isReplayable(event.eventType, payload);
+      const replayable = isDebugReplayable(event.eventType, payload);
 
       return {
         sourceEventId: event.id,
@@ -716,19 +732,19 @@ export class DebugService {
       userInput: toDebugString(userInputPayload.input ?? userInputPayload.text),
       promptVersion:
         getPayloadString(firstPayload, 'promptVersion') ??
-        this.findFirstPayloadString(events, 'promptVersion'),
+        findFirstPayloadString(events, 'promptVersion'),
       agentVersion:
         getPayloadString(firstPayload, 'agentVersion') ??
-        this.findFirstPayloadString(events, 'agentVersion'),
+        findFirstPayloadString(events, 'agentVersion'),
       policyVersion:
         getPayloadString(firstPayload, 'policyVersion') ??
-        this.findFirstPayloadString(events, 'policyVersion'),
+        findFirstPayloadString(events, 'policyVersion'),
       sdkVersion:
         getPayloadString(firstPayload, 'sdkVersion') ??
-        this.findFirstPayloadString(events, 'sdkVersion'),
+        findFirstPayloadString(events, 'sdkVersion'),
       environment:
         getPayloadString(firstPayload, 'environment') ??
-        this.findFirstPayloadString(events, 'environment'),
+        findFirstPayloadString(events, 'environment'),
       modelSettings: llmEvents.map((event) => {
         const payload = getPayload(event);
         return {
@@ -750,7 +766,7 @@ export class DebugService {
             event.label,
           argumentsPreview: createPreview(payload.args ?? payload.arguments),
           sideEffect: getPayloadBoolean(payload, 'sideEffect') ?? false,
-          riskCategory: this.toRiskCategory(payload),
+          riskCategory: toDebugRiskCategory(payload),
         };
       }),
       contextSnapshots: contextEvents.map((event) => ({
@@ -770,14 +786,6 @@ export class DebugService {
         },
       ],
     };
-  }
-
-  private findFirstPayloadString(events: EventEntity[], key: string) {
-    for (const event of events) {
-      const value = getPayloadString(getPayload(event), key);
-      if (value) return value;
-    }
-    return undefined;
   }
 
   async simulatePolicy(
@@ -800,7 +808,7 @@ export class DebugService {
 
     const matchedPolicies = policyEvents.map((event) => {
       const payload = getPayload(event);
-      const result = this.normalizePolicyResult(payload.action, payload.allow);
+      const result = normalizeDebugPolicyResult(payload.action, payload.allow);
       return {
         policyId: getPayloadString(payload, 'policyId') ?? event.id,
         name: getPayloadString(payload, 'policyName'),
@@ -826,59 +834,6 @@ export class DebugService {
       actuallyEvaluated: false,
       matchedPolicies,
     };
-  }
-
-  private decodeCursor(cursor?: string): CursorValue | undefined {
-    if (!cursor) return undefined;
-    try {
-      const parsed = JSON.parse(
-        Buffer.from(cursor, 'base64url').toString('utf8'),
-      ) as CursorValue;
-      if (!parsed.timestamp || !parsed.id) {
-        throw new Error('Missing cursor fields.');
-      }
-      return parsed;
-    } catch {
-      throw new BadRequestException({
-        message: 'Invalid pagination cursor.',
-      });
-    }
-  }
-
-  private encodeCursor(timestamp: Date, id: string): string {
-    return Buffer.from(
-      JSON.stringify({ timestamp: timestamp.toISOString(), id }),
-      'utf8',
-    ).toString('base64url');
-  }
-
-  private normalizeLimit(limit?: number, fallback = 50): number {
-    return Math.min(Math.max(limit ?? fallback, 1), 500);
-  }
-
-  private getDateRange(query: DebugSearchQueryDto, fallbackHours = 24) {
-    const to = query.to ? new Date(query.to) : new Date();
-    const from = query.from
-      ? new Date(query.from)
-      : new Date(to.getTime() - fallbackHours * 60 * 60 * 1000);
-
-    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
-      throw new BadRequestException({ message: 'Invalid date range.' });
-    }
-    if (from > to) {
-      throw new BadRequestException({
-        message: '`from` must be earlier than `to`.',
-      });
-    }
-
-    const maxMs = MAX_DEBUG_RANGE_DAYS * 24 * 60 * 60 * 1000;
-    if (to.getTime() - from.getTime() > maxMs) {
-      throw new BadRequestException({
-        message: `Debug queries can cover at most ${MAX_DEBUG_RANGE_DAYS} days.`,
-      });
-    }
-
-    return { from, to };
   }
 
   private async findSessionOrThrow(
@@ -929,7 +884,7 @@ export class DebugService {
     workspaceId: string,
     query: DebugSearchQueryDto,
   ): Promise<EventEntity[]> {
-    const { from, to } = this.getDateRange(query, 24);
+    const { from, to } = getDebugDateRange(query, 24);
     const qb = this.dataSource
       .getRepository(EventEntity)
       .createQueryBuilder('event')
@@ -968,9 +923,9 @@ export class DebugService {
     query: DebugEventLogQueryDto,
     extend?: (qb: SelectQueryBuilder<EventEntity>) => void,
   ): Promise<{ items: EventEntity[]; page: DebugPageInfoDto }> {
-    const { from, to } = this.getDateRange(query, 24);
-    const limit = this.normalizeLimit(query.limit);
-    const cursor = this.decodeCursor(query.cursor);
+    const { from, to } = getDebugDateRange(query, 24);
+    const limit = normalizeDebugLimit(query.limit);
+    const cursor = decodeDebugCursor(query.cursor);
     const qb = this.dataSource
       .getRepository(EventEntity)
       .createQueryBuilder('event')
@@ -1025,8 +980,8 @@ export class DebugService {
 
     return {
       items: visible,
-      page: this.createPageInfo(events, limit, (event) =>
-        this.encodeCursor(event.timestamp, event.id),
+      page: createDebugPageInfo(events, limit, (event) =>
+        encodeDebugCursor(event.timestamp, event.id),
       ),
     };
   }
@@ -1043,305 +998,9 @@ export class DebugService {
     }
     if (query.runId) {
       qb.andWhere(
-        '(session.name = :runId OR event.payload->>\'runId\' = :runId OR event.payload->>\'traceId\' = :runId)',
+        "(session.name = :runId OR event.payload->>'runId' = :runId OR event.payload->>'traceId' = :runId)",
         { runId: query.runId },
       );
     }
-  }
-
-  private createPageInfo<T>(
-    items: T[],
-    limit: number,
-    getCursor: (item: T) => string,
-  ): DebugPageInfoDto {
-    const hasMore = items.length > limit;
-    const lastVisible = items.slice(0, limit).at(-1);
-    return {
-      hasMore,
-      nextCursor: hasMore && lastVisible ? getCursor(lastVisible) : undefined,
-    };
-  }
-
-  private toSessionSummary(session: SessionEntity): DebugSessionSummaryDto {
-    const events = [...(session.events ?? [])].sort(
-      (left, right) => left.timestamp.getTime() - right.timestamp.getTime(),
-    );
-    const issues = deriveIssues(events);
-    const severity = issues.reduce<DebugSeverity>(
-      (current, issue) => maxSeverity(current, issue.severity),
-      'INFO',
-    );
-    const primaryIssue = issues[0]?.type;
-
-    return {
-      id: session.id,
-      runId: this.getSessionRunId(session, events),
-      agentId: session.agent?.id ?? '',
-      agentName: session.agent?.name ?? 'Unknown Agent',
-      status: session.status as DebugSessionSummaryDto['status'],
-      severity,
-      startedAt: session.startedAt.toISOString(),
-      endedAt: session.endedAt?.toISOString(),
-      durationMs: session.endedAt
-        ? session.endedAt.getTime() - session.startedAt.getTime()
-        : undefined,
-      issueCount: issues.length,
-      primaryIssue,
-      totalTokens: session.totalTokens ?? 0,
-      totalCost: Number(session.totalCost ?? 0),
-    };
-  }
-
-  private toEventLogItem(event: EventEntity): DebugEventLogItemDto {
-    const payload = getPayload(event);
-    const session = event.session;
-
-    return {
-      id: event.id,
-      sessionId: session?.id ?? '',
-      runId: this.getEventRunId(event),
-      agentName: session?.agent?.name ?? 'Unknown Agent',
-      eventType: event.eventType as DebugEventLogItemDto['eventType'],
-      label: event.label,
-      phase: this.getPhase(event),
-      timestamp: event.timestamp.toISOString(),
-      latency: event.latency ?? getPayloadNumber(payload, 'latency'),
-      cost: Number(event.cost ?? payload.cost ?? 0),
-      model: getPayloadString(payload, 'model'),
-      toolName: getPayloadString(payload, 'toolName'),
-      severity: computeSeverity(event),
-      error: toDebugString(payload.error),
-      inputPreview: createPreview(payload.input ?? payload.args),
-      outputPreview: createPreview(payload.output ?? payload.result),
-      payload,
-    };
-  }
-
-  private toToolCallItem(
-    event: EventEntity,
-  ): DebugToolCallListResponseDto['toolCalls'][number] {
-    const payload = getPayload(event);
-    const base = this.toEventLogItem(event);
-    const rawStatus = getPayloadString(payload, 'status')?.toLowerCase();
-    const hasTimeout =
-      rawStatus === 'timeout' ||
-      toDebugString(payload.error)?.toLowerCase().includes('timeout') === true;
-    const hasFailed =
-      hasTimeout || rawStatus === 'failed' || Boolean(payload.error);
-
-    return {
-      ...base,
-      toolName:
-        base.toolName ??
-        getPayloadString(payload, 'name') ??
-        getPayloadString(payload, 'tool') ??
-        base.label,
-      status: hasTimeout
-        ? 'timeout'
-        : hasFailed
-          ? 'failed'
-          : rawStatus === 'success'
-            ? 'success'
-            : 'unknown',
-      retryCount: getPayloadNumber(payload, 'retryCount') ?? 0,
-      sideEffect: getPayloadBoolean(payload, 'sideEffect') ?? false,
-      riskCategory: this.toRiskCategory(payload),
-      argumentsPreview: createPreview(payload.args ?? payload.arguments),
-      resultPreview: createPreview(payload.result ?? payload.output),
-    };
-  }
-
-  private toLlmCallItem(
-    event: EventEntity,
-  ): DebugLlmCallListResponseDto['llmCalls'][number] {
-    const payload = getPayload(event);
-    const base = this.toEventLogItem(event);
-    const usage = this.toTokenUsage(payload.usage);
-
-    return {
-      ...base,
-      provider: getPayloadString(payload, 'provider'),
-      model: base.model ?? 'unknown',
-      promptVersion: getPayloadString(payload, 'promptVersion'),
-      temperature: getPayloadNumber(payload, 'temperature'),
-      maxTokens: getPayloadNumber(payload, 'maxTokens'),
-      finishReason: getPayloadString(payload, 'finishReason'),
-      totalTokens:
-        usage?.totalTokens ??
-        usage?.promptTokens ??
-        usage?.completionTokens ??
-        getPayloadNumber(payload, 'totalTokens') ??
-        0,
-      requestedToolCall:
-        getPayloadBoolean(payload, 'requestedToolCall') ??
-        Array.isArray(payload.toolCalls),
-      refused: getPayloadBoolean(payload, 'refused') ?? false,
-      requestPreview: createPreview(payload.messages ?? payload.input),
-      responsePreview: createPreview(payload.response ?? payload.output),
-    };
-  }
-
-  private getPhase(event: EventEntity): DebugEventLogItemDto['phase'] {
-    const payload = getPayload(event);
-    const phase = getPayloadString(payload, 'phase');
-    if (
-      phase === 'start' ||
-      phase === 'end' ||
-      phase === 'error' ||
-      phase === 'single'
-    ) {
-      return phase;
-    }
-    if (event.eventType === 'ERROR' || payload.error) return 'error';
-    return 'single';
-  }
-
-  private getSessionRunId(session: SessionEntity, events: EventEntity[]) {
-    const payload = getPayload(events[0]);
-    return (
-      getPayloadString(payload, 'runId') ??
-      getPayloadString(payload, 'traceId') ??
-      session.name
-    );
-  }
-
-  private getEventRunId(event: EventEntity) {
-    const payload = getPayload(event);
-    return (
-      getPayloadString(payload, 'runId') ??
-      getPayloadString(payload, 'traceId') ??
-      event.session?.name ??
-      ''
-    );
-  }
-
-  private toTimelineNode(
-    event: EventEntity,
-    eventBySpanId: Map<string, EventEntity>,
-    includePayload = false,
-  ): DebugTimelineNodeDto {
-    const payload = getPayload(event);
-    const depth = calculateDepth(event, eventBySpanId);
-
-    return {
-      id: event.id,
-      eventId: event.id,
-      eventType: event.eventType as DebugTimelineNodeDto['eventType'],
-      label: event.label,
-      phase: this.getPhase(event),
-      timestamp: event.timestamp.toISOString(),
-      spanId: getPayloadString(payload, 'spanId'),
-      parentSpanId: getPayloadString(payload, 'parentSpanId'),
-      depth: depth.depth,
-      latency: event.latency ?? getPayloadNumber(payload, 'latency'),
-      cost: Number(event.cost ?? payload.cost ?? 0),
-      usage: this.toTokenUsage(payload.usage),
-      severity: computeSeverity(event),
-      riskLevel: getPayloadRiskLevel(payload, 'riskLevel'),
-      model: getPayloadString(payload, 'model'),
-      provider: getPayloadString(payload, 'provider'),
-      toolName: getPayloadString(payload, 'toolName'),
-      summary:
-        toDebugString(payload.reason) ??
-        toDebugString(payload.message) ??
-        event.label,
-      inputPreview: createPreview(payload.input ?? payload.args),
-      outputPreview: createPreview(payload.output ?? payload.result),
-      error: toDebugString(payload.error),
-      orphaned: depth.orphaned,
-      payload: includePayload ? payload : undefined,
-    };
-  }
-
-  private canExposeRawPayloads() {
-    return process.env.LYNX_EXPOSE_RAW_PAYLOADS === 'true';
-  }
-
-  private toRootCauseCategory(
-    issueType: string,
-  ): DebugRootCauseResponseDto['candidates'][number]['category'] {
-    if (issueType.startsWith('POLICY')) return 'POLICY';
-    if (issueType.startsWith('TOOL')) return 'TOOL';
-    if (issueType.includes('MEMORY')) return 'MEMORY';
-    if (issueType.includes('CONTEXT')) return 'CONTEXT';
-    if (issueType.includes('BUSINESS')) return 'UNKNOWN';
-    if (issueType.includes('LOOP')) return 'RUNTIME';
-    return 'RUNTIME';
-  }
-
-  private toBottleneckType(
-    event: EventEntity,
-  ): DebugBottleneckResponseDto['bottlenecks'][number]['type'] {
-    if (event.eventType.includes('LLM')) return 'LLM';
-    if (event.eventType.includes('TOOL')) return 'TOOL';
-    if (event.eventType.includes('MEMORY')) return 'MEMORY';
-    if (event.eventType.includes('CONTEXT')) return 'CONTEXT';
-    if (event.eventType.includes('POLICY')) return 'POLICY';
-    return 'RUNTIME';
-  }
-
-  private toLatencyBuckets(events: EventEntity[]) {
-    const groups = new Map<string, number[]>();
-    for (const event of events) {
-      const bucket = event.timestamp.toISOString().slice(0, 13) + ':00:00.000Z';
-      const latency =
-        event.latency ?? getPayloadNumber(getPayload(event), 'latency');
-      if (typeof latency !== 'number') continue;
-      groups.set(bucket, [...(groups.get(bucket) ?? []), latency]);
-    }
-
-    return Array.from(groups.entries()).map(([bucket, values]) => ({
-      bucket,
-      count: values.length,
-      p50: percentile(values, 0.5) ?? 0,
-      p95: percentile(values, 0.95) ?? 0,
-      p99: percentile(values, 0.99) ?? 0,
-    }));
-  }
-
-  private toTokenUsage(value: unknown): DebugTimelineNodeDto['usage'] {
-    if (!isRecord(value)) return undefined;
-    return value as unknown as DebugTimelineNodeDto['usage'];
-  }
-
-  private isReplayable(eventType: string, payload: EventPayload): boolean {
-    if (eventType === 'USER_INPUT') return true;
-    if (eventType === 'CONTEXT_RETRIEVAL') return true;
-    if (eventType === 'MEMORY_ACCESS') return true;
-    if (eventType.includes('LLM')) return true;
-    if (eventType.includes('TOOL')) return payload.sideEffect !== true;
-    return false;
-  }
-
-  private normalizePolicyResult(
-    action: unknown,
-    allow: unknown,
-  ): 'ALLOW' | 'WARN' | 'BLOCK' {
-    if (action === 'BLOCK' || action === 'REQUIRE_APPROVAL') return 'BLOCK';
-    if (action === 'WARN') return 'WARN';
-    if (allow === false) return 'BLOCK';
-    return 'ALLOW';
-  }
-
-  private toRiskCategory(payload: EventPayload): DebugRiskCategory {
-    const explicit = getPayloadString(payload, 'riskCategory');
-    if (
-      explicit === 'read-only' ||
-      explicit === 'write' ||
-      explicit === 'external' ||
-      explicit === 'destructive'
-    ) {
-      return explicit;
-    }
-    if (payload.destructive === true) return 'destructive';
-    if (payload.sideEffect === true) return 'write';
-    if (payload.external === true) return 'external';
-    return 'read-only';
-  }
-
-  private getSeverityRank(severity: DebugSeverity): number {
-    if (severity === 'CRITICAL') return 2;
-    if (severity === 'WARNING') return 1;
-    return 0;
   }
 }

@@ -1,10 +1,8 @@
-import { Controller, Get, Param, Query, Req, UseGuards } from '@nestjs/common';
-import { Request } from 'express';
+import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { SessionDetailQueryDto, SessionListQueryDto } from '@repo/dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { CurrentUserId } from '../../common/decorators/current-user.decorator';
 import { SessionService } from './session.service';
-
-type AuthenticatedRequest = Request & { user?: { sub: string } };
 
 @Controller('api/v1/session')
 @UseGuards(JwtAuthGuard)
@@ -14,81 +12,78 @@ export class SessionController {
   @Get('overview')
   getOverview(
     @Query() query: SessionListQueryDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ) {
     return this.sessionService.listSessions(
       { ...query, kind: 'overview' },
-      req.user!.sub,
+      userId,
     );
   }
 
   @Get('live')
   getLive(
     @Query() query: SessionListQueryDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ) {
-    return this.sessionService.listSessions(
-      { ...query, kind: 'live' },
-      req.user!.sub,
-    );
+    return this.sessionService.listSessions({ ...query, kind: 'live' }, userId);
   }
 
   @Get('completed')
   getCompleted(
     @Query() query: SessionListQueryDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ) {
     return this.sessionService.listSessions(
       { ...query, kind: 'completed' },
-      req.user!.sub,
+      userId,
     );
   }
 
   @Get('failed')
   getFailed(
     @Query() query: SessionListQueryDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ) {
     return this.sessionService.listSessions(
       { ...query, kind: 'failed' },
-      req.user!.sub,
+      userId,
     );
   }
 
   @Get('anomaly')
   getAnomaly(
     @Query() query: SessionListQueryDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ) {
     return this.sessionService.listSessions(
       { ...query, kind: 'anomaly' },
-      req.user!.sub,
+      userId,
     );
   }
 
   @Get()
   listSessions(
     @Query() query: SessionListQueryDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ) {
-    return this.sessionService.listSessions(query, req.user!.sub);
+    return this.sessionService.listSessions(query, userId);
   }
 
   @Get(':sessionId')
   getDetail(
     @Param('sessionId') sessionId: string,
     @Query() query: SessionDetailQueryDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ) {
-    return this.sessionService.getDetail(sessionId, query, req.user!.sub);
+    return this.sessionService.getDetail(sessionId, query, userId);
   }
 
   @Get(':sessionId/timeline')
   getTimeline(
     @Param('sessionId') sessionId: string,
     @Query() query: SessionDetailQueryDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ) {
-    return this.sessionService.getTimeline(sessionId, query, req.user!.sub);
+    return this.sessionService.getTimeline(sessionId, query, userId);
   }
 }

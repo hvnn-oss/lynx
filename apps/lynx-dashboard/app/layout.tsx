@@ -4,6 +4,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import { AppProviders } from "./providers";
 import "@/styles/globals.css";
+import { TooltipProvider } from "@repo/ui/components/ui/tooltip";
 
 const pretendard = localFont({
   variable: "--pretendard",
@@ -29,7 +30,9 @@ export default async function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <NextIntlClientProvider messages={messages}>
-          <AppProviders>{children}</AppProviders>
+          <TooltipProvider>
+            <AppProviders>{children}</AppProviders>
+          </TooltipProvider>
         </NextIntlClientProvider>
       </body>
     </html>

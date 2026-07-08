@@ -1,0 +1,49 @@
+{
+  "sidebar": {
+    "items": {
+      "dashboard": {
+        "title": "대시보드",
+        "summary": {
+          "title": "요약",
+          "overview": "운영 정보 개요",
+          "status": "데이터 수집 상태",
+          "cost": "사용량 분석",
+          "reports": "운영 보고서"
+        },
+        "sessions": {
+          "title": "세션",
+          "overview": "세션 개요",
+          "completed": "성공한 세션",
+          "failed": "실패한 세션"
+        },
+        "agents": {
+          "title": "에이전트",
+          "overview": "에이전트 개요",
+          "active": "활성화된 에이전트",
+          "inactive": "비활성화된 에이전트"
+        }
+      },
+      "issues": {
+        "title": "이슈",
+        "tracker": {
+          "title": "이슈 트래커",
+          "overview": "발생한 이슈"
+        }
+      },
+      "firewall": {
+        "title": "방화벽"
+      },
+      "prompts": {
+        "title": "프롬프트"
+      },
+      "settings": {
+        "title": "설정"
+      }
+    },
+    "avatar": {
+      "account_settings": "계정 설정",
+      "product_feedback": "제품 피드백",
+      "logout": "로그아웃"
+    }
+  }
+}

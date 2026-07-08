@@ -1,50 +1,36 @@
-# Lynx Dashboard
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-Lynx Dashboard는 AI 에이전트 실행 결과를 확인하고 디버깅하기 위한 Next.js 콘솔입니다.
+## Getting Started
 
-대시보드는 백엔드의 관측 API를 호출해 세션, 이벤트, 비용, 지연 시간, 정책 이벤트를 보여줍니다. 현재 앱 이름은 `lynx-dashboard`입니다.
-
-## 실행
-
-레포 루트에서 실행합니다.
+First, run the development server:
 
 ```bash
-pnpm install
-pnpm --filter lynx-dashboard dev
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
 ```
 
-기본 주소:
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-```text
-http://localhost:3000
-```
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-빌드:
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-```bash
-pnpm --filter lynx-dashboard build
-```
+## Learn More
 
-## 주요 화면
+To learn more about Next.js, take a look at the following resources:
 
-- 대시보드 홈: 전체 지표, 상태, 비용, 사용량, 인사이트
-- 에이전트/세션 관측: 에이전트별 성능과 세션 흐름 확인
-- 디버깅 화면: 이벤트 타임라인, 로그, 병목, 루트 원인 분석 흐름
-- 설정 화면: 조직/SSO/API 연동 설정
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-## 백엔드 연동
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-대시보드는 백엔드 API를 기준으로 동작합니다. 로컬 개발에서는 백엔드를 먼저 실행하세요.
+## Deploy on Vercel
 
-```bash
-pnpm --filter backend dev
-pnpm --filter lynx-dashboard dev
-```
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-백엔드 기본 주소는 `http://localhost:4000`을 사용합니다. 프록시나 환경 변수 설정은 Next.js 설정과 앱 내부 API 클라이언트 구성을 기준으로 맞춥니다.
-
-## 관련 패키지
-
-- `@repo/dto`: 대시보드 API 응답 타입
-- `@repo/ui`: 공통 UI 컴포넌트
-- `@repo/constants`: 공통 상수
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

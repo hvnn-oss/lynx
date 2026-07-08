@@ -6,11 +6,9 @@ import {
   Patch,
   Post,
   Query,
-  Req,
   UseGuards,
 } from '@nestjs/common';
 import type { AdminUserEntity } from '@repo/database';
-import type { Request } from 'express';
 import {
   AdminCreatePlanDto,
   AdminOrganizationIdParamDto,
@@ -34,12 +32,11 @@ import type {
 } from '@repo/dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../../common/guards/admin.guard';
+import {
+  CurrentAdminUser,
+  CurrentUserId,
+} from '../../common/decorators/current-user.decorator';
 import { AdminService } from './admin.service';
-
-type AuthenticatedRequest = Request & {
-  user?: { sub: string };
-  adminUser?: AdminUserEntity;
-};
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, AdminGuard)
@@ -47,54 +44,51 @@ export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 
   @Get('me')
-  async getMe(@Req() req: AuthenticatedRequest): Promise<AdminMeDto> {
-    return await this.adminService.getMe(req.user!.sub);
+  async getMe(@CurrentUserId() userId: string): Promise<AdminMeDto> {
+    return await this.adminService.getMe(userId);
   }
 
   @Get('dashboard')
   async getDashboard(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ): Promise<AdminDashboardDto> {
-    return await this.adminService.getDashboard(req.user!.sub);
+    return await this.adminService.getDashboard(userId);
   }
 
   @Get('organizations/search')
   async searchOrganizations(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
     @Query() query: AdminOrganizationSearchQueryDto,
   ): Promise<AdminOrganizationSearchResponseDto> {
-    return await this.adminService.searchOrganizations(req.user!.sub, query);
+    return await this.adminService.searchOrganizations(userId, query);
   }
 
   @Patch('plans/:code')
   async updatePlan(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
     @Param() params: AdminPlanCodeParamDto,
     @Body() body: AdminUpdatePlanDto,
   ): Promise<AdminPlanDto> {
-    return await this.adminService.updatePlan(req.user!.sub, params.code, body);
+    return await this.adminService.updatePlan(userId, params.code, body);
   }
 
   @Post('plans')
   async createPlan(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
+    @CurrentAdminUser() adminUser: AdminUserEntity,
     @Body() body: AdminCreatePlanDto,
   ): Promise<AdminPlanDto> {
-    return await this.adminService.createPlan(
-      req.user!.sub,
-      req.adminUser!.role,
-      body,
-    );
+    return await this.adminService.createPlan(userId, adminUser.role, body);
   }
 
   @Patch('users/:userId')
   async updateUser(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() currentUserId: string,
     @Param() params: AdminUserIdParamDto,
     @Body() body: AdminUpdateUserDto,
   ): Promise<AdminUserDto> {
     return await this.adminService.updateUser(
-      req.user!.sub,
+      currentUserId,
       params.userId,
       body,
     );
@@ -102,12 +96,12 @@ export class AdminController {
 
   @Patch('organizations/:organizationId')
   async updateOrganization(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
     @Param() params: AdminOrganizationIdParamDto,
     @Body() body: AdminUpdateOrganizationDto,
   ): Promise<AdminOrganizationDto> {
     return await this.adminService.updateOrganization(
-      req.user!.sub,
+      userId,
       params.organizationId,
       body,
     );
@@ -115,12 +109,12 @@ export class AdminController {
 
   @Patch('workspaces/:workspaceId')
   async updateWorkspace(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
     @Param() params: AdminWorkspaceIdParamDto,
     @Body() body: AdminUpdateWorkspaceDto,
   ): Promise<AdminWorkspaceDto> {
     return await this.adminService.updateWorkspace(
-      req.user!.sub,
+      userId,
       params.workspaceId,
       body,
     );

@@ -27,6 +27,8 @@ describe('AuthController', () => {
   };
 
   beforeEach(async () => {
+    jest.clearAllMocks();
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [{ provide: AuthService, useValue: mockAuthService }],
@@ -95,8 +97,32 @@ describe('AuthController', () => {
 
     const result = await controller.logout(req, res);
     expect(service.logout).toHaveBeenCalledWith('refresh');
-    expect(res.clearCookie).toHaveBeenCalled();
+    expect(res.clearCookie).toHaveBeenCalledWith('refreshToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+    });
     expect(result.success).toBe(true);
+  });
+
+  it('should clear refresh cookie even when logout request has no token', async () => {
+    const req = {
+      headers: {},
+    } as unknown as express.Request;
+    const res = {
+      clearCookie: jest.fn(),
+    } as unknown as express.Response;
+
+    const result = await controller.logout(req, res);
+    expect(service.logout).not.toHaveBeenCalled();
+    expect(res.clearCookie).toHaveBeenCalledWith('refreshToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+    });
+    expect(result).toEqual({ success: true });
   });
 
   it('should delegate ssoLogin to AuthService', async () => {

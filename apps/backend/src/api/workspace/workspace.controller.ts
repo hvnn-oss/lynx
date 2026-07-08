@@ -6,10 +6,8 @@ import {
   Param,
   Patch,
   Post,
-  Req,
   UseGuards,
 } from '@nestjs/common';
-import { Request } from 'express';
 import {
   CreateWorkspaceApiKeyDto,
   CreateWorkspaceDto,
@@ -27,9 +25,8 @@ import type {
   WorkspaceSummaryDto,
 } from '@repo/dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { CurrentUserId } from '../../common/decorators/current-user.decorator';
 import { WorkspaceService } from './workspace.service';
-
-type AuthenticatedRequest = Request & { user?: { sub: string } };
 
 @Controller('workspace')
 @UseGuards(JwtAuthGuard)
@@ -38,39 +35,36 @@ export class WorkspaceController {
 
   @Get()
   async listWorkspaces(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ): Promise<WorkspaceSummaryDto[]> {
-    return await this.workspaceService.listWorkspaces(req.user!.sub);
+    return await this.workspaceService.listWorkspaces(userId);
   }
 
   @Post()
   async createWorkspace(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
     @Body() body: CreateWorkspaceDto,
   ): Promise<WorkspaceDetailDto> {
-    return await this.workspaceService.createWorkspace(req.user!.sub, body);
+    return await this.workspaceService.createWorkspace(userId, body);
   }
 
   @Get(':workspaceId')
   async getWorkspace(
     @Param() params: WorkspaceIdParamDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ): Promise<WorkspaceDetailDto> {
-    return await this.workspaceService.getWorkspace(
-      params.workspaceId,
-      req.user!.sub,
-    );
+    return await this.workspaceService.getWorkspace(params.workspaceId, userId);
   }
 
   @Patch(':workspaceId')
   async updateWorkspace(
     @Param() params: WorkspaceIdParamDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
     @Body() body: UpdateWorkspaceDto,
   ): Promise<WorkspaceDetailDto> {
     return await this.workspaceService.updateWorkspace(
       params.workspaceId,
-      req.user!.sub,
+      userId,
       body,
     );
   }
@@ -78,45 +72,39 @@ export class WorkspaceController {
   @Delete(':workspaceId')
   async deleteWorkspace(
     @Param() params: WorkspaceIdParamDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ): Promise<SuccessResponseDto> {
     return await this.workspaceService.deleteWorkspace(
       params.workspaceId,
-      req.user!.sub,
+      userId,
     );
   }
 
   @Post(':workspaceId/api-key/rotate')
   async rotateApiKey(
     @Param() params: WorkspaceIdParamDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ): Promise<WorkspaceApiKeyResponseDto> {
-    return await this.workspaceService.rotateApiKey(
-      params.workspaceId,
-      req.user!.sub,
-    );
+    return await this.workspaceService.rotateApiKey(params.workspaceId, userId);
   }
 
   @Get(':workspaceId/api-keys')
   async listApiKeys(
     @Param() params: WorkspaceIdParamDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ): Promise<WorkspaceApiKeyDto[]> {
-    return await this.workspaceService.listApiKeys(
-      params.workspaceId,
-      req.user!.sub,
-    );
+    return await this.workspaceService.listApiKeys(params.workspaceId, userId);
   }
 
   @Post(':workspaceId/api-keys')
   async createApiKey(
     @Param() params: WorkspaceIdParamDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
     @Body() body: CreateWorkspaceApiKeyDto,
   ): Promise<CreatedWorkspaceApiKeyDto> {
     return await this.workspaceService.createApiKey(
       params.workspaceId,
-      req.user!.sub,
+      userId,
       body,
     );
   }
@@ -124,13 +112,13 @@ export class WorkspaceController {
   @Patch(':workspaceId/api-keys/:apiKeyId')
   async updateApiKey(
     @Param() params: WorkspaceApiKeyIdParamDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
     @Body() body: UpdateWorkspaceApiKeyDto,
   ): Promise<WorkspaceApiKeyDto> {
     return await this.workspaceService.updateApiKey(
       params.workspaceId,
       params.apiKeyId,
-      req.user!.sub,
+      userId,
       body,
     );
   }
@@ -138,12 +126,12 @@ export class WorkspaceController {
   @Delete(':workspaceId/api-keys/:apiKeyId')
   async revokeApiKey(
     @Param() params: WorkspaceApiKeyIdParamDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ): Promise<SuccessResponseDto> {
     return await this.workspaceService.revokeApiKey(
       params.workspaceId,
       params.apiKeyId,
-      req.user!.sub,
+      userId,
     );
   }
 }

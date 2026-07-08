@@ -5,10 +5,8 @@ import {
   Param,
   Post,
   Query,
-  Req,
   UseGuards,
 } from '@nestjs/common';
-import { Request } from 'express';
 import {
   DebugAnalysisQueryDto,
   DebugEventLogQueryDto,
@@ -18,9 +16,8 @@ import {
   DebugTimelineQueryDto,
 } from '@repo/dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { CurrentUserId } from '../../common/decorators/current-user.decorator';
 import { DebugService } from './debug.service';
-
-type AuthenticatedRequest = Request & { user?: { sub: string } };
 
 @Controller('api/v1/debug')
 @UseGuards(JwtAuthGuard)
@@ -30,118 +27,118 @@ export class DebugController {
   @Get('sessions')
   listSessions(
     @Query() query: DebugSessionListQueryDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ) {
-    return this.debugService.listSessions(query, req.user!.sub);
+    return this.debugService.listSessions(query, userId);
   }
 
   @Get('logs')
   listLogs(
     @Query() query: DebugEventLogQueryDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ) {
-    return this.debugService.listEvents(query, req.user!.sub);
+    return this.debugService.listEvents(query, userId);
   }
 
   @Get('tool-calls')
   listToolCalls(
     @Query() query: DebugEventLogQueryDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ) {
-    return this.debugService.listToolCalls(query, req.user!.sub);
+    return this.debugService.listToolCalls(query, userId);
   }
 
   @Get('llm-io')
   listLlmCalls(
     @Query() query: DebugEventLogQueryDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ) {
-    return this.debugService.listLlmCalls(query, req.user!.sub);
+    return this.debugService.listLlmCalls(query, userId);
   }
 
   @Get('errors')
   listErrors(
     @Query() query: DebugEventLogQueryDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ) {
-    return this.debugService.listErrors(query, req.user!.sub);
+    return this.debugService.listErrors(query, userId);
   }
 
   @Get('sessions/:sessionId/events')
   listSessionEvents(
     @Param('sessionId') sessionId: string,
     @Query() query: DebugEventLogQueryDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ) {
-    return this.debugService.listSessionEvents(sessionId, query, req.user!.sub);
+    return this.debugService.listSessionEvents(sessionId, query, userId);
   }
 
   @Get('sessions/:sessionId/timeline')
   getTimeline(
     @Param('sessionId') sessionId: string,
     @Query() query: DebugTimelineQueryDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ) {
-    return this.debugService.getTimeline(sessionId, query, req.user!.sub);
+    return this.debugService.getTimeline(sessionId, query, userId);
   }
 
   @Get('sessions/:sessionId/root-cause')
   getRootCause(
     @Param('sessionId') sessionId: string,
     @Query() query: DebugTimelineQueryDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ) {
-    return this.debugService.getRootCause(sessionId, query, req.user!.sub);
+    return this.debugService.getRootCause(sessionId, query, userId);
   }
 
   @Get('sessions/:sessionId/memory')
   getMemory(
     @Param('sessionId') sessionId: string,
     @Query() query: DebugTimelineQueryDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ) {
-    return this.debugService.getMemory(sessionId, query, req.user!.sub);
+    return this.debugService.getMemory(sessionId, query, userId);
   }
 
   @Post('sessions/:sessionId/reproduce')
   reproduce(
     @Param('sessionId') sessionId: string,
     @Body() body: DebugReproduceRequestDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ) {
-    return this.debugService.reproduce(sessionId, body, req.user!.sub);
+    return this.debugService.reproduce(sessionId, body, userId);
   }
 
   @Post('sessions/:sessionId/policy/simulate')
   simulatePolicy(
     @Param('sessionId') sessionId: string,
     @Body() body: DebugPolicySimulationRequestDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ) {
-    return this.debugService.simulatePolicy(sessionId, body, req.user!.sub);
+    return this.debugService.simulatePolicy(sessionId, body, userId);
   }
 
   @Get('patterns')
   getPatterns(
     @Query() query: DebugAnalysisQueryDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ) {
-    return this.debugService.getPatterns(query, req.user!.sub);
+    return this.debugService.getPatterns(query, userId);
   }
 
   @Get('bottlenecks')
   getBottlenecks(
     @Query() query: DebugAnalysisQueryDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ) {
-    return this.debugService.getBottlenecks(query, req.user!.sub);
+    return this.debugService.getBottlenecks(query, userId);
   }
 
   @Get('latency')
   getLatency(
     @Query() query: DebugAnalysisQueryDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUserId() userId: string,
   ) {
-    return this.debugService.getLatency(query, req.user!.sub);
+    return this.debugService.getLatency(query, userId);
   }
 }

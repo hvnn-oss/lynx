@@ -1,4 +1,4 @@
-import SSOLoginForm from "@/components/ui/auth/sso-form";
+import SSOLoginForm from "@/components/screen/auth/sso-form";
 import { useTranslations } from "next-intl";
 
 export default function DashboardPage() {

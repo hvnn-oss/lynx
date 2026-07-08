@@ -1,0 +1,184 @@
+{
+  "breadcrumbs": {
+    "workspace": "워크스페이스",
+    "production": "Production",
+    "dashboard": "대시보드"
+  },
+  "home": {
+    "title": "대시보드",
+    "demoData": "데모 데이터",
+    "description": "AI 에이전트 서비스의 운영 신호, 실패율 변화, 영향 범위를 확인합니다.",
+    "refresh": "새로고침",
+    "loadError": "대시보드 데이터를 불러오지 못했습니다.",
+    "sections": {
+      "runVolume": "시간별 실행량",
+      "failureTrend": "실패율 추이",
+      "agentStatus": "에이전트 상태",
+      "recentIssues": "최근 이슈"
+    },
+    "empty": {
+      "title": "수집된 데이터가 없습니다.",
+      "description": "SDK를 연결하고 이벤트가 수집되면 이 화면에 실제 운영 데이터가 표시됩니다."
+    },
+    "investigation": {
+      "description": "대시보드에서 발견한 운영 신호를 세션, 에이전트, 디버깅 화면으로 이어서 확인합니다.",
+      "overall": "전체 운영 상태",
+      "sessions": "세션",
+      "agents": "에이전트",
+      "debug": "디버깅",
+      "openSessions": "실패 세션",
+      "openAgents": "에이전트 보기",
+      "openErrors": "에러 리포트",
+      "openPatterns": "실패 패턴"
+    },
+    "insight": {
+      "label": "운영 이상 감지",
+      "fallbackIssue": "실패율 상승",
+      "fallbackAgent": "프로덕션 환경",
+      "title": "{agentName}에서 지난 1시간 동안 실패율이 {change} 증가했습니다.",
+      "description": "{issueType}이 주요 원인입니다. 영향받은 세션은 {affectedSessions}개이며 현재 전체 실패율은 {failureRate}입니다.",
+      "rootCause": "원인 분석",
+      "sessions": "영향받은 세션 보기"
+    },
+    "kpis": {
+      "runs": "실행 수",
+      "failureRate": "실패율",
+      "latency": "평균 지연",
+      "cost": "비용",
+      "riskEvents": "위험 이벤트",
+      "noRuns": "아직 집계된 실행이 없습니다",
+      "sameAsYesterday": "어제와 동일",
+      "sameAsLast24Hours": "지난 24시간과 동일",
+      "yesterdayPercent": "전일 대비 {value}",
+      "yesterdayPoint": "전일 대비 {value}",
+      "last24HoursSeconds": "지난 24시간 대비 {value}",
+      "last24HoursCount": "지난 24시간 대비 {value}",
+      "secondsValue": "{value}초",
+      "eventsValue": "{value}건",
+      "percentValue": "{value}%",
+      "pointValue": "{value}%p"
+    },
+    "charts": {
+      "success": "성공",
+      "failure": "실패",
+      "currentFailureRate": "현재 실패율",
+      "previousPeriod": "이전 기간",
+      "empty": "표시할 데이터가 없습니다.",
+      "totalRuns": "전체 실행",
+      "runsValue": "{value}건",
+      "failureRateValue": "{value}%",
+      "timeLabel": "{time}"
+    },
+    "agents": {
+      "empty": "아직 등록된 에이전트가 없습니다.",
+      "healthy": "정상",
+      "warning": "주의",
+      "critical": "위험"
+    },
+    "issues": {
+      "empty": "최근 감지된 이슈가 없습니다.",
+      "affectedSessions": "{count}개 세션 영향",
+      "lastSeen": "마지막 {time}",
+      "occurrences": "{count}회",
+      "occurrenceLabel": "발생",
+      "analyze": "분석",
+      "critical": "심각",
+      "warning": "주의",
+      "justNow": "방금 전",
+      "minutesAgo": "{count}분 전",
+      "hoursAgo": "{count}시간 전"
+    }
+  },
+  "shared": {
+    "less": "적음",
+    "more": "많음",
+    "noData": "표시할 데이터가 없습니다.",
+    "noAgentPerformanceData": "표시할 에이전트 성능 데이터가 없습니다.",
+    "noAgentUsageData": "표시할 에이전트 사용량이 없습니다.",
+    "noEnvironmentUsageData": "표시할 환경별 실행 데이터가 없습니다.",
+    "noModelUsageData": "표시할 모델 사용량이 없습니다.",
+    "noModelStatusData": "표시할 모델 상태 데이터가 없습니다.",
+    "noToolStatusData": "표시할 도구 상태 데이터가 없습니다.",
+    "noOutageData": "표시할 최근 장애 기록이 없습니다.",
+    "noCostAnomalyData": "표시할 비용 이상 신호가 없습니다.",
+    "remainingAgents": "그 외 {count}개 에이전트는 상세 화면에서 확인하세요.",
+    "remainingEnvironments": "그 외 {count}개 환경은 상세 화면에서 확인하세요.",
+    "remainingModels": "그 외 {count}개 모델은 상세 화면에서 확인하세요.",
+    "remainingTools": "그 외 {count}개 도구는 상세 화면에서 확인하세요.",
+    "remainingIssues": "그 외 {count}개 이슈는 상세 화면에서 확인하세요.",
+    "remainingInsights": "그 외 {count}개 인사이트는 상세 화면에서 확인하세요.",
+    "remainingRecords": "그 외 {count}개 기록은 상세 화면에서 확인하세요.",
+    "remainingSignals": "그 외 {count}개 신호는 상세 화면에서 확인하세요.",
+    "remainingItems": "그 외 {count}개 {itemName}은 상세 화면에서 확인하세요.",
+    "recent24hRuns": "최근 24시간 실행 수",
+    "runEnvironment": "Run 기준 실행 환경",
+    "unknownEnvironment": "환경 미지정",
+    "callCount": "{count}회 호출",
+    "successRateWithP95": "성공률 {successRate}% · p95 {p95Latency}ms",
+    "avgLatencyMs": "평균 지연 {value}ms",
+    "toolSuccessRate": "도구 호출 성공률"
+  },
+  "insights": {
+    "rootCause": "원인",
+    "impact": "영향",
+    "affectedAgents": "영향받은 에이전트"
+  },
+  "pages": {
+    "status": {
+      "title": "시스템 상태",
+      "description": "AI 에이전트, 모델, 도구 연동 상태와 서비스 가용성을 확인합니다.",
+      "breadcrumb": "시스템 상태",
+      "sections": {
+        "agentStatus": "에이전트 가동 상태",
+        "recentOutages": "최근 시스템 장애 및 타임아웃 로그",
+        "slo": "서비스 가용성",
+        "modelStatus": "연동 LLM 모델 성공률",
+        "toolStatus": "SaaS 및 데이터베이스 도구 성공률"
+      }
+    },
+    "metrics": {
+      "title": "주요 지표",
+      "description": "AI 에이전트 실행 횟수, 처리 속도, 응답 속도, 에러율 분포 등 observability 지표를 모니터링합니다.",
+      "breadcrumb": "주요 지표",
+      "sections": {
+        "runMetrics": "실시간 실행 성능",
+        "latency": "지연 시간 분포",
+        "tokens": "토큰 사용 비율",
+        "errors": "에러 원인별 분포",
+        "agentComparison": "에이전트별 상세 성능 비교"
+      }
+    },
+    "cost": {
+      "title": "비용 분석",
+      "description": "누적 지출 금액, 모델/도구별 비용 분류, 실행당 비용, 이상 비용 지출 감지를 확인합니다.",
+      "breadcrumb": "비용 분석",
+      "sections": {
+        "total": "누적 비용 요약",
+        "breakdown": "비용 항목 분할",
+        "byAgent": "에이전트별 누적 지출 비용",
+        "perRun": "에이전트 1회 실행당 평균 비용",
+        "anomaly": "비용 이상 지출 현황 및 경고"
+      }
+    },
+    "usage": {
+      "title": "사용 현황",
+      "description": "에이전트, 실행 환경, 연동 도구, LLM 모델별 사용량 지표를 확인합니다.",
+      "breadcrumb": "사용 현황",
+      "sections": {
+        "topAgents": "최다 활성 에이전트",
+        "environmentUsage": "환경별 실행량",
+        "heatmap": "요일 및 시간대별 사용량 히트맵",
+        "toolUsage": "도구별 호출 횟수",
+        "modelUsage": "LLM 모델별 사용 통계"
+      }
+    },
+    "insights": {
+      "title": "인사이트 분석",
+      "description": "시스템 상태 변화의 원인과 주요 병목, 이상 현상을 우선순위로 제공합니다.",
+      "breadcrumb": "인사이트",
+      "sections": {
+        "list": "자동 감지 주요 이슈 및 인사이트"
+      }
+    }
+  }
+}

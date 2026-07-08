@@ -13,3 +13,7 @@ allowBuilds:
   puppeteer: false
   sharp: false
   unrs-resolver: false
+overrides:
+  recharts: "3.8.1"
+  react: "19.2.4"
+  react-dom: "19.2.4"

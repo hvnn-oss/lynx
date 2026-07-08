@@ -3,6 +3,8 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+@custom-variant dark (&:is(.dark *));
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -46,4 +48,13 @@
     -ms-overflow-style: none; /* IE and Edge */
     scrollbar-width: none; /* Firefox */
   }
+}
+
+@theme inline {
+  --secondary: oklch(96.7% 0.001 286.4);
+  --chart-1: oklch(64.6% 0.222 41.1);
+  --muted-foreground: oklch(55.2% 0.014 285.9);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-chart-1: var(--chart-1);
+  --color-secondary: var(--secondary);
 }

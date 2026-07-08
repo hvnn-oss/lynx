@@ -74,14 +74,16 @@ describe('EventService', () => {
     save: jest.fn(() => Promise.resolve(mockSession)),
   };
 
+  const mockDeleteWhereFragments: string[] = [];
+
   const mockDeleteQueryBuilder = {
     delete: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
     andWhere: jest
       .fn()
-      .mockImplementation((fn: (subQueryBuilder: any) => void) => {
+      .mockImplementation((fn: (subQueryBuilder: any) => string) => {
         if (typeof fn === 'function') {
-          fn(mockDeleteQueryBuilder);
+          mockDeleteWhereFragments.push(fn(mockDeleteQueryBuilder));
         }
         return mockDeleteQueryBuilder;
       }),
@@ -137,6 +139,7 @@ describe('EventService', () => {
 
     // Reset mocks
     jest.clearAllMocks();
+    mockDeleteWhereFragments.length = 0;
     mockSession.name = 'Test Session';
     mockSession.status = 'RUNNING';
     mockSession.endedAt = undefined;
@@ -186,6 +189,41 @@ describe('EventService', () => {
         eventType: 'LLM_REASONING',
         label: 'gpt-4o',
         cost: 2.25,
+      }),
+    );
+  });
+
+  it('should ignore non-finite token and cost payload values', async () => {
+    const dto: LynxEventDto = {
+      clientId: 'client-1',
+      runId: 'trace-1',
+      agentName: 'TestAgent',
+      eventType: 'LLM_REASONING' as LynxEventType,
+      label: 'gpt-4o',
+      payload: {
+        cost: 'not-a-number',
+        usage: {
+          promptTokens: 'bad',
+          completionTokens: Number.POSITIVE_INFINITY,
+          totalTokens: Number.NaN,
+        },
+      },
+      timestamp: Date.now(),
+      workspaceId: 'ws-1',
+      agentId: 'agent-1',
+      sessionId: 'sess-1',
+    };
+
+    const result = await service.ingestEvent(dto, 'test-api-key');
+
+    expect(result.success).toBe(true);
+    expect(mockSession.totalPromptTokens).toBe(0);
+    expect(mockSession.totalCompletionTokens).toBe(0);
+    expect(mockSession.totalTokens).toBe(0);
+    expect(mockSession.totalCost).toBe(0);
+    expect(mockEventRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cost: 0,
       }),
     );
   });
@@ -389,6 +427,15 @@ describe('EventService', () => {
         where: { isActive: true },
       });
       expect(mockEventRepository.createQueryBuilder).toHaveBeenCalledTimes(3);
+      expect(mockDeleteQueryBuilder.where).toHaveBeenCalledWith(
+        '"event"."timestamp" < :limit',
+        expect.any(Object),
+      );
+      expect(mockDeleteWhereFragments).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining('"event"."sessionId" IN'),
+        ]),
+      );
       expect(mockDeleteQueryBuilder.execute).toHaveBeenCalledTimes(3);
     });
   });

@@ -1,0 +1,1 @@
+export const IMAGE_STORAGE_SERVICE = Symbol('IMAGE_STORAGE_SERVICE');

@@ -24,25 +24,24 @@ import {
 import { WorkspaceAccessService } from '../../common/services/workspace-access.service';
 import {
   createPreview,
-  deriveIssues,
-  EventPayload,
+  toDebugString,
+} from '../../common/utils/debug-preview.utils';
+import { deriveIssues } from '../../common/utils/debug-issue.utils';
+import { maxSeverity } from '../../common/utils/debug-severity.utils';
+import { getSpanId } from '../../common/utils/timeline.utils';
+import { EventPayload } from '../../common/types/debug-event.types';
+import {
   getPayload,
   getPayloadBoolean,
   getPayloadNumber,
   getPayloadString,
-  getSpanId,
-  maxSeverity,
-  toDebugString,
-} from '../debug/debug.utils';
-
-interface CursorValue {
-  timestamp: string;
-  id: string;
-}
-
-const DEFAULT_SESSION_LIMIT = 25;
-const MAX_SESSION_LIMIT = 100;
-const MAX_TIMELINE_EVENTS = 500;
+} from '../../common/utils/event-payload.utils';
+import {
+  DEFAULT_SESSION_LIMIT,
+  MAX_SESSION_LIMIT,
+  MAX_TIMELINE_EVENTS,
+} from '../../common/constants/session.constants';
+import { SessionCursorValue } from '../../common/types/session.types';
 
 @Injectable()
 export class SessionService {
@@ -82,7 +81,7 @@ export class SessionService {
     }
     if (query.runId) {
       qb.andWhere(
-        '(session.name = :runId OR event.payload->>\'runId\' = :runId OR event.payload->>\'traceId\' = :runId)',
+        "(session.name = :runId OR event.payload->>'runId' = :runId OR event.payload->>'traceId' = :runId)",
         { runId: query.runId },
       );
     }
@@ -610,9 +609,7 @@ export class SessionService {
     runId: string,
   ) {
     return (
-      getPayloadString(getPayload(events[0]), 'traceId') ??
-      runId ??
-      session.id
+      getPayloadString(getPayload(events[0]), 'traceId') ?? runId ?? session.id
     );
   }
 
@@ -684,12 +681,12 @@ export class SessionService {
     };
   }
 
-  private decodeCursor(cursor?: string): CursorValue | undefined {
+  private decodeCursor(cursor?: string): SessionCursorValue | undefined {
     if (!cursor) return undefined;
     try {
       const parsed = JSON.parse(
         Buffer.from(cursor, 'base64url').toString('utf8'),
-      ) as CursorValue;
+      ) as SessionCursorValue;
       if (!parsed.timestamp || !parsed.id) throw new Error('Invalid cursor.');
       return parsed;
     } catch {
