@@ -7,7 +7,7 @@
           "title": "요약",
           "overview": "운영 정보 개요",
           "status": "데이터 수집 상태",
-          "cost": "사용량 분석",
+          "cost": "비용 분석",
           "reports": "운영 보고서"
         },
         "sessions": {
@@ -17,24 +17,44 @@
           "failed": "실패한 세션"
         },
         "agents": {
-          "title": "에이전트",
-          "overview": "에이전트 개요",
-          "active": "활성화된 에이전트",
-          "inactive": "비활성화된 에이전트"
+          "title": "agent",
+          "overview": "agent 개요",
+          "active": "활성 agent",
+          "inactive": "비활성 agent"
         }
       },
       "issues": {
         "title": "이슈",
         "tracker": {
           "title": "이슈 트래커",
-          "overview": "발생한 이슈"
+          "overview": "발생한 이슈",
+          "review": "확인 필요",
+          "fingerprints": "Fingerprint 그룹",
+          "trends": "이슈 추이",
+          "blocked": "차단된 이슈"
         }
       },
       "firewall": {
-        "title": "방화벽"
+        "title": "방화벽",
+        "summary": {
+          "title": "정책",
+          "overview": "정책 목록",
+          "blockedEvents": "차단 이벤트",
+          "policyCoverage": "정책 커버리지",
+          "riskTools": "위험 도구",
+          "simulation": "정책 시뮬레이션"
+        }
       },
       "prompts": {
-        "title": "프롬프트"
+        "title": "프롬프트",
+        "summary": {
+          "title": "버전",
+          "overview": "프롬프트 목록",
+          "changes": "변경 이력",
+          "regressions": "회귀 알림",
+          "compare": "버전 비교",
+          "deployments": "배포 상태"
+        }
       },
       "settings": {
         "title": "설정"

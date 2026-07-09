@@ -6,29 +6,26 @@ import { useTranslations } from "next-intl";
 
 export default function SessionDetailPage() {
   const tDashboard = useTranslations("dashboard");
-  const t = useTranslations("dashboard.overview");
+  const t = useTranslations("session.detail");
+
   return (
-    <main className="p-8 min-h-full max-w-280 mx-auto">
+    <main className="mx-auto min-h-full max-w-280 p-8">
       <PageInfo
         breadcrumbs={[
           { title: tDashboard("title") },
-          {
-            title: "에이전트",
-            url: "http://localhost:3000/dashboard/agents/overview",
-          },
-          { title: "환불 상담 에이전트" },
+          { title: t("breadcrumbSessions") },
+          { title: t("title") },
         ]}
       />
-      <div className="py-3 pt-10 mb-5 flex justify-between">
+      <div className="mb-5 flex justify-between py-3 pt-10">
         <div>
-          <h1 className="text-3xl font-bold">인천 - 나리타 항공권 환불 요청</h1>
-          <p className="text-foreground/70 mt-2">
-            f2af9002-b992-4bf4-a202-216f4ae1e12e - 30분 전
-          </p>
+          <h1 className="text-3xl font-bold">{t("title")}</h1>
+          <p className="mt-2 text-foreground/70">{t("description")}</p>
         </div>
         <div>
-          <Button variant={"outline"}>
-            공유 <ExternalLink />
+          <Button variant="outline">
+            {t("share")}
+            <ExternalLink />
           </Button>
         </div>
       </div>

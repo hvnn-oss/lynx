@@ -1,0 +1,59 @@
+{
+  "detail": {
+    "title": "세션 트래커",
+    "description": "한 번의 AI 실행이 입력, 컨텍스트, LLM 호출, 도구 호출, 정책 판단, 최종 결과로 이어진 흐름을 확인합니다.",
+    "breadcrumbSessions": "세션",
+    "share": "공유",
+    "timeline": "실행 타임라인",
+    "timelineHint": "이벤트를 선택하면 오른쪽에서 상세 정보와 Raw 데이터를 볼 수 있습니다.",
+    "duration": "지연 시간",
+    "tokens": "토큰",
+    "cost": "비용",
+    "modelOrTool": "모델/도구",
+    "summary": "요약",
+    "input": "입력",
+    "output": "출력",
+    "error": "오류",
+    "rawData": "Raw 데이터",
+    "preview": "미리보기"
+  },
+  "summary": {
+    "status": "상태",
+    "duration": "실행 시간",
+    "tokens": "토큰",
+    "totalTokens": "전체 이벤트 합계",
+    "cost": "비용",
+    "estimatedCost": "예상 비용",
+    "issues": "이슈",
+    "linkedIssues": "연결된 이슈"
+  },
+  "status": {
+    "blocked": "차단됨",
+    "success": "성공",
+    "warning": "주의",
+    "error": "오류"
+  },
+  "eventStatus": {
+    "success": "성공",
+    "warning": "주의",
+    "error": "오류",
+    "blocked": "차단됨"
+  },
+  "eventTypes": {
+    "user_input": "사용자 입력",
+    "context_load": "컨텍스트 로드",
+    "llm_call": "LLM 호출",
+    "tool_call": "도구 호출",
+    "guardrail_check": "정책 판단",
+    "final_response": "최종 응답"
+  },
+  "detailTabs": {
+    "summary": "상세",
+    "raw": "Raw 보기"
+  },
+  "actions": {
+    "openTrace": "Trace 열기",
+    "reproduce": "재현",
+    "copy": "복사"
+  }
+}

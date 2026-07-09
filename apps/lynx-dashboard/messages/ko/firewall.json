@@ -1,0 +1,70 @@
+{
+  "overview": {
+    "title": "정책 목록",
+    "subtitle": "위험한 LLM 응답과 도구 호출을 실행 직전에 막는 정책을 관리합니다."
+  },
+  "metrics": {
+    "enabled": "활성 정책",
+    "enabledHint": "현재 평가 중",
+    "block": "차단 정책",
+    "blockHint": "FAIL_CLOSED 기준",
+    "triggers": "트리거",
+    "triggersHint": "최근 감지 합계",
+    "agents": "연결 agent",
+    "agentsHint": "정책 적용 대상"
+  },
+  "fields": {
+    "triggers": "트리거",
+    "lastTriggered": "마지막 실행"
+  },
+  "blockedEvents": {
+    "title": "차단 이벤트",
+    "subtitle": "정책에 의해 실제 실행 전에 차단된 tool call과 model output을 확인합니다.",
+    "empty": "차단 이벤트가 없습니다."
+  },
+  "coverage": {
+    "title": "정책 커버리지",
+    "subtitle": "agent별 적용 정책과 비어 있는 권장 정책을 확인합니다.",
+    "empty": "커버리지 데이터가 없습니다.",
+    "noneMissing": "비어 있는 권장 정책 없음",
+    "enabled": "활성",
+    "disabled": "비활성",
+    "lastChecked": "확인"
+  },
+  "riskTools": {
+    "title": "위험 도구",
+    "subtitle": "고위험 도구별 정책 연결과 최근 차단 횟수를 봅니다.",
+    "empty": "위험 도구 데이터가 없습니다.",
+    "blocked": "차단",
+    "lastBlocked": "최근 차단"
+  },
+  "simulation": {
+    "title": "정책 시뮬레이션",
+    "subtitle": "도구 호출 payload를 넣고 어떤 정책에 걸리는지 mock 결과를 확인합니다.",
+    "inputTitle": "검사할 payload",
+    "resultTitle": "mock 검사 결과",
+    "runMock": "mock 검사",
+    "matchedPolicies": "매칭 정책",
+    "decision": "실행 판단"
+  },
+  "detail": {
+    "action": "액션",
+    "actionHint": "실행 직전 처리",
+    "enabled": "활성",
+    "enabledHint": "SDK 평가 대상",
+    "enabledYes": "활성",
+    "enabledNo": "비활성",
+    "triggers": "트리거",
+    "triggersHint": "최근 감지 수",
+    "agents": "agent",
+    "agentsHint": "연결 대상",
+    "condition": "정책 조건",
+    "conditionType": "조건 유형",
+    "conditionValue": "조건 값",
+    "targetAgents": "대상 agent",
+    "lastTriggered": "마지막 실행",
+    "runtime": "런타임 판단",
+    "runtimeText": "SDK는 정책을 캐시한 뒤 위험한 도구 실행 직전에 로컬에서 평가합니다. 차단 정책은 서버 장애와 무관하게 실행을 멈추는 기준으로 다룹니다."
+  },
+  "empty": "정책 데이터가 없습니다."
+}

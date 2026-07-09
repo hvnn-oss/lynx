@@ -72,7 +72,7 @@ export const sidebarItems: SidebarItemType[] = [
           },
           {
             title: "dashboard.sessions.failed",
-            href: "/dashboard/cost",
+            href: "/dashboard/sessions/failed",
             wildcard: "/dashboard/sessions/failed/**",
           },
         ],
@@ -115,6 +115,26 @@ export const sidebarItems: SidebarItemType[] = [
             href: "/issues/overview",
             wildcard: "/issues/(overview|tracker)/**",
           },
+          {
+            title: "issues.tracker.review",
+            href: "/issues/review",
+            wildcard: "/issues/review/**",
+          },
+          {
+            title: "issues.tracker.fingerprints",
+            href: "/issues/fingerprints",
+            wildcard: "/issues/fingerprints/**",
+          },
+          {
+            title: "issues.tracker.trends",
+            href: "/issues/trends",
+            wildcard: "/issues/trends/**",
+          },
+          {
+            title: "issues.tracker.blocked",
+            href: "/issues/blocked",
+            wildcard: "/issues/blocked/**",
+          },
         ],
       },
     ],
@@ -128,12 +148,32 @@ export const sidebarItems: SidebarItemType[] = [
     wildcard: "/firewall/**",
     items: [
       {
-        title: "summary",
+        title: "firewall.summary.title",
         items: [
           {
-            title: "firewall.overview",
+            title: "firewall.summary.overview",
             href: "/firewall/overview",
-            wildcard: "/firewall/overview/**",
+            wildcard: "/firewall/(overview|policies)/**",
+          },
+          {
+            title: "firewall.summary.blockedEvents",
+            href: "/firewall/blocked-events",
+            wildcard: "/firewall/blocked-events/**",
+          },
+          {
+            title: "firewall.summary.policyCoverage",
+            href: "/firewall/policy-coverage",
+            wildcard: "/firewall/policy-coverage/**",
+          },
+          {
+            title: "firewall.summary.riskTools",
+            href: "/firewall/risk-tools",
+            wildcard: "/firewall/risk-tools/**",
+          },
+          {
+            title: "firewall.summary.simulation",
+            href: "/firewall/simulation",
+            wildcard: "/firewall/simulation/**",
           },
         ],
       },
@@ -148,12 +188,32 @@ export const sidebarItems: SidebarItemType[] = [
     wildcard: "/prompts/**",
     items: [
       {
-        title: "summary",
+        title: "prompts.summary.title",
         items: [
           {
-            title: "dashboard.overview",
-            href: "/dashboard/overview",
-            wildcard: "/dashboard/overview/**",
+            title: "prompts.summary.overview",
+            href: "/prompts/overview",
+            wildcard: "/prompts/overview/**",
+          },
+          {
+            title: "prompts.summary.changes",
+            href: "/prompts/changes",
+            wildcard: "/prompts/changes/**",
+          },
+          {
+            title: "prompts.summary.regressions",
+            href: "/prompts/regressions",
+            wildcard: "/prompts/regressions/**",
+          },
+          {
+            title: "prompts.summary.compare",
+            href: "/prompts/compare",
+            wildcard: "/prompts/compare/**",
+          },
+          {
+            title: "prompts.summary.deployments",
+            href: "/prompts/deployments",
+            wildcard: "/prompts/deployments/**",
           },
         ],
       },
