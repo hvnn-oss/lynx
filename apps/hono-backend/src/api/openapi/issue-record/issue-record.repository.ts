@@ -11,8 +11,8 @@ import type { EntityManager } from "typeorm";
 import type {
   IssueRecordDetectionDecision,
   StoreIssueRecordInput,
-} from "../../common/types/issue.js";
-import { AppDataSource } from "../../provider/database/typeorm-config.js";
+} from "../../../common/types/issue.js";
+import { AppDataSource } from "../../../provider/database/typeorm-config.js";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -100,7 +100,8 @@ export class IssueRecordRepository {
     const session = record.clientSessionId
       ? await AppDataSource.getRepository(SessionEntity).findOne({
           where: {
-            name: record.clientSessionId,
+            clientId: record.sdkInstanceId,
+            clientSessionId: record.clientSessionId,
             workspace: { id: record.workspaceId },
           },
           relations: { agent: true },
@@ -116,12 +117,12 @@ export class IssueRecordRepository {
                 workspace: { id: record.workspaceId },
               },
               {
-                name: record.clientAgentId,
+                clientAgentId: record.clientAgentId,
                 workspace: { id: record.workspaceId },
               },
             ]
           : {
-              name: record.clientAgentId,
+              clientAgentId: record.clientAgentId,
               workspace: { id: record.workspaceId },
             },
       }));

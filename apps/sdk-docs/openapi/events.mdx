@@ -1,0 +1,100 @@
+---
+title: "Record events"
+description: "Send language-independent agent events with safe batching and retry behavior."
+---
+
+Use `POST /openapi/v1/events/batch` to record one to 100 events. The complete request body must be no larger than 1 MiB, and each `payload` must be no larger than 256 KiB after JSON encoding.
+
+## Event fields
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `eventId` | string | Yes | Idempotency key. Keep it unchanged across retries. Maximum 160 characters. |
+| `clientId` | string | Yes | Stable identifier for your SDK installation or process family. Maximum 120 characters. |
+| `runId` | string | Yes | One agent execution. Maximum 255 characters. |
+| `sessionId` | string | No | Groups related runs, such as one conversation. |
+| `agentId` | string | No | Stable external agent identifier. |
+| `agentName` | string | Yes | Human-readable agent name. |
+| `eventType` | string | Yes | Event category. Maximum 50 characters. |
+| `label` | string | Yes | Short timeline label. Maximum 255 characters. |
+| `timestamp` | integer | Yes | Unix time in milliseconds. |
+| `payload` | object | No | Event-specific data. Defaults to `{}`. |
+| `schemaVersion` | string | No | Version of your event payload contract. |
+
+`timestamp` can be at most 30 days old and up to five minutes in the future.
+
+The optional `workspaceId` field is only a consistency hint. If it differs from the workspace selected by the API key, the event is rejected.
+
+## Example batch
+
+```json
+[
+  {
+    "eventId": "evt_llm_01",
+    "clientId": "go-service",
+    "runId": "run_checkout_938",
+    "sessionId": "session_user_42",
+    "agentId": "checkout-agent",
+    "agentName": "checkout-agent",
+    "eventType": "LLM_CALL",
+    "label": "Choose payment action",
+    "schemaVersion": "1.0",
+    "timestamp": 1784808000000,
+    "payload": {
+      "model": "model-name",
+      "latency": 420,
+      "cost": 0.0021,
+      "usage": {
+        "promptTokens": 240,
+        "completionTokens": 32,
+        "totalTokens": 272
+      }
+    }
+  }
+]
+```
+
+Use the same `runId` for every event in one execution. Use the same `sessionId` across related executions.
+
+## Partial success response
+
+```json
+{
+  "success": false,
+  "accepted": 1,
+  "retryableEventIds": ["evt_tool_02"],
+  "rejectedEventIds": ["evt_invalid_03"]
+}
+```
+
+The server evaluates each event independently:
+
+- Remove accepted events from the local queue.
+- Retry only IDs in `retryableEventIds`.
+- Permanently remove IDs in `rejectedEventIds` and record a local diagnostic.
+- Treat a repeated, already stored `eventId` as accepted.
+
+Do not retry the entire original batch without filtering it. Doing so wastes capacity even though repeated IDs are idempotent.
+
+## Suggested event order
+
+A language SDK can start with these practical event types:
+
+```text
+USER_INPUT
+AGENT_STEP
+LLM_CALL
+TOOL_CALL
+POLICY_DECISION
+ERROR
+SESSION_OUTCOME
+```
+
+`SESSION_OUTCOME` closes the Run. Put `COMPLETED`, `FAILED`, or `CANCELLED` in `payload.status`.
+
+Lynx accepts other event type strings, but a stable shared vocabulary makes dashboards and debugging more useful.
+
+<Warning>
+  In `metadata-only` mode, omit prompt text, model output, and tool arguments.
+  In every mode, mask credentials and personal data before creating the event.
+</Warning>

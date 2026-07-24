@@ -9,6 +9,8 @@ import {
   RunListQuerySchema,
   RunListResponseSchema,
   RunParamsSchema,
+  RunEventListQuerySchema,
+  RunEventListResponseSchema,
 } from "@repo/dto";
 import { defineEndpoint } from "./util/endpoint.js";
 
@@ -45,5 +47,12 @@ export const openAPIContract = {
     params: RunParamsSchema,
     request: RunParamsSchema,
     response: RunDetailResponseSchema,
+  }),
+  listRunEvents: defineEndpoint({
+    method: "GET",
+    path: "/runs/:runId/events",
+    params: RunParamsSchema,
+    request: RunEventListQuerySchema,
+    response: RunEventListResponseSchema,
   }),
 };

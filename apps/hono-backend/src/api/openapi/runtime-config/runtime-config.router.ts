@@ -1,8 +1,9 @@
 import { API_KEY_SCOPES } from "@repo/constants";
 import { openAPIContract } from "@repo/contract";
 import { Hono } from "hono";
-import { createWorkspaceApiKeyMiddleware } from "../../common/middleware/workspace-api-key.middleware.js";
-import type { AppEnv } from "../../common/types/app-env.js";
+import { createWorkspaceApiKeyMiddleware } from "../../../common/middleware/workspace-api-key.middleware.js";
+import { openApiRateLimitMiddleware } from "../../../common/middleware/openapi-rate-limit.middleware.js";
+import type { AppEnv } from "../../../common/types/app-env.js";
 import { createRuntimeConfigHandlers } from "./runtime-config.handler.js";
 
 const handlers = createRuntimeConfigHandlers();
@@ -18,5 +19,6 @@ runtimeConfigRouter.on(
     API_KEY_SCOPES.CONFIG_READ,
     API_KEY_SCOPES.POLICIES_READ,
   ]),
+  openApiRateLimitMiddleware,
   ...handlers.get,
 );

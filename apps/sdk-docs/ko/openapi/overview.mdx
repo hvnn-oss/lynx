@@ -1,0 +1,112 @@
+---
+title: "OpenAPI 시작하기"
+description: "언어나 실행 환경에 관계없이 HTTP로 Lynx를 연결합니다."
+---
+
+Lynx OpenAPI는 에이전트 실행 기록, 런타임 설정 조회, 이슈 후보 접수, Run 타임라인 조회를 제공하는 언어 독립 통합 인터페이스입니다.
+
+TypeScript 환경에서는 공식 SDK를 사용할 수 있습니다. 다른 언어 SDK를 만들거나 아직 지원하지 않는 실행 환경을 연결하려면 OpenAPI를 직접 사용하세요.
+
+## 기본 URL과 인증
+
+모든 공개 엔드포인트는 다음 경로를 사용합니다.
+
+```text
+https://api.lynxops.co/openapi/v1
+```
+
+직접 운영하는 Lynx는 도메인만 바꾸고 `/openapi/v1` 경로는 유지합니다.
+
+모든 요청에 워크스페이스 API 키를 전달합니다.
+
+```http
+X-API-Key: YOUR_WORKSPACE_API_KEY
+Content-Type: application/json
+```
+
+사용자 Bearer 토큰을 보내지 마세요. API 키가 워크스페이스와 실행 환경을 결정하므로 요청 본문으로 이 경계를 바꿀 수 없습니다.
+
+## 엔드포인트
+
+| 메서드 | 경로 | 필요한 권한 | 용도 |
+| --- | --- | --- | --- |
+| `POST` | `/events/batch` | `events:write` | 이벤트를 최대 100개까지 기록합니다. |
+| `POST` | `/issue-records` | `events:write` | 탐지 또는 복구 기록을 비동기 검토 대상으로 접수합니다. |
+| `GET` | `/runtime-config` | `config:read`, `policies:read` | 현재 프롬프트 버전과 활성 정책을 조회합니다. |
+| `GET` | `/runs` | `usage:read` | Run 목록을 커서 방식으로 조회합니다. |
+| `GET` | `/runs/{runId}` | `usage:read` | Run과 첫 이벤트 페이지를 조회합니다. |
+| `GET` | `/runs/{runId}/events` | `usage:read` | 나머지 이벤트 타임라인을 조회합니다. |
+
+## 첫 번째 요청
+
+```bash
+curl --request POST \
+  --url https://api.lynxops.co/openapi/v1/events/batch \
+  --header "X-API-Key: $LYNX_API_KEY" \
+  --header "Content-Type: application/json" \
+  --data '[
+    {
+      "eventId": "evt_01JZQ3W8FQ",
+      "clientId": "python-worker-01",
+      "runId": "run_01JZQ3VY4K",
+      "sessionId": "session_customer_42",
+      "agentName": "support-agent",
+      "eventType": "USER_INPUT",
+      "label": "Customer message",
+      "timestamp": 1784808000000,
+      "payload": {
+        "text": "I cannot sign in"
+      }
+    }
+  ]'
+```
+
+## 다른 언어 SDK 구현하기
+
+운영 환경용 SDK에는 다음 구성이 필요합니다.
+
+1. `runId`, `sessionId`, `spanId`, `parentSpanId`를 전달하는 실행 컨텍스트
+2. 크기가 제한된 메모리 또는 디스크 큐
+3. 짧은 timeout을 사용하는 백그라운드 배치 전송
+4. `retryableEventIds`만 다시 보내는 재시도 처리
+5. `rejectedEventIds`를 큐에서 제거하는 처리
+6. 재시도해도 변하지 않는 `eventId`와 `clientRecordId`
+7. `ETag`를 사용하는 런타임 설정 캐시
+8. 도구 실행 직전에 동작하는 로컬 정책 판단
+9. 안전한 프로세스 종료를 위한 `flush`와 `shutdown`
+
+일반 이벤트 전송은 fail-open으로 구현하세요. Lynx에 일시적으로 접근할 수 없어도 고객 요청은 계속 처리되어야 합니다. 고위험 로컬 정책은 별도로 fail-closed 동작을 선택할 수 있습니다.
+
+## 공통 HTTP 처리
+
+- `400`: 공개 요청 형식에 맞지 않습니다.
+- `401`: `X-API-Key`가 없거나 올바르지 않습니다.
+- `403`: API 키에 필요한 권한이 없습니다.
+- `413`: 요청 본문이 너무 큽니다.
+- `429`: 요청 제한을 넘었습니다. `Retry-After`를 따르세요.
+- `5xx`: 별도 근거가 없다면 일시적인 오류로 처리합니다.
+
+네트워크 오류, `429`, `5xx`에는 jitter가 포함된 지수형 대기를 적용하세요. 장시간 장애가 메모리를 계속 사용하지 않도록 큐 최대 크기도 설정해야 합니다.
+
+<Warning>
+  프롬프트, 도구 인자, 모델 응답, 로그와 payload에는 민감정보가 들어갈 수
+  있습니다. 큐에 넣기 전에 비밀값을 마스킹하고, 로컬에서도 크기를 제한하며,
+  API 키를 로그에 남기지 마세요.
+</Warning>
+
+## 다음 단계
+
+<CardGroup cols={2}>
+  <Card title="이벤트 기록" icon="wave-pulse" href="./events">
+    이벤트 형식, 배치, 재시도 동작을 구현합니다.
+  </Card>
+  <Card title="런타임 설정 조회" icon="sliders" href="./runtime-config">
+    프롬프트 버전과 정책을 로컬에 저장합니다.
+  </Card>
+  <Card title="이슈 후보 접수" icon="triangle-exclamation" href="./issue-records">
+    에이전트 실행을 막지 않고 탐지 결과를 전송합니다.
+  </Card>
+  <Card title="Run 조회" icon="timeline" href="./runs">
+    Run과 이벤트 타임라인을 조회합니다.
+  </Card>
+</CardGroup>

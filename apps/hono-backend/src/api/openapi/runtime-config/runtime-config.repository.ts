@@ -1,5 +1,5 @@
 import { GuardrailPolicyEntity, PromptEntity } from "@repo/database";
-import { AppDataSource } from "../../provider/database/typeorm-config.js";
+import { AppDataSource } from "../../../provider/database/typeorm-config.js";
 
 /** SDK에 배포할 프롬프트와 정책을 워크스페이스 경계 안에서 조회합니다. */
 export class RuntimeConfigRepository {

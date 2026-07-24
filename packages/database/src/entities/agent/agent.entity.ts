@@ -17,6 +17,9 @@ export class AgentEntity {
   @Column()
   name!: string;
 
+  @Column({ type: "varchar", length: 255, nullable: true })
+  clientAgentId?: string;
+
   @Column({ nullable: true })
   description?: string;
 

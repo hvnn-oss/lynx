@@ -57,11 +57,25 @@ export class OpenAPIEventService {
           trustedEvent,
           agent,
         );
-        await this.repository.saveEvent(session, trustedEvent);
+        const run = await this.repository.findOrCreateRun(
+          workspaceId,
+          trustedEvent,
+          session,
+          agent,
+        );
+        await this.repository.saveEvent(session, run, trustedEvent);
         accepted += 1;
       } catch (error) {
         if (event.eventId) {
-          if (this.isPermanentDatabaseError(error))
+          // 동시 요청이 같은 eventId를 저장했다면 현재 요청도 성공한 것으로 봅니다.
+          if (
+            this.isUniqueViolation(error) &&
+            (await this.repository
+              .findEvent(workspaceId, event.clientId, event.eventId)
+              .catch(() => null))
+          ) {
+            accepted += 1;
+          } else if (this.isPermanentDatabaseError(error))
             rejectedEventIds.add(event.eventId);
           else retryableEventIds.add(event.eventId);
         }
@@ -100,16 +114,30 @@ export class OpenAPIEventService {
   async getRun(workspaceId: string, runId: string) {
     const run = await this.repository.findRun(workspaceId, runId);
     if (!run) return null;
+    const events = run.events.slice(0, 100);
     return {
       ...this.toRun(run),
-      events: run.events.map((event) => ({
-        id: event.id,
-        eventId: event.clientEventId ?? null,
-        eventType: event.eventType,
-        label: event.label,
-        timestamp: event.timestamp.toISOString(),
-        payload: event.payload,
-      })),
+      events: events.map((event) => this.toEvent(event)),
+      hasMoreEvents: run.events.length > events.length,
+    };
+  }
+
+  /** Run Event 타임라인을 크기가 제한된 커서 페이지로 조회합니다. */
+  async listRunEvents(
+    workspaceId: string,
+    runId: string,
+    input: { cursor?: string; limit: number },
+  ) {
+    const rows = await this.repository.listRunEvents(workspaceId, runId, input);
+    const hasMore = rows.length > input.limit;
+    const page = rows.slice(0, input.limit);
+    const last = page.at(-1);
+    return {
+      items: page.map((event) => this.toEvent(event)),
+      nextCursor:
+        hasMore && last
+          ? `${last.timestamp.toISOString()}|${last.createdAt.toISOString()}|${last.id}`
+          : null,
     };
   }
 
@@ -119,7 +147,7 @@ export class OpenAPIEventService {
   ) {
     return {
       id: run.id,
-      runId: run.name,
+      runId: run.clientRunId,
       status: run.status,
       startedAt: run.startedAt.toISOString(),
       endedAt: run.endedAt?.toISOString() ?? null,
@@ -133,14 +161,43 @@ export class OpenAPIEventService {
     };
   }
 
+  /** Event 저장 모델을 외부 타임라인 응답으로 변환합니다. */
+  private toEvent(
+    event: Awaited<ReturnType<OpenAPIEventRepository["listRunEvents"]>>[number],
+  ) {
+    return {
+      id: event.id,
+      eventId: event.clientEventId ?? null,
+      eventType: event.eventType,
+      label: event.label,
+      timestamp: event.timestamp.toISOString(),
+      payload: event.payload,
+    };
+  }
+
   /** 재시도로 해결되지 않는 PostgreSQL 입력 오류인지 판별합니다. */
   private isPermanentDatabaseError(error: unknown): boolean {
-    return (
-      typeof error === "object" &&
-      error !== null &&
-      "code" in error &&
-      error.code === "22P02"
-    );
+    const permanentCodes = new Set([
+      "22P02",
+      "22003",
+      "22007",
+      "23502",
+      "23503",
+      "23514",
+    ]);
+    return permanentCodes.has(this.readDatabaseErrorCode(error) ?? "");
+  }
+
+  /** 동시 멱등 저장에서 발생할 수 있는 unique constraint 충돌인지 판별합니다. */
+  private isUniqueViolation(error: unknown): boolean {
+    return this.readDatabaseErrorCode(error) === "23505";
+  }
+
+  /** 드라이버 오류에서 PostgreSQL 오류 코드를 안전하게 읽습니다. */
+  private readDatabaseErrorCode(error: unknown): string | null {
+    if (typeof error !== "object" || error === null || !("code" in error))
+      return null;
+    return typeof error.code === "string" ? error.code : null;
   }
 }
 

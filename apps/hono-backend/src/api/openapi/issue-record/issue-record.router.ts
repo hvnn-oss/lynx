@@ -2,8 +2,9 @@ import { API_KEY_SCOPES } from "@repo/constants";
 import { openAPIContract } from "@repo/contract";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { createWorkspaceApiKeyMiddleware } from "../../common/middleware/workspace-api-key.middleware.js";
-import type { AppEnv } from "../../common/types/app-env.js";
+import { createWorkspaceApiKeyMiddleware } from "../../../common/middleware/workspace-api-key.middleware.js";
+import { openApiRateLimitMiddleware } from "../../../common/middleware/openapi-rate-limit.middleware.js";
+import type { AppEnv } from "../../../common/types/app-env.js";
 import { createIssueRecordHandlers } from "./issue-record.handler.js";
 
 const handlers = createIssueRecordHandlers();
@@ -17,5 +18,6 @@ issueRecordRouter.on(
   openAPIContract.createIssueRecord.path,
   bodyLimit({ maxSize: 256 * 1024 }),
   createWorkspaceApiKeyMiddleware([API_KEY_SCOPES.EVENTS_WRITE]),
+  openApiRateLimitMiddleware,
   ...handlers.create,
 );

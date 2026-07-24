@@ -6,8 +6,8 @@ import {
   ISSUE_SOURCE,
 } from "@repo/constants";
 import type { IssueRecordEntity } from "@repo/database";
-import type { IssueRecordDetectionDecision } from "../../common/types/issue.js";
-import { IssueService, issueService } from "../issues/issue.service.js";
+import type { IssueRecordDetectionDecision } from "../../../common/types/issue.js";
+import { IssueService, issueService } from "../../issues/issue.service.js";
 import {
   IssueRecordRepository,
   issueRecordRepository,

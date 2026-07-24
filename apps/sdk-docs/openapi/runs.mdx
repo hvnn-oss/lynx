@@ -1,0 +1,93 @@
+---
+title: "Read runs"
+description: "List runs and page through event timelines."
+---
+
+Run read endpoints are useful for custom consoles, export jobs, and integration tests. They require `usage:read`.
+
+## List runs
+
+```http
+GET /openapi/v1/runs?limit=25&status=FAILED
+X-API-Key: YOUR_WORKSPACE_API_KEY
+```
+
+Query parameters:
+
+| Parameter | Description |
+| --- | --- |
+| `limit` | 1 to 100. Defaults to 25. |
+| `cursor` | Opaque `nextCursor` from the previous response. |
+| `agentId` | Internal Lynx Agent UUID filter. |
+| `status` | `RUNNING`, `COMPLETED`, `FAILED`, or `CANCELLED`. |
+
+```json
+{
+  "items": [
+    {
+      "id": "ebd7c740-e284-4db1-86c0-6c1a78eb30f8",
+      "runId": "run_01JZQ3VY4K",
+      "status": "FAILED",
+      "startedAt": "2026-07-23T08:00:00.000Z",
+      "endedAt": "2026-07-23T08:00:02.120Z",
+      "agent": {
+        "id": "aa971534-cce6-4ca8-a950-99f8e779ae0a",
+        "name": "support-agent"
+      },
+      "usage": {
+        "promptTokens": 240,
+        "completionTokens": 32,
+        "totalTokens": 272,
+        "cost": 0.0021
+      }
+    }
+  ],
+  "nextCursor": null
+}
+```
+
+Treat cursors as opaque. Do not parse or construct them in client code.
+
+## Get one Run
+
+```http
+GET /openapi/v1/runs/run_01JZQ3VY4K
+```
+
+The path accepts either the internal Run UUID or your external `runId`. The response includes up to 100 events and a `hasMoreEvents` flag.
+
+## Page through events
+
+When `hasMoreEvents` is true, request:
+
+```http
+GET /openapi/v1/runs/run_01JZQ3VY4K/events?limit=100
+```
+
+Pass each returned `nextCursor` unchanged:
+
+```json
+{
+  "items": [
+    {
+      "id": "63782fe2-11ed-49a7-869e-4da55a445641",
+      "eventId": "evt_llm_01",
+      "eventType": "LLM_CALL",
+      "label": "Choose payment action",
+      "timestamp": "2026-07-23T08:00:01.000Z",
+      "payload": {
+        "model": "model-name"
+      }
+    }
+  ],
+  "nextCursor": null
+}
+```
+
+Event pages contain at most 200 items and default to 100.
+
+<Warning>
+  Run payloads can contain prompts, tool arguments, and model responses. Apply
+  authorization before exposing this API through your own service, and avoid
+  copying raw payloads into application logs.
+</Warning>

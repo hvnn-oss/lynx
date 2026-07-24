@@ -3,6 +3,7 @@ export {
   IngestEventBatchSchema as ingestBatchSchema,
   RunListQuerySchema as runListQuerySchema,
   RunParamsSchema as runParamsSchema,
+  RunEventListQuerySchema as runEventListQuerySchema,
 } from "@repo/dto";
 /** 검증을 통과한 단일 SDK 이벤트 타입입니다. */
 export type { IngestEventDto as IngestEvent } from "@repo/dto";

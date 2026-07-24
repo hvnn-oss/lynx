@@ -4,9 +4,10 @@ import { API_KEY_SCOPES } from "@repo/constants";
 import { openAPIContract } from "@repo/contract";
 import type { AppEnv } from "../../common/types/app-env.js";
 import { createWorkspaceApiKeyMiddleware } from "../../common/middleware/workspace-api-key.middleware.js";
+import { openApiRateLimitMiddleware } from "../../common/middleware/openapi-rate-limit.middleware.js";
 import { createOpenAPIEventHandlers } from "./event.handler.js";
-import { issueRecordRouter } from "../issue-record/issue-record.router.js";
-import { runtimeConfigRouter } from "../runtime-config/runtime-config.router.js";
+import { issueRecordRouter } from "./issue-record/issue-record.router.js";
+import { runtimeConfigRouter } from "./runtime-config/runtime-config.router.js";
 
 /**
  * SDK와 외부 클라이언트가 사용하는 `/openapi/v1` 하위 라우터입니다.
@@ -28,6 +29,7 @@ openAPIRouter.on(
   openAPIContract.ingestEvents.path,
   bodyLimit({ maxSize: 1024 * 1024 }),
   createWorkspaceApiKeyMiddleware([API_KEY_SCOPES.EVENTS_WRITE]),
+  openApiRateLimitMiddleware,
   ...handlers.ingestBatch,
 );
 /** Run 목록 조회에는 사용량 읽기 권한이 필요합니다. */
@@ -35,6 +37,7 @@ openAPIRouter.on(
   openAPIContract.listRuns.method,
   openAPIContract.listRuns.path,
   createWorkspaceApiKeyMiddleware([API_KEY_SCOPES.USAGE_READ]),
+  openApiRateLimitMiddleware,
   ...handlers.listRuns,
 );
 /** Run 상세와 이벤트 타임라인 조회에는 사용량 읽기 권한이 필요합니다. */
@@ -42,5 +45,14 @@ openAPIRouter.on(
   openAPIContract.getRun.method,
   openAPIContract.getRun.path,
   createWorkspaceApiKeyMiddleware([API_KEY_SCOPES.USAGE_READ]),
+  openApiRateLimitMiddleware,
   ...handlers.getRun,
+);
+/** 큰 Run의 Event 타임라인을 제한된 페이지로 조회합니다. */
+openAPIRouter.on(
+  openAPIContract.listRunEvents.method,
+  openAPIContract.listRunEvents.path,
+  createWorkspaceApiKeyMiddleware([API_KEY_SCOPES.USAGE_READ]),
+  openApiRateLimitMiddleware,
+  ...handlers.listRunEvents,
 );

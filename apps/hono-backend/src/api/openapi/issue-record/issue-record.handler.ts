@@ -1,8 +1,7 @@
 import { zValidator } from "@hono/zod-validator";
 import { openAPIContract } from "@repo/contract";
-import type { IssueRecordAcceptedResponseDto } from "@repo/dto";
 import { createFactory } from "hono/factory";
-import type { AppEnv } from "../../common/types/app-env.js";
+import type { AppEnv } from "../../../common/types/app-env.js";
 import { issueRecordService } from "./issue-record.service.js";
 
 const factory = createFactory<AppEnv>();
@@ -24,7 +23,10 @@ export function createIssueRecordHandlers() {
         ...c.req.valid("json"),
       });
 
-      return c.json(response satisfies IssueRecordAcceptedResponseDto, 202);
+      return c.json(
+        openAPIContract.createIssueRecord.response.parse(response),
+        202,
+      );
     },
   );
 

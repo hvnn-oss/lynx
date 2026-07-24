@@ -1,11 +1,13 @@
 import { zValidator } from "@hono/zod-validator";
 import { createFactory } from "hono/factory";
+import { openAPIContract } from "@repo/contract";
 import type { AppEnv } from "../../common/types/app-env.js";
 import { openAPIEventService } from "./event.service.js";
 import {
   ingestBatchSchema,
   runListQuerySchema,
   runParamsSchema,
+  runEventListQuerySchema,
 } from "./event.schema.js";
 
 const factory = createFactory<AppEnv>();
@@ -22,10 +24,12 @@ export function createOpenAPIEventHandlers() {
     zValidator("json", ingestBatchSchema),
     async (c) =>
       c.json(
-        await openAPIEventService.ingestBatch(
-          c.get("currentWorkspaceId"),
-          c.get("currentApiKeyEnvironment"),
-          c.req.valid("json"),
+        openAPIContract.ingestEvents.response.parse(
+          await openAPIEventService.ingestBatch(
+            c.get("currentWorkspaceId"),
+            c.get("currentApiKeyEnvironment"),
+            c.req.valid("json"),
+          ),
         ),
         200,
       ),
@@ -36,9 +40,11 @@ export function createOpenAPIEventHandlers() {
     zValidator("query", runListQuerySchema),
     async (c) =>
       c.json(
-        await openAPIEventService.listRuns(
-          c.get("currentWorkspaceId"),
-          c.req.valid("query"),
+        openAPIContract.listRuns.response.parse(
+          await openAPIEventService.listRuns(
+            c.get("currentWorkspaceId"),
+            c.req.valid("query"),
+          ),
         ),
       ),
   );
@@ -52,10 +58,26 @@ export function createOpenAPIEventHandlers() {
         c.req.valid("param").runId,
       );
       return run
-        ? c.json(run)
+        ? c.json(openAPIContract.getRun.response.parse(run))
         : c.json({ code: "RUN_NOT_FOUND", message: "Run was not found." }, 404);
     },
   );
 
-  return { ingestBatch, listRuns, getRun };
+  /** Run의 Event 타임라인을 커서 기반으로 조회합니다. */
+  const listRunEvents = factory.createHandlers(
+    zValidator("param", runParamsSchema),
+    zValidator("query", runEventListQuerySchema),
+    async (c) =>
+      c.json(
+        openAPIContract.listRunEvents.response.parse(
+          await openAPIEventService.listRunEvents(
+            c.get("currentWorkspaceId"),
+            c.req.valid("param").runId,
+            c.req.valid("query"),
+          ),
+        ),
+      ),
+  );
+
+  return { ingestBatch, listRuns, getRun, listRunEvents };
 }

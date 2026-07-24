@@ -28,12 +28,14 @@ import { PromptBlockEntity } from "./entities/prompt/prompt-block.entity";
 import { PromptVersionEntity } from "./entities/prompt/prompt-version.entity";
 import { PromptEntity } from "./entities/prompt/prompt.entity";
 import { SessionEntity } from "./entities/session/session.entity";
+import { RunEntity } from "./entities/run/run.entity";
 import { WorkspaceApiKeyEntity } from "./entities/workspace/workspace-api-key.entity";
 import { WorkspaceMembershipEntity } from "./entities/workspace/workspace-membership.entity";
 import { AddScopedApiKeyAuthorization1784710800000 } from "./migrations/1784710800000-add-scoped-api-key-authorization";
 import { AddEventIngestionIndexes1784797200000 } from "./migrations/1784797200000-add-event-ingestion-indexes";
 import { AddOrganizationPlans1784883600000 } from "./migrations/1784883600000-add-organization-plans";
 import { AddIssueTracking1784887200000 } from "./migrations/1784887200000-add-issue-tracking";
+import { SeparateRunsFromSessions1784973600000 } from "./migrations/1784973600000-separate-runs-from-sessions";
 import { loadDatabaseEnv } from "./load-env";
 
 loadDatabaseEnv();
@@ -120,6 +122,7 @@ export const AppDataSource = new DataSource({
     PromptVersionEntity,
     PromptEntity,
     SessionEntity,
+    RunEntity,
     FilterPolicyEntity,
   ],
   migrations: [
@@ -127,6 +130,7 @@ export const AppDataSource = new DataSource({
     AddEventIngestionIndexes1784797200000,
     AddOrganizationPlans1784883600000,
     AddIssueTracking1784887200000,
+    SeparateRunsFromSessions1784973600000,
   ],
   subscribers: [],
 });

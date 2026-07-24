@@ -7,6 +7,7 @@ import {
   PrimaryGeneratedColumn,
 } from "typeorm";
 import { SessionEntity } from "../session/session.entity";
+import { RunEntity } from "../run/run.entity.js";
 
 export interface TokenUsage {
   promptTokens: number;
@@ -75,4 +76,10 @@ export class EventEntity {
     onDelete: "CASCADE",
   })
   session!: SessionEntity;
+
+  @ManyToOne(() => RunEntity, (run) => run.events, {
+    nullable: true,
+    onDelete: "CASCADE",
+  })
+  run?: RunEntity;
 }

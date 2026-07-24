@@ -1,0 +1,112 @@
+---
+title: "OpenAPI overview"
+description: "Connect any language or runtime to Lynx over HTTP."
+---
+
+The Lynx OpenAPI is the language-independent integration surface for recording agent runs, loading runtime configuration, reporting issue candidates, and reading run timelines.
+
+Use the official TypeScript SDK when it fits your application. Use the OpenAPI directly when you are building another language SDK, integrating an unsupported runtime, or need control over delivery and local storage.
+
+## Base URL and authentication
+
+All public endpoints use this prefix:
+
+```text
+https://api.lynxops.co/openapi/v1
+```
+
+Self-hosted installations replace the origin and keep `/openapi/v1`.
+
+Send the workspace API key in every request:
+
+```http
+X-API-Key: YOUR_WORKSPACE_API_KEY
+Content-Type: application/json
+```
+
+Do not use an end-user Bearer token. The API key selects the workspace and environment, so request bodies cannot override that tenant boundary.
+
+## Endpoints
+
+| Method | Path | Required scope | Purpose |
+| --- | --- | --- | --- |
+| `POST` | `/events/batch` | `events:write` | Record up to 100 events. |
+| `POST` | `/issue-records` | `events:write` | Submit a detection or recovery record for asynchronous review. |
+| `GET` | `/runtime-config` | `config:read`, `policies:read` | Load current prompt versions and active policies. |
+| `GET` | `/runs` | `usage:read` | List runs with cursor pagination. |
+| `GET` | `/runs/{runId}` | `usage:read` | Read one run and its first event page. |
+| `GET` | `/runs/{runId}/events` | `usage:read` | Read the remaining event timeline. |
+
+## Minimal request
+
+```bash
+curl --request POST \
+  --url https://api.lynxops.co/openapi/v1/events/batch \
+  --header "X-API-Key: $LYNX_API_KEY" \
+  --header "Content-Type: application/json" \
+  --data '[
+    {
+      "eventId": "evt_01JZQ3W8FQ",
+      "clientId": "python-worker-01",
+      "runId": "run_01JZQ3VY4K",
+      "sessionId": "session_customer_42",
+      "agentName": "support-agent",
+      "eventType": "USER_INPUT",
+      "label": "Customer message",
+      "timestamp": 1784808000000,
+      "payload": {
+        "text": "I cannot sign in"
+      }
+    }
+  ]'
+```
+
+## Build another language SDK
+
+A production integration should contain these components:
+
+1. A run context that propagates `runId`, `sessionId`, `spanId`, and `parentSpanId`.
+2. A bounded in-memory or durable queue.
+3. A background batch sender with a short timeout.
+4. Retry handling based on `retryableEventIds`.
+5. Permanent removal of `rejectedEventIds`.
+6. Stable `eventId` and `clientRecordId` values across retries.
+7. A runtime configuration cache that uses `ETag`.
+8. Local policy evaluation before a tool executes.
+9. `flush` and `shutdown` operations for graceful process exit.
+
+Event delivery should fail open: a Lynx outage must not fail the customer request. A high-risk local policy may separately choose fail-closed behavior.
+
+## Common HTTP behavior
+
+- `400` means the request does not match the public contract.
+- `401` means `X-API-Key` is missing or invalid.
+- `403` means the key does not have the required scope.
+- `413` means the request body is too large.
+- `429` means the rate limit was exceeded. Respect `Retry-After`.
+- `5xx` errors are temporary unless your application has stronger evidence.
+
+Use exponential backoff with jitter for network errors, `429`, and `5xx` responses. Set a maximum queue size so an extended outage cannot consume unbounded memory.
+
+<Warning>
+  Prompts, tool arguments, model responses, logs, and arbitrary payload fields
+  may contain sensitive data. Mask secrets before enqueueing data, enforce a
+  payload size limit locally, and never log the workspace API key.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Record events" icon="wave-pulse" href="/openapi/events">
+    Define the event envelope, batching, and retry behavior.
+  </Card>
+  <Card title="Load runtime config" icon="sliders" href="/openapi/runtime-config">
+    Cache prompt versions and policies for local use.
+  </Card>
+  <Card title="Report issue candidates" icon="triangle-exclamation" href="/openapi/issue-records">
+    Submit detections without blocking agent execution.
+  </Card>
+  <Card title="Read runs" icon="timeline" href="/openapi/runs">
+    Inspect runs and page through their event timelines.
+  </Card>
+</CardGroup>

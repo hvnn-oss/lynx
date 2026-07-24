@@ -1,4 +1,4 @@
-import { issueRecordService } from "../../api/issue-record/issue-record.service.js";
+import { issueRecordService } from "../../api/openapi/issue-record/issue-record.service.js";
 import { logger } from "../logger/logger.js";
 
 const POLL_INTERVAL_MS = 1_000;

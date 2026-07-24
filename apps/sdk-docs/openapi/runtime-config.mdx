@@ -1,0 +1,74 @@
+---
+title: "Load runtime config"
+description: "Cache prompt versions and guardrail policies for local execution."
+---
+
+Use `GET /openapi/v1/runtime-config` when your integration starts, then refresh it on a configurable interval. The endpoint requires both `config:read` and `policies:read`.
+
+```bash
+curl --request GET \
+  --url https://api.lynxops.co/openapi/v1/runtime-config \
+  --header "X-API-Key: $LYNX_API_KEY"
+```
+
+## Response
+
+```json
+{
+  "revision": "a40b9dbd7f6d5c67c8f0b2c2e6d40f6cd26e13b9f36cc51af0a89b69f7ab07f1",
+  "prompts": [
+    {
+      "promptId": "72adbb57-96ad-4d3d-a2dc-8faf071673e5",
+      "name": "support-agent",
+      "versionId": "c1821bc3-bf1e-46ef-b210-b9376a41cd0c",
+      "version": "v3",
+      "content": "You are a support agent.",
+      "contentHash": "b11c0c8f2dbe3be223af31f44a9faca0f8f5d4ff2595428815ed4de6c56e4f35"
+    }
+  ],
+  "policies": [
+    {
+      "policyId": "17",
+      "name": "Block destructive tools",
+      "description": null,
+      "version": "v2",
+      "condition": "tool.riskLevel == 'CRITICAL'",
+      "severity": "CRITICAL",
+      "action": "BLOCK"
+    }
+  ]
+}
+```
+
+`contentHash` is a lowercase SHA-256 hex digest of the prompt content. Verify it before replacing a cached prompt.
+
+## Conditional refresh
+
+The response includes an `ETag` based on `revision`. Save it and send it on the next refresh:
+
+```http
+If-None-Match: "a40b9dbd7f6d5c67c8f0b2c2e6d40f6cd26e13b9f36cc51af0a89b69f7ab07f1"
+```
+
+A `304 Not Modified` response has no body. Keep using the current cache and update its last-checked time.
+
+## Cache behavior
+
+Your implementation should:
+
+1. Load a previously validated cache from local storage.
+2. Request the current configuration during startup without blocking normal event delivery.
+3. Replace the cache atomically only after the complete response validates.
+4. Refresh on a configurable interval with jitter.
+5. Keep the last known good configuration when the API is unavailable.
+6. expose prompts by stable ID or name and return their `versionId` with the content.
+
+Attach `versionId` as `promptVersionId` to relevant run events and issue records. This connects behavior to the exact Lynx-managed prompt version.
+
+Policies are designed for local evaluation before a tool call. Do not call the API for every tool execution.
+
+<Warning>
+  Prompt content can contain confidential instructions. Protect the local cache
+  with the same access controls as application configuration, and do not write
+  prompt content or API keys to diagnostic logs.
+</Warning>

@@ -20,6 +20,12 @@ export class SessionEntity {
   @Column()
   name!: string;
 
+  @Column({ type: "varchar", length: 120, nullable: true })
+  clientId?: string;
+
+  @Column({ type: "varchar", length: 255, nullable: true })
+  clientSessionId?: string;
+
   @Column({
     type: "varchar",
     length: 30,
@@ -45,9 +51,13 @@ export class SessionEntity {
   @Column()
   totalCost!: number;
 
-  @ManyToOne(() => WorkspaceEntity, (workspace: WorkspaceEntity) => workspace.sessions, {
-    onDelete: "CASCADE",
-  })
+  @ManyToOne(
+    () => WorkspaceEntity,
+    (workspace: WorkspaceEntity) => workspace.sessions,
+    {
+      onDelete: "CASCADE",
+    },
+  )
   workspace!: WorkspaceEntity;
 
   @ManyToOne(() => AgentEntity, (agent: AgentEntity) => agent.sessions)
@@ -61,6 +71,9 @@ export class SessionEntity {
   @OneToMany(() => EventEntity, (event: EventEntity) => event.session)
   events!: EventEntity[];
 
-  @OneToMany(() => GuardrailViolationEntity, (blocked: GuardrailViolationEntity) => blocked.session)
+  @OneToMany(
+    () => GuardrailViolationEntity,
+    (blocked: GuardrailViolationEntity) => blocked.session,
+  )
   blocked!: GuardrailViolationEntity[];
 }

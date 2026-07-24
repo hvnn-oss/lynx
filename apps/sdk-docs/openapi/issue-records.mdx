@@ -1,0 +1,90 @@
+---
+title: "Report issue candidates"
+description: "Submit firewall, loop, and recovery signals for asynchronous server review."
+---
+
+Use `POST /openapi/v1/issue-records` when your local runtime detects behavior that may deserve an Issue. Recording a candidate does not mean an Issue is immediately created.
+
+The server stores the original record first. A background process then checks context, recovery state, and existing similar Issues before it creates a new Issue or adds an occurrence to an existing one.
+
+## Detection example
+
+```bash
+curl --request POST \
+  --url https://api.lynxops.co/openapi/v1/issue-records \
+  --header "X-API-Key: $LYNX_API_KEY" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "sdkInstanceId": "python-worker-01",
+    "clientRecordId": "record_01JZQ4A8C2",
+    "recordKind": "DETECTION",
+    "detectionType": "TOOL_BLOCKED",
+    "runId": "run_01JZQ3VY4K",
+    "sessionId": "session_customer_42",
+    "eventId": "evt_tool_04",
+    "agentId": "support-agent",
+    "policyId": "17",
+    "promptVersionId": "c1821bc3-bf1e-46ef-b210-b9376a41cd0c",
+    "detectedAt": 1784808000000,
+    "payload": {
+      "toolName": "delete_customer_data",
+      "tools": ["search_customer", "delete_customer_data"],
+      "riskSignals": ["destructive-action"]
+    },
+    "evidence": {
+      "decision": "BLOCK"
+    }
+  }'
+```
+
+## Fields
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `sdkInstanceId` | Yes | Stable client identifier. It should match the event `clientId`. |
+| `clientRecordId` | Yes | Idempotency key for this record. Reuse it when retrying. |
+| `recordKind` | Yes | `DETECTION` or `RECOVERY`. |
+| `detectionType` | Yes | Stable detector category, such as `TOOL_BLOCKED` or `LOOP_DETECTED`. |
+| `runId` | No | Related external Run ID. |
+| `sessionId` | No | Related external Session ID. |
+| `eventId` | No | Related event idempotency key. |
+| `agentId` | Yes | Stable external Agent ID. |
+| `policyId` | No | Policy that produced the decision. |
+| `promptVersionId` | No | Lynx prompt version UUID used by the run. |
+| `detectedAt` | Yes | Unix time in milliseconds. |
+| `payload` | No | Structured detector context. |
+| `evidence` | No | Evidence supporting the candidate. |
+
+The request body limit is 256 KiB.
+
+## Accepted response
+
+```json
+{
+  "recordId": "7295695e-1960-43b5-9924-003d7163d0db",
+  "status": "RECEIVED",
+  "isNew": true
+}
+```
+
+Possible statuses are `RECEIVED`, `EVALUATING`, `DECIDED`, and `FAILED`. `isNew: false` means the same `sdkInstanceId` and `clientRecordId` were already received.
+
+The response confirms durable receipt, not final Issue creation. Do not block a customer request while waiting for later evaluation.
+
+## Fingerprints and grouping
+
+The client reports structured facts, not a grouping decision. The server derives its fingerprint from stable information such as detector type, policy, failed tool, tool set, reason code, and model context. It hashes the canonical value with SHA-256.
+
+Do not generate a random fingerprint per occurrence. Keep detector names and tool identifiers stable so equivalent situations can group consistently.
+
+## Recovery records
+
+Send a new record with `recordKind: "RECOVERY"` when your runtime has evidence that the detected condition ended. Give the recovery its own `clientRecordId` and link the same Run or Session where possible.
+
+Recovery handling is asynchronous. A recovery record is evidence for server evaluation; it does not directly close an Issue.
+
+<Warning>
+  Evidence can contain tool arguments, model output, or logs. Send only the
+  minimum evidence needed to explain the detection, and mask secrets before
+  enqueueing the record.
+</Warning>

@@ -5,8 +5,16 @@ import {
   runtimeConfigRepository,
 } from "./runtime-config.repository.js";
 
+const RUNTIME_CONFIG_CACHE_TTL_MS = 30_000;
+const MAX_CACHED_WORKSPACES = 1_000;
+
 /** 저장 모델을 SDK가 소비하는 런타임 설정 번들로 변환합니다. */
 export class RuntimeConfigService {
+  private readonly cache = new Map<
+    string,
+    { expiresAt: number; config: RuntimeConfigResponseDto }
+  >();
+
   /** 테스트에서 저장소를 교체할 수 있도록 의존성을 주입받습니다. */
   constructor(
     private readonly repository: RuntimeConfigRepository = runtimeConfigRepository,
@@ -19,6 +27,10 @@ export class RuntimeConfigService {
    * @returns 콘텐츠 무결성 해시와 전체 revision을 포함한 런타임 설정
    */
   async get(workspaceId: string): Promise<RuntimeConfigResponseDto> {
+    const cached = this.cache.get(workspaceId);
+    if (cached && cached.expiresAt > Date.now()) return cached.config;
+    if (cached) this.cache.delete(workspaceId);
+
     const [promptEntities, policyEntities] = await Promise.all([
       this.repository.listPrompts(workspaceId),
       this.repository.listPolicies(workspaceId),
@@ -43,7 +55,18 @@ export class RuntimeConfigService {
     // 정렬된 조회 결과 전체를 해싱해 동일한 설정에는 동일한 revision을 부여합니다.
     const revision = this.hash(JSON.stringify({ prompts, policies }));
 
-    return { revision, prompts, policies };
+    const config = { revision, prompts, policies };
+    if (this.cache.size >= MAX_CACHED_WORKSPACES) {
+      const oldestWorkspaceId = this.cache.keys().next().value;
+      if (typeof oldestWorkspaceId === "string") {
+        this.cache.delete(oldestWorkspaceId);
+      }
+    }
+    this.cache.set(workspaceId, {
+      expiresAt: Date.now() + RUNTIME_CONFIG_CACHE_TTL_MS,
+      config,
+    });
+    return config;
   }
 
   /** 문자열의 SHA-256 해시를 소문자 16진수로 반환합니다. */

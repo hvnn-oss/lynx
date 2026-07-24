@@ -56,3 +56,6 @@ export * from "./entities/prompt/prompt.entity.js";
 
 // session
 export * from "./entities/session/session.entity.js";
+
+// run
+export * from "./entities/run/run.entity.js";

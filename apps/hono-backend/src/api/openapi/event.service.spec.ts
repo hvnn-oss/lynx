@@ -22,6 +22,7 @@ describe("OpenAPIEventService", () => {
       findEvent: jest.fn(),
       findOrCreateAgent: jest.fn(),
       findOrCreateSession: jest.fn(),
+      findOrCreateRun: jest.fn(),
       saveEvent: jest.fn(),
     } as unknown as OpenAPIEventRepository;
     const service = new OpenAPIEventService(repository);
@@ -47,6 +48,7 @@ describe("OpenAPIEventService", () => {
         .mockResolvedValueOnce({ id: "agent-1" })
         .mockRejectedValueOnce(new Error("database unavailable")),
       findOrCreateSession: jest.fn().mockResolvedValue({ id: "session-1" }),
+      findOrCreateRun: jest.fn().mockResolvedValue({ id: "run-1" }),
       saveEvent: jest.fn().mockResolvedValue({ id: "stored-event" }),
     } as unknown as OpenAPIEventRepository;
     const service = new OpenAPIEventService(repository);
@@ -59,5 +61,48 @@ describe("OpenAPIEventService", () => {
     expect(result.accepted).toBe(1);
     expect(result.retryableEventIds).toEqual(["event-2"]);
     expect(result.rejectedEventIds).toEqual([]);
+  });
+
+  it("accepts a concurrent duplicate after confirming that it was stored", async () => {
+    const repository = {
+      findEvent: jest
+        .fn()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: "stored-by-another-request" }),
+      findOrCreateAgent: jest.fn().mockResolvedValue({ id: "agent-1" }),
+      findOrCreateSession: jest.fn().mockResolvedValue({ id: "session-1" }),
+      findOrCreateRun: jest.fn().mockResolvedValue({ id: "run-1" }),
+      saveEvent: jest.fn().mockRejectedValue({ code: "23505" }),
+    } as unknown as OpenAPIEventRepository;
+    const service = new OpenAPIEventService(repository);
+
+    const result = await service.ingestBatch("workspace-1", "prod", [event()]);
+
+    expect(result).toEqual({
+      success: true,
+      accepted: 1,
+      retryableEventIds: [],
+      rejectedEventIds: [],
+    });
+  });
+
+  it("rejects permanent database input errors without asking the SDK to retry", async () => {
+    const repository = {
+      findEvent: jest.fn().mockResolvedValue(null),
+      findOrCreateAgent: jest.fn().mockRejectedValue({ code: "23514" }),
+      findOrCreateSession: jest.fn(),
+      findOrCreateRun: jest.fn(),
+      saveEvent: jest.fn(),
+    } as unknown as OpenAPIEventRepository;
+    const service = new OpenAPIEventService(repository);
+
+    const result = await service.ingestBatch("workspace-1", "prod", [event()]);
+
+    expect(result).toEqual({
+      success: false,
+      accepted: 0,
+      retryableEventIds: [],
+      rejectedEventIds: ["event-1"],
+    });
   });
 });

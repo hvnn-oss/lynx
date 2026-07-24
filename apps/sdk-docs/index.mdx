@@ -1,70 +1,60 @@
 ---
-title: "Lynx SDK"
-description: "Connect your TypeScript agent to record sessions, inspect LLM and tool calls, and keep delivery safe in production."
+title: "Lynx developer docs"
+description: "Connect AI agents with the TypeScript SDK or the language-independent OpenAPI."
 ---
 
-Lynx helps you see what happened during an AI agent run. Connect the SDK to record sessions, trace each execution step, inspect LLM and tool calls, and review root cause candidates when something fails.
-
-Use Lynx when logs are not enough to answer questions like:
-
-- What did the user ask?
-- Which context did the agent load?
-- Which LLM and tool calls happened?
-- Where did the run fail or slow down?
-- Did a guardrail block a risky tool call?
+Lynx records how an AI agent moves from a user request to LLM calls, tool calls, policy decisions, retries, and a final outcome. Use the TypeScript SDK or connect any runtime over HTTP.
 
 <CardGroup cols={2}>
-  <Card title="Connect the SDK" icon="rocket" href="/sdk/quickstart">
-    Install the package and record your first agent session.
+  <Card title="TypeScript quickstart" icon="code" href="/sdk/quickstart">
+    Install `@lynxops/sdk` and record your first agent Run.
   </Card>
-  <Card title="Track agent runs" icon="route" href="/sdk/tracing">
-    Record user input, context, decisions, memory access, and outcomes.
-  </Card>
-  <Card title="Wrap LLMs and tools" icon="sparkles" href="/sdk/instrumentation">
-    Capture LLM calls and tool calls without changing your application flow.
-  </Card>
-  <Card title="Run safely in production" icon="shield-check" href="/sdk/delivery">
-    Use background delivery, short timeouts, queues, and a circuit breaker.
+  <Card title="OpenAPI quickstart" icon="brackets-curly" href="/openapi/overview">
+    Build an integration or SDK in Python, Go, Java, Rust, or another language.
   </Card>
 </CardGroup>
 
-## What Lynx records
+## Choose an integration
 
-The SDK can record:
+Use the TypeScript SDK when you want built-in async context, LLM and tool wrappers, local guardrails, batching, retries, and runtime configuration caching.
 
-- Session, run, workspace, agent, and environment metadata
-- User input and selected context
-- Agent decisions and supporting reasons
-- LLM calls, model metadata, latency, token usage, and errors
-- Tool calls, tool results, side effect metadata, and risk level
-- Local policy decisions and guardrail actions
-- Memory access and final run outcome
+Use the OpenAPI directly when:
 
-## What you can see in Lynx
+- Your service uses another language or runtime.
+- You are building a community SDK.
+- You already have an event queue and delivery system.
+- You need explicit control over local storage and policy execution.
 
-After events are sent, Lynx can show:
+Both integrations use the same Run, Session, Event, prompt version, policy, and issue record model.
 
-- The full session timeline
-- Each LLM call and tool call
-- Latency, token usage, and estimated cost
-- Errors, retries, and slow execution steps
-- Guardrail decisions and blocked tool calls
-- Root cause candidates with supporting evidence
+## Core flow
 
-## Production behavior
+```text
+Record events
+→ Rebuild the Run timeline
+→ Inspect likely causes and evidence
+→ Block risky tool calls locally
+→ Report issue candidates
+→ Improve prompts and policies
+```
 
-By default, SDK delivery is background-only. If the Lynx API is unavailable, your service keeps running. The SDK queues events in memory, retries failed sends, and opens a circuit breaker after repeated failures.
+Lynx can show inputs, execution steps, LLM and tool calls, errors, retries, latency, token usage, cost, policy decisions, and related prompt versions in one Run.
 
-Guardrail checks run locally in your process. Lynx API availability does not decide whether a guarded tool call is blocked.
+## Production safety
+
+Event delivery should run in the background. A Lynx API outage should not fail your customer request. Use bounded queues, short timeouts, selective retries, and a circuit breaker.
+
+Guardrail checks run locally before the tool executes. High-risk actions can use fail-closed or approval behavior without depending on a network call.
 
 <Note>
-  Lynx may receive prompts, tool arguments, and model responses depending on
-  your SDK configuration. Avoid sending secrets or credentials. Use masking or
-  `metadata-only` mode when you do not want raw content stored.
+  Prompts, tool arguments, model responses, logs, and payloads can contain
+  sensitive data. Mask secrets before recording them and use `metadata-only`
+  capture when raw content is not required.
 </Note>
 
-## Next steps
+## Start building
 
-- [Connect the SDK](/sdk/quickstart)
-- [Configure delivery and capture](/sdk/configuration)
-- [Track agent runs](/sdk/tracing)
+- [Connect the TypeScript SDK](/sdk/quickstart)
+- [Implement the OpenAPI](/openapi/overview)
+- [Record events over HTTP](/openapi/events)
+- [Load prompts and policies](/openapi/runtime-config)

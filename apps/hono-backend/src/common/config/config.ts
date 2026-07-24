@@ -40,6 +40,12 @@ const envSchema = z.object({
     .int()
     .positive()
     .default(60),
+  OPENAPI_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
+  OPENAPI_RATE_LIMIT_WINDOW_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(60),
 
   SMTP_HOST: z.string().trim().min(1),
   SMTP_PORT: z.coerce.number().int().positive(),

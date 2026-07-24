@@ -33,20 +33,27 @@
         "groups": [
           {
             "group": "Getting started",
-            "pages": ["index", "sdk/quickstart", "sdk/configuration"]
+            "pages": ["index", "sdk/quickstart", "openapi/overview"]
           },
           {
-            "group": "SDK guides",
+            "group": "TypeScript SDK",
             "pages": [
+              "sdk/configuration",
               "sdk/tracing",
               "sdk/instrumentation",
               "sdk/guardrails",
-              "sdk/delivery"
+              "sdk/delivery",
+              "sdk/api-reference"
             ]
           },
           {
-            "group": "Reference",
-            "pages": ["sdk/api-reference"]
+            "group": "OpenAPI",
+            "pages": [
+              "openapi/events",
+              "openapi/runtime-config",
+              "openapi/issue-records",
+              "openapi/runs"
+            ]
           }
         ]
       },
@@ -68,20 +75,31 @@
         "groups": [
           {
             "group": "시작하기",
-            "pages": ["ko/index", "ko/sdk/quickstart", "ko/sdk/configuration"]
-          },
-          {
-            "group": "SDK 사용하기",
             "pages": [
-              "ko/sdk/tracing",
-              "ko/sdk/instrumentation",
-              "ko/sdk/guardrails",
-              "ko/sdk/delivery"
+              "ko/index",
+              "ko/sdk/quickstart",
+              "ko/openapi/overview"
             ]
           },
           {
-            "group": "API 레퍼런스",
-            "pages": ["ko/sdk/api-reference"]
+            "group": "TypeScript SDK",
+            "pages": [
+              "ko/sdk/configuration",
+              "ko/sdk/tracing",
+              "ko/sdk/instrumentation",
+              "ko/sdk/guardrails",
+              "ko/sdk/delivery",
+              "ko/sdk/api-reference"
+            ]
+          },
+          {
+            "group": "OpenAPI",
+            "pages": [
+              "ko/openapi/events",
+              "ko/openapi/runtime-config",
+              "ko/openapi/issue-records",
+              "ko/openapi/runs"
+            ]
           }
         ]
       }

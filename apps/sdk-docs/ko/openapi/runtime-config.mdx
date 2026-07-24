@@ -1,0 +1,74 @@
+---
+title: "런타임 설정 조회"
+description: "프롬프트 버전과 가드레일 정책을 로컬 실행에 맞게 저장합니다."
+---
+
+연결 프로그램이 처음 실행될 때 `GET /openapi/v1/runtime-config`를 호출하고, 설정 가능한 주기마다 갱신하세요. 이 엔드포인트에는 `config:read`와 `policies:read` 권한이 모두 필요합니다.
+
+```bash
+curl --request GET \
+  --url https://api.lynxops.co/openapi/v1/runtime-config \
+  --header "X-API-Key: $LYNX_API_KEY"
+```
+
+## 응답
+
+```json
+{
+  "revision": "a40b9dbd7f6d5c67c8f0b2c2e6d40f6cd26e13b9f36cc51af0a89b69f7ab07f1",
+  "prompts": [
+    {
+      "promptId": "72adbb57-96ad-4d3d-a2dc-8faf071673e5",
+      "name": "support-agent",
+      "versionId": "c1821bc3-bf1e-46ef-b210-b9376a41cd0c",
+      "version": "v3",
+      "content": "You are a support agent.",
+      "contentHash": "b11c0c8f2dbe3be223af31f44a9faca0f8f5d4ff2595428815ed4de6c56e4f35"
+    }
+  ],
+  "policies": [
+    {
+      "policyId": "17",
+      "name": "Block destructive tools",
+      "description": null,
+      "version": "v2",
+      "condition": "tool.riskLevel == 'CRITICAL'",
+      "severity": "CRITICAL",
+      "action": "BLOCK"
+    }
+  ]
+}
+```
+
+`contentHash`는 프롬프트 본문의 소문자 SHA-256 16진수 값입니다. 로컬 프롬프트를 교체하기 전에 해시를 확인하세요.
+
+## 변경된 경우에만 받기
+
+응답에는 `revision`을 기준으로 만든 `ETag`가 들어 있습니다. 값을 저장했다가 다음 요청에 전달합니다.
+
+```http
+If-None-Match: "a40b9dbd7f6d5c67c8f0b2c2e6d40f6cd26e13b9f36cc51af0a89b69f7ab07f1"
+```
+
+`304 Not Modified` 응답에는 본문이 없습니다. 기존 설정을 계속 사용하고 마지막 확인 시각만 갱신하세요.
+
+## 로컬 저장 동작
+
+다른 언어 SDK는 다음 순서로 구현하는 것이 좋습니다.
+
+1. 이전에 검증한 설정을 로컬 저장소에서 읽습니다.
+2. 시작할 때 현재 설정을 요청하되 일반 이벤트 전송을 막지 않습니다.
+3. 전체 응답 검증이 끝난 뒤 설정을 한 번에 교체합니다.
+4. 사용자가 정한 주기와 작은 무작위 지연을 적용해 갱신합니다.
+5. API에 접근할 수 없으면 마지막으로 정상 확인한 설정을 유지합니다.
+6. 고정 ID나 이름으로 프롬프트를 찾고 본문과 `versionId`를 함께 반환합니다.
+
+관련 이벤트와 이슈 기록에는 `versionId`를 `promptVersionId`로 연결하세요. 그래야 실행 결과가 Lynx에서 관리한 정확한 프롬프트 버전과 연결됩니다.
+
+정책은 도구 호출 직전에 로컬에서 판단하도록 설계되어 있습니다. 도구 동작마다 API를 호출하지 마세요.
+
+<Warning>
+  프롬프트에는 공개하면 안 되는 지침이 들어갈 수 있습니다. 애플리케이션 설정과
+  같은 수준으로 로컬 저장소를 보호하고 프롬프트 본문이나 API 키를 진단 로그에
+  남기지 마세요.
+</Warning>
