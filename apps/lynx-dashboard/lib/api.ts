@@ -1,5 +1,6 @@
 import axios from "axios";
 import { ERROR_CODES } from "@repo/constants";
+import { authContract, getAuthEndpointPath } from "@repo/contract";
 
 const ACCESS_TOKEN_STORAGE_KEY = "_uid";
 const TOKEN_REFRESH_BUFFER_SECONDS = 30;
@@ -45,19 +46,16 @@ export async function refreshAccessToken() {
   if (!refreshPromise) {
     refreshPromise = axios
       .post(
-        "/api/auth/refresh",
+        `/api${getAuthEndpointPath(authContract.refresh)}`,
         {},
         {
           withCredentials: true,
         },
       )
       .then((res) => {
-        if (!res.data?.success || !res.data?.accessToken) {
-          throw new Error("Could not refresh access token.");
-        }
-
-        setStoredAccessToken(res.data.accessToken);
-        return res.data.accessToken as string;
+        const response = authContract.refresh.response.parse(res.data);
+        setStoredAccessToken(response.access_token);
+        return response.access_token;
       })
       .finally(() => {
         refreshPromise = null;

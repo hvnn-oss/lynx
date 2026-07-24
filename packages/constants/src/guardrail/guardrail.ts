@@ -1,11 +1,11 @@
-export const GUARDRAIL_SERVERITY = {
+export const GUARDRAIL_SEVERITY = {
   LOW: "LOW",
   MEDIUM: "MEDIUM",
   HIGH: "HIGH",
 } as const;
 
-export type GuardrailServerity =
-  (typeof GUARDRAIL_SERVERITY)[keyof typeof GUARDRAIL_SERVERITY];
+export type GuardrailSeverity =
+  (typeof GUARDRAIL_SEVERITY)[keyof typeof GUARDRAIL_SEVERITY];
 
 export const GUARDRAIL_ACTIONS = {
   WARN: "WARN",
@@ -24,4 +24,3 @@ export const RISK_LEVEL = {
 } as const;
 
 export type RiskLevel = (typeof RISK_LEVEL)[keyof typeof RISK_LEVEL];
-

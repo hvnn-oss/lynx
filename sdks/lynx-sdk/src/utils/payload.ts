@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { LynxConfig } from "../core/types.js";
+import type { LynxConfig, LynxEventType } from "../core/types.js";
 import patternsConfig from "../config/patterns.json" with { type: "json" };
 
 const RISK_PATTERNS = patternsConfig.riskPatterns.map(
@@ -70,6 +70,23 @@ function normalizeKey(key: string): string {
   return key.replace(/[-_]/g, "").toLowerCase();
 }
 
+const DEFAULT_MAX_PAYLOAD_BYTES = 64 * 1024;
+const DEFAULT_SMART_DETAIL_LATENCY_MS = 10_000;
+const CONTENT_KEYS = new Set([
+  "arguments",
+  "args",
+  "data",
+  "input",
+  "output",
+  "result",
+]);
+const SMART_DETAIL_EVENT_TYPES = new Set<LynxEventType>([
+  "ERROR",
+  "POLICY_VIOLATION",
+  "GUARDRAIL_ACTIVATED",
+  "LOOP_DETECTED",
+]);
+
 function isSensitiveKey(key: string): boolean {
   if (SAFE_TOKEN_METRIC_KEYS.has(normalizeKey(key))) {
     return false;
@@ -108,7 +125,15 @@ export function recursiveMaskPII(obj: any): any {
   return obj;
 }
 
-export function processPayload(payload: any, config: LynxConfig): any {
+export type PayloadProcessingContext = {
+  eventType?: LynxEventType;
+};
+
+export function processPayload(
+  payload: any,
+  config: LynxConfig,
+  context: PayloadProcessingContext = {},
+): any {
   if (!payload || typeof payload !== "object") return payload;
 
   let copy: any;
@@ -147,65 +172,112 @@ export function processPayload(payload: any, config: LynxConfig): any {
     copy.riskFlags = riskFlags;
   }
 
-  if (mode === "metadata-only") {
-    if ("input" in copy) {
-      const inputStr =
-        typeof copy.input === "string"
-          ? copy.input
-          : JSON.stringify(copy.input);
-      copy.promptHash = getHash(copy.input);
-      copy.promptLength = inputStr.length;
-      delete copy.input;
-    }
-    if ("output" in copy) {
-      const outputStr =
-        typeof copy.output === "string"
-          ? copy.output
-          : JSON.stringify(copy.output);
-      copy.responseHash = getHash(copy.output);
-      copy.responseLength = outputStr.length;
-      delete copy.output;
-    }
-    return copy;
-  }
+  if (mode === "metadata-only") copy = convertContentToMetadata(copy);
 
   if (mode === "smart") {
-    const maxLen = config.maxPayloadLength ?? 1000;
-
-    const walkAndSmartTruncate = (obj: any): any => {
-      if (!obj || typeof obj !== "object") return obj;
-
-      if (Array.isArray(obj)) {
-        return obj.map((item) => walkAndSmartTruncate(item));
-      }
-
-      const res: any = {};
-      for (const key of Object.keys(obj)) {
-        const priorityKeys = [
-          "spanid",
-          "parentspanid",
-          "latency",
-          "usage",
-          "cost",
-          "error",
-          "path",
-          "riskflags",
-        ];
-        if (priorityKeys.includes(key.toLowerCase())) {
-          res[key] = obj[key];
-        } else if (typeof obj[key] === "object") {
-          res[key] = walkAndSmartTruncate(obj[key]);
-        } else if (typeof obj[key] === "string") {
-          res[key] = headTailTruncate(obj[key], maxLen);
-        } else {
-          res[key] = obj[key];
-        }
-      }
-      return res;
-    };
-
-    return walkAndSmartTruncate(copy);
+    copy = shouldPreserveSmartDetails(copy, config, context)
+      ? truncateStrings(copy, config.maxPayloadLength ?? 4_000)
+      : convertContentToMetadata(copy);
   }
 
-  return copy;
+  if (mode === "full" && config.maxPayloadLength !== undefined) {
+    copy = truncateStrings(copy, config.maxPayloadLength);
+  }
+
+  return enforcePayloadByteLimit(copy, config.maxPayloadBytes);
+}
+
+/** Replaces raw content fields with stable hashes and UTF-8 byte lengths. */
+function convertContentToMetadata(payload: Record<string, any>): Record<string, any> {
+  const result = { ...payload };
+  for (const key of CONTENT_KEYS) {
+    if (!(key in result)) continue;
+    const value = result[key];
+    const serialized = serializeValue(value);
+    const hashKey = key === "input" ? "promptHash" : key === "output" ? "responseHash" : `${key}Hash`;
+    const lengthKey = key === "input" ? "promptLength" : key === "output" ? "responseLength" : `${key}Length`;
+    result[hashKey] ??= getHash(value);
+    result[lengthKey] ??= Buffer.byteLength(serialized, "utf8");
+    delete result[key];
+  }
+  return result;
+}
+
+/** Smart mode retains detail only when an operator is likely to investigate it. */
+function shouldPreserveSmartDetails(
+  payload: Record<string, any>,
+  config: LynxConfig,
+  context: PayloadProcessingContext,
+): boolean {
+  if (context.eventType && SMART_DETAIL_EVENT_TYPES.has(context.eventType)) return true;
+  if (payload.error) return true;
+  return (
+    typeof payload.latency === "number" &&
+    payload.latency >=
+      (config.smartDetailLatencyThresholdMs ?? DEFAULT_SMART_DETAIL_LATENCY_MS)
+  );
+}
+
+function truncateStrings(value: any, maxLength: number): any {
+  if (typeof value === "string") return headTailTruncate(value, maxLength);
+  if (Array.isArray(value)) return value.map((item) => truncateStrings(item, maxLength));
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [key, truncateStrings(item, maxLength)]),
+  );
+}
+
+/** Guarantees a final serialized byte ceiling, falling back to safe metadata. */
+function enforcePayloadByteLimit(payload: Record<string, any>, configuredLimit?: number): Record<string, any> {
+  const maxBytes = Math.max(1_024, configuredLimit ?? DEFAULT_MAX_PAYLOAD_BYTES);
+  const originalBytes = getPayloadBytes(payload);
+  if (originalBytes <= maxBytes) return payload;
+
+  const metadataPayload = {
+    ...convertContentToMetadata(payload),
+    payloadTruncated: true,
+    originalPayloadBytes: originalBytes,
+  };
+  if (getPayloadBytes(metadataPayload) <= maxBytes) return metadataPayload;
+
+  const minimalPayload = createMinimalPayload(metadataPayload, originalBytes);
+  if (getPayloadBytes(minimalPayload) <= maxBytes) return minimalPayload;
+  return { payloadTruncated: true, originalPayloadBytes: originalBytes };
+}
+
+function createMinimalPayload(payload: Record<string, any>, originalBytes: number): Record<string, any> {
+  const retainedKeys = [
+    "argsHash",
+    "cost",
+    "error",
+    "latency",
+    "parentSpanId",
+    "path",
+    "phase",
+    "provider",
+    "riskFlags",
+    "spanId",
+    "usage",
+  ];
+  const result: Record<string, any> = {
+    payloadTruncated: true,
+    originalPayloadBytes: originalBytes,
+  };
+  for (const key of retainedKeys) {
+    if (key in payload) result[key] = truncateStrings(payload[key], 512);
+  }
+  return result;
+}
+
+function serializeValue(value: any): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value) ?? "";
+  } catch {
+    return "[Unserializable Payload]";
+  }
+}
+
+function getPayloadBytes(payload: Record<string, any>): number {
+  return Buffer.byteLength(JSON.stringify(payload), "utf8");
 }

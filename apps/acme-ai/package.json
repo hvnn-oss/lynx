@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@repo/eslint-config": "workspace:^",
-    "@repo/sdk": "workspace:^",
+    "@lynxops/sdk": "workspace:^",
     "@repo/tailwind-config": "workspace:^",
     "@repo/typescript-config": "workspace:^",
     "@repo/ui": "workspace:^",
@@ -22,7 +22,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.18",
-    "@types/node": "^20",
+    "@types/node": "25.9.3",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

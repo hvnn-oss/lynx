@@ -13,6 +13,7 @@ import {
   LynxToolMetadata,
   LynxShutdownOptions,
   LynxStatus,
+  LynxPromptSnapshot,
 } from "./types.js";
 import { processPayload } from "../utils/payload.js";
 import {
@@ -22,10 +23,14 @@ import {
 } from "../utils/id.js";
 import { instrumentLLM, instrumentTool } from "../instrumentation/index.js";
 import { SDK_VERSION } from "../version.js";
+import { DeliveryManager } from "../delivery/delivery-manager.js";
+import { HttpTransport } from "../delivery/http-transport.js";
+import { RuntimeConfigManager } from "../runtime-config/runtime-config-manager.js";
+import { HttpRuntimeConfigTransport } from "../runtime-config/runtime-config-transport.js";
+import { LocalPolicyEvaluator } from "../guardrail/local-policy-evaluator.js";
+import { IssueRecordReporter } from "../issue-reporting/issue-record-reporter.js";
 
 export const DEFAULT_ENDPOINT = "https://api.lynxops.co";
-const DEFAULT_MAX_QUEUE_SIZE = 1000;
-const DEFAULT_BATCH_SIZE = 50;
 
 export class LynxPolicyError extends Error {
   constructor(
@@ -76,23 +81,18 @@ function stableHash(data: any): string {
  * ```
  */
 export class LynxTracer {
+  // AsyncLocalStorage keeps trace identifiers request-scoped even when many
+  // agent runs execute concurrently in the same Node.js process.
   private static readonly storage = new AsyncLocalStorage<LynxContext>();
+  // Instances are tracked only so the single process-level beforeExit hook can
+  // give every tracer a chance to drain its in-memory queue.
   private static readonly instances = new Set<LynxTracer>();
   private static beforeExitHookRegistered = false;
   private readonly config: LynxConfig & { endpoint: string };
-  private readonly pendingPromises = new Set<Promise<any>>();
-  private readonly eventQueue: LynxEventDto[] = [];
-  private readonly retryQueue: LynxEventDto[] = [];
-  private lastFailureTime = 0;
-  private backoffDelayMs = 1000;
-  private flushTimer: NodeJS.Timeout | null = null;
-  private isShuttingDown = false;
-  private isFlushInProgress = false;
-  private consecutiveFlushFailures = 0;
-  private circuitOpenedAt = 0;
-  private droppedEventCount = 0;
-  private lastDeliveryAt?: string;
-  private lastError?: string;
+  private readonly delivery: DeliveryManager;
+  private readonly runtimeConfig: RuntimeConfigManager;
+  private readonly localPolicyEvaluator = new LocalPolicyEvaluator();
+  private readonly issueReporter: IssueRecordReporter;
 
   /**
    * Creates a tracer with the provided Lynx telemetry configuration.
@@ -109,17 +109,40 @@ export class LynxTracer {
       ...config,
       endpoint: config.endpoint ?? DEFAULT_ENDPOINT,
     };
+    this.delivery = new DeliveryManager(
+      this.config,
+      new HttpTransport({
+        endpoint: this.config.endpoint,
+        apiKey: this.config.apiKey,
+        clientId: this.config.clientId,
+        timeoutMs: this.config.delivery?.timeoutMs ?? 1000,
+      }),
+    );
+    this.runtimeConfig = new RuntimeConfigManager(
+      new HttpRuntimeConfigTransport({
+        endpoint: this.config.endpoint,
+        apiKey: this.config.apiKey,
+        clientId: this.config.clientId,
+        timeoutMs: this.config.runtimeConfig?.requestTimeoutMs ?? 1000,
+      }),
+      this.config.runtimeConfig,
+    );
+    this.issueReporter = new IssueRecordReporter(
+      {
+        endpoint: this.config.endpoint,
+        apiKey: this.config.apiKey,
+        clientId: this.config.clientId,
+      },
+      {
+        ...this.config.issueReporting,
+        enabled:
+          this.config.issueReporting?.enabled ??
+          this.config.runtimeConfig?.enabled ??
+          false,
+      },
+    );
 
     LynxTracer.instances.add(this);
-
-    const interval = this.config.delivery?.flushIntervalMs ?? 3000;
-    this.flushTimer = setInterval(() => {
-      void this.flushInternal(false);
-    }, interval);
-    // Do not keep the Node.js process alive only for telemetry flushing.
-    if (this.flushTimer && typeof this.flushTimer.unref === "function") {
-      this.flushTimer.unref();
-    }
 
     // Flush remaining telemetry once when the process is about to exit.
     if (
@@ -151,76 +174,23 @@ export class LynxTracer {
     return LynxTracer.storage.getStore();
   }
 
+  /**
+   * Runs low-level instrumentation inside an explicit child Span context.
+   *
+   * The callback return value is intentionally generic rather than Promise-only
+   * so wrapping a synchronous customer function does not change its runtime API.
+   * Application code should normally use instrumentTool() or instrumentLLM().
+   */
+  static runWithContext<T>(context: LynxContext, callback: () => T): T {
+    return LynxTracer.storage.run(context, callback);
+  }
+
   private getFlushOnRunEnd(): boolean {
     return this.config.delivery?.flushOnRunEnd ?? false;
   }
 
-  private getRequestTimeoutMs(): number {
-    return this.config.delivery?.timeoutMs ?? 1000;
-  }
-
   private isBackgroundOnly(): boolean {
     return (this.config.delivery?.mode ?? "BACKGROUND") === "BACKGROUND";
-  }
-
-  private getMaxQueueSize(): number {
-    return this.config.delivery?.maxQueueSize ?? DEFAULT_MAX_QUEUE_SIZE;
-  }
-
-  private getOverflowStrategy(): "DROP_OLDEST" | "DROP_NEWEST" {
-    return this.config.delivery?.overflowStrategy ?? "DROP_OLDEST";
-  }
-
-  private enqueueEvent(event: LynxEventDto): boolean {
-    const maxQueueSize = this.getMaxQueueSize();
-    if (maxQueueSize <= 0) {
-      this.droppedEventCount += 1;
-      return false;
-    }
-
-    const totalQueued = this.eventQueue.length + this.retryQueue.length;
-    if (totalQueued >= maxQueueSize) {
-      this.droppedEventCount += 1;
-
-      if (this.getOverflowStrategy() === "DROP_NEWEST") {
-        return false;
-      }
-
-      if (this.retryQueue.length > 0) {
-        this.retryQueue.shift();
-      } else {
-        this.eventQueue.shift();
-      }
-    }
-
-    this.eventQueue.push(event);
-    return true;
-  }
-
-  private enqueueRetryEvent(event: LynxEventDto): boolean {
-    const maxQueueSize = this.getMaxQueueSize();
-    if (maxQueueSize <= 0) {
-      this.droppedEventCount += 1;
-      return false;
-    }
-
-    const totalQueued = this.eventQueue.length + this.retryQueue.length;
-    if (totalQueued >= maxQueueSize) {
-      this.droppedEventCount += 1;
-
-      if (this.getOverflowStrategy() === "DROP_NEWEST") {
-        return false;
-      }
-
-      if (this.eventQueue.length > 0) {
-        this.eventQueue.shift();
-      } else {
-        this.retryQueue.shift();
-      }
-    }
-
-    this.retryQueue.push(event);
-    return true;
   }
 
   /**
@@ -234,86 +204,38 @@ export class LynxTracer {
    * @returns A promise that resolves after the current flush attempt completes.
    */
   async flush(): Promise<void> {
-    await this.flushInternal(true);
+    await this.delivery.flush();
   }
 
-  private async flushInternal(waitForDelivery: boolean): Promise<void> {
-    if (this.eventQueue.length === 0 && this.retryQueue.length === 0) {
-      return;
+  /**
+   * Loads the latest managed prompts and guardrail policies.
+   *
+   * Concurrent calls share one request. Once a valid bundle has loaded, failed
+   * refreshes keep serving that last-known-good snapshot.
+   */
+  async initialize(): Promise<void> {
+    await this.runtimeConfig.initialize();
+  }
+
+  /**
+   * Returns the active managed prompt by UUID or prompt name.
+   *
+   * A prompt first read inside `run()` is pinned to that run so a background
+   * refresh cannot change its version halfway through an execution.
+   */
+  async getPrompt(id: string): Promise<LynxPromptSnapshot> {
+    const context = LynxTracer.storage.getStore();
+    const pinnedPrompt = context?.promptVersions?.[id];
+    if (pinnedPrompt) return pinnedPrompt;
+
+    const prompt = await this.runtimeConfig.getPrompt(id);
+    if (context) {
+      context.promptVersions ??= {};
+      context.promptVersions[id] = prompt;
+      context.promptVersions[prompt.promptId] = prompt;
+      context.promptVersions[prompt.name] = prompt;
     }
-
-    if (this.isFlushInProgress) {
-      return;
-    }
-    if (this.isCircuitOpen()) {
-      return;
-    }
-
-    if (
-      this.lastFailureTime > 0 &&
-      Date.now() - this.lastFailureTime < this.backoffDelayMs
-    ) {
-      return;
-    }
-
-    const eventsToFlush = [...this.retryQueue, ...this.eventQueue];
-    this.retryQueue.length = 0;
-    this.eventQueue.length = 0;
-
-    if (eventsToFlush.length === 0) {
-      return;
-    }
-
-    this.isFlushInProgress = true;
-    const url = `${this.config.endpoint}/openapi/v1/events/batch`;
-
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (this.config.apiKey) {
-      headers["x-api-key"] = this.config.apiKey;
-      headers["Authorization"] = `Bearer ${this.config.apiKey}`;
-    }
-
-    const promise = fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(eventsToFlush),
-      signal: AbortSignal.timeout(this.getRequestTimeoutMs()),
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          const text = await res.text();
-          console.error(
-            `[LynxTracer] telemetry batch flush failed with status ${res.status}: ${text}`,
-          );
-          this.handleFailedEvents(eventsToFlush, "http_error");
-        } else {
-          const result = await res.json().catch(() => ({ success: true }));
-          if (result && result.success === false) {
-            console.error(
-              "[LynxTracer] telemetry batch flush returned failed details:",
-              result,
-            );
-            this.handleFailedEvents(eventsToFlush, "batch_failed");
-          } else {
-            this.handleSuccessfulFlush();
-          }
-        }
-      })
-      .catch((err) => {
-        console.error("LynxTracer telemetry batch flush failed:", err);
-        this.handleFailedEvents(eventsToFlush, "network_error");
-      })
-      .finally(() => {
-        this.pendingPromises.delete(promise);
-        this.isFlushInProgress = false;
-      });
-
-    this.pendingPromises.add(promise);
-    if (waitForDelivery || this.isShuttingDown) {
-      await promise;
-    }
+    return prompt;
   }
 
   /**
@@ -326,12 +248,8 @@ export class LynxTracer {
    */
   getStatus(): LynxStatus {
     return {
-      queueSize: this.eventQueue.length + this.retryQueue.length,
-      droppedEvents: this.droppedEventCount,
-      circuitState: this.getCircuitState(),
-      lastDeliveryAt: this.lastDeliveryAt,
-      lastError: this.lastError,
-      pendingTransmissions: this.pendingPromises.size,
+      ...this.delivery.getStatus(),
+      runtimeConfig: this.runtimeConfig.getStatus(),
     };
   }
 
@@ -345,90 +263,10 @@ export class LynxTracer {
    * @returns A promise that resolves after pending telemetry transmissions settle.
    */
   async shutdown(options: LynxShutdownOptions = {}): Promise<void> {
-    if (this.isShuttingDown) return;
-
-    this.isShuttingDown = true;
-    if (this.flushTimer) {
-      clearInterval(this.flushTimer);
-      this.flushTimer = null;
-    }
-
-    const shutdownWork = async () => {
-      await this.flushInternal(true);
-      if (this.pendingPromises.size > 0) {
-        await Promise.allSettled(Array.from(this.pendingPromises));
-      }
-    };
-
-    if (options.timeoutMs !== undefined) {
-      await Promise.race([
-        shutdownWork(),
-        new Promise<void>((resolve) => setTimeout(resolve, options.timeoutMs)),
-      ]);
-    } else {
-      await shutdownWork();
-    }
+    this.runtimeConfig.shutdown();
+    await this.issueReporter.shutdown(options.timeoutMs);
+    await this.delivery.shutdown(options);
     LynxTracer.instances.delete(this);
-  }
-
-  private isCircuitBreakerEnabled(): boolean {
-    return this.config.circuitBreaker?.enabled ?? true;
-  }
-
-  private isCircuitOpen(): boolean {
-    if (!this.isCircuitBreakerEnabled() || this.circuitOpenedAt === 0) {
-      return false;
-    }
-
-    return (
-      Date.now() - this.circuitOpenedAt <
-      (this.config.circuitBreaker?.cooldownMs ?? 30000)
-    );
-  }
-
-  private getCircuitState(): LynxStatus["circuitState"] {
-    if (!this.isCircuitBreakerEnabled()) {
-      return "DISABLED";
-    }
-    if (this.circuitOpenedAt === 0) {
-      return "CLOSED";
-    }
-    return this.isCircuitOpen() ? "OPEN" : "HALF_OPEN";
-  }
-
-  private handleSuccessfulFlush(): void {
-    this.lastFailureTime = 0;
-    this.backoffDelayMs = 1000;
-    this.consecutiveFlushFailures = 0;
-    this.circuitOpenedAt = 0;
-    this.lastDeliveryAt = new Date().toISOString();
-    this.lastError = undefined;
-  }
-
-  private handleFailedEvents(events: LynxEventDto[], reason: string): void {
-    this.lastFailureTime = Date.now();
-    this.consecutiveFlushFailures += 1;
-
-    if (
-      this.isCircuitBreakerEnabled() &&
-      this.consecutiveFlushFailures >=
-        (this.config.circuitBreaker?.failureThreshold ?? 3)
-    ) {
-      this.circuitOpenedAt = Date.now();
-      console.warn(
-        `[LynxTracer] Telemetry circuit breaker opened after ${this.consecutiveFlushFailures} consecutive failures. Reason: ${reason}.`,
-      );
-    }
-    this.lastError = reason;
-
-    for (const event of events) {
-      this.enqueueRetryEvent(event);
-    }
-
-    this.backoffDelayMs = Math.min(this.backoffDelayMs * 2, 60000);
-    console.warn(
-      `[LynxTracer] Offline retry buffer saved ${events.length} events. Total size: ${this.retryQueue.length}. Backing off for ${this.backoffDelayMs}ms.`,
-    );
   }
 
   /**
@@ -456,6 +294,17 @@ export class LynxTracer {
     optionsOrAgentName: string | LynxRunOptions,
     executionBlock: () => Promise<T> | T,
   ): Promise<T> {
+    if (this.config.runtimeConfig?.enabled === true) {
+      // Automatic control-plane loading is fail-open so a Lynx outage cannot
+      // prevent the host application from serving a request. getPrompt()
+      // remains explicit and will surface an error when no cached prompt exists.
+      try {
+        await this.initialize();
+      } catch {
+        // RuntimeConfigManager retains the diagnostic error in getStatus().
+      }
+    }
+
     const options =
       typeof optionsOrAgentName === "string"
         ? { agentName: optionsOrAgentName }
@@ -503,6 +352,7 @@ export class LynxTracer {
       sessionId,
       eventCounts: parentContext?.eventCounts ?? {},
       attributes: { ...parentContext?.attributes },
+      promptVersions: { ...parentContext?.promptVersions },
     };
 
     this.captureInternal(
@@ -555,11 +405,10 @@ export class LynxTracer {
         throw err;
       } finally {
         if (this.getFlushOnRunEnd()) {
-          await this.flushInternal(!this.isBackgroundOnly());
+          if (this.isBackgroundOnly()) this.delivery.flushInBackground();
+          else await this.delivery.flush();
         }
-        if (!this.isBackgroundOnly() && this.pendingPromises.size > 0) {
-          await Promise.all(Array.from(this.pendingPromises));
-        }
+        if (!this.isBackgroundOnly()) await this.delivery.waitForIdle();
       }
     });
   }
@@ -783,15 +632,27 @@ export class LynxTracer {
         ...payload,
         ...loopPayload,
         sdkVersion: SDK_VERSION,
-        droppedEventCount: this.droppedEventCount || undefined,
+        droppedEventCount: this.delivery.getStatus().droppedEvents || undefined,
         appVersion: payload?.appVersion ?? this.config.appVersion,
         deploymentId: payload?.deploymentId ?? this.config.deploymentId,
         environment: payload?.environment ?? this.config.environment,
         policyVersion: payload?.policyVersion ?? this.config.policyVersion,
+        promptVersionIds: Object.values(context.promptVersions ?? {}).length
+          ? [
+              ...new Set(
+                Object.values(context.promptVersions ?? {}).map(
+                  (prompt) => prompt.versionId,
+                ),
+              ),
+            ]
+          : undefined,
       },
       this.config,
+      { eventType },
     );
 
+    // Instrumentation may create a child span explicitly. Fall back to the
+    // active run span only when the processed payload did not provide one.
     const eventPayload = {
       ...processedPayload,
       spanId: processedPayload.spanId || context.spanId,
@@ -813,11 +674,13 @@ export class LynxTracer {
       schemaVersion: "1",
     };
 
-    const queued = this.enqueueEvent(eventDto);
+    const queued = this.delivery.enqueue(eventDto);
     if (!queued) {
       return;
     }
 
+    // Emit a separate semantic event for dashboards and policies. The guard
+    // prevents the synthetic event from recursively generating itself.
     if (loopPayload.loopDetected && eventType !== "LOOP_DETECTED") {
       this.captureInternal(
         "LOOP_DETECTED",
@@ -831,10 +694,6 @@ export class LynxTracer {
       );
     }
 
-    const maxBatchSize = this.config.delivery?.batchSize ?? DEFAULT_BATCH_SIZE;
-    if (!this.isBackgroundOnly() && this.eventQueue.length >= maxBatchSize) {
-      void this.flushInternal(false);
-    }
   }
 
   /**
@@ -889,6 +748,8 @@ export class LynxTracer {
   private getDefaultFailureMode(
     riskLevel: LynxToolMetadata["riskLevel"],
   ): NonNullable<LynxToolMetadata["failureMode"]> {
+    // Policy infrastructure failure must not silently permit destructive tools.
+    // Lower-risk observability remains fail-open to protect customer uptime.
     if (riskLevel === "HIGH" || riskLevel === "CRITICAL") {
       return "FAIL_CLOSED";
     }
@@ -939,6 +800,85 @@ export class LynxTracer {
     };
   }
 
+  /** Returns the stronger of managed and application-provided policy decisions. */
+  private selectPolicyDecision(
+    decisions: LynxPolicyDecision[],
+  ): LynxPolicyDecision & { action: LynxPolicyAction; allow: boolean } {
+    const rank: Record<LynxPolicyAction, number> = {
+      ALLOW: 1,
+      WARN: 2,
+      MODIFY: 3,
+      REDACT: 3,
+      REQUIRE_APPROVAL: 4,
+      BLOCK: 5,
+    };
+    return decisions
+      .map((decision) => this.normalizePolicyDecision(decision))
+      .sort((left, right) => rank[right.action] - rank[left.action])[0]!;
+  }
+
+  /** Evaluates the cached managed policies without making a network request. */
+  private evaluateManagedPolicies(
+    toolName: string,
+    input: unknown,
+    options: LynxToolMetadata,
+  ): LynxPolicyDecision {
+    const status = this.runtimeConfig.getStatus();
+    if (
+      this.config.runtimeConfig?.enabled === true &&
+      (status.state === "ERROR" || status.state === "NOT_INITIALIZED")
+    ) {
+      throw new Error(
+        status.lastError ?? "Managed Lynx policies are not available",
+      );
+    }
+    return this.localPolicyEvaluator.evaluate(
+      this.runtimeConfig.getPolicies(),
+      { toolName, input, metadata: options },
+    );
+  }
+
+  /** Enqueues a policy detection for asynchronous server-side issue review. */
+  private reportPolicyDetection(
+    toolName: string,
+    input: unknown,
+    decision: LynxPolicyDecision & {
+      action: LynxPolicyAction;
+      allow: boolean;
+    },
+  ): void {
+    if (decision.action === "ALLOW") return;
+    const context = LynxTracer.storage.getStore();
+    if (!context) return;
+    const promptVersionId = Object.values(context.promptVersions ?? {})[0]
+      ?.versionId;
+    this.issueReporter.report({
+      sdkInstanceId: this.config.clientId,
+      clientRecordId: generateEventId(),
+      recordKind: "DETECTION",
+      detectionType:
+        decision.action === "WARN" ? "FIREWALL_WARN" : "FIREWALL_BLOCK",
+      runId: context.runId,
+      sessionId: context.sessionId,
+      agentId: context.agentId ?? context.agentName,
+      policyId: decision.policyId,
+      promptVersionId,
+      detectedAt: Date.now(),
+      payload: {
+        toolName,
+        action: decision.action,
+        reason: decision.reason,
+        severity: decision.severity,
+        argsHash: stableHash(input),
+      },
+      evidence: {
+        spanId: context.spanId,
+        policyVersion: decision.policyVersion,
+        managedPolicy: decision.metadata?.managedPolicy === true,
+      },
+    });
+  }
+
   /**
    * Wraps a tool with a local policy check before execution.
    *
@@ -967,16 +907,23 @@ export class LynxTracer {
       };
 
       try {
-        decision = this.normalizePolicyDecision(
-          options.beforeCall
-            ? await options.beforeCall({
-                toolName,
-                input,
-                args,
-                metadata: options,
-              })
-            : ({ action: "ALLOW" } satisfies LynxPolicyDecision),
+        const managedDecision = this.evaluateManagedPolicies(
+          toolName,
+          input,
+          options,
         );
+        const applicationDecision = options.beforeCall
+          ? await options.beforeCall({
+              toolName,
+              input,
+              args,
+              metadata: options,
+            })
+          : ({ action: "ALLOW" } satisfies LynxPolicyDecision);
+        decision = this.selectPolicyDecision([
+          managedDecision,
+          applicationDecision,
+        ]);
       } catch (err) {
         decision = this.decisionFromPolicyError(err, options);
       }
@@ -997,6 +944,7 @@ export class LynxTracer {
         severity: decision.severity,
         metadata: decision.metadata,
       });
+      this.reportPolicyDetection(toolName, input, decision);
 
       if (!decision.allow) {
         this.capture("POLICY_VIOLATION", `policy.violation:${toolName}`, {
@@ -1050,11 +998,15 @@ export class LynxTracer {
       return {};
     }
 
+    // Instrumented calls produce start and end events with the same label and
+    // arguments. Count only starts or one logical call would be counted twice.
     const phase = payload?.phase;
     if (phase && phase !== "start") {
       return {};
     }
 
+    // The key includes arguments, so normal repeated use of one tool with
+    // different inputs does not look like a runaway loop.
     const argsHash = stableHash(
       payload?.args ?? payload?.input ?? payload?.model ?? label,
     );
@@ -1065,6 +1017,32 @@ export class LynxTracer {
 
     if (loopCount < 5) {
       return { argsHash };
+    }
+
+    if (loopCount === 5) {
+      const promptVersionId = Object.values(context.promptVersions ?? {})[0]
+        ?.versionId;
+      this.issueReporter.report({
+        sdkInstanceId: this.config.clientId,
+        clientRecordId: generateEventId(),
+        recordKind: "DETECTION",
+        detectionType: "LOOP_DETECTED",
+        runId: context.runId,
+        sessionId: context.sessionId,
+        agentId: context.agentId ?? context.agentName,
+        promptVersionId,
+        detectedAt: Date.now(),
+        payload: {
+          eventType,
+          label,
+          argsHash,
+          loopCount,
+        },
+        evidence: {
+          spanId: context.spanId,
+          parentSpanId: context.parentSpanId,
+        },
+      });
     }
 
     return {

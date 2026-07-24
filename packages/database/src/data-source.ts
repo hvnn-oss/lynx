@@ -4,13 +4,24 @@ import { AdminUserEntity } from "./entities/admin/admin-user.entity";
 import { AgentEntity } from "./entities/agent/agent.entity";
 import { OidcAccountEntity } from "./entities/auth/oidc-account.entity";
 import { UserAccountEntity } from "./entities/auth/user-account.entity";
+import { TrialClaimEntity } from "./entities/auth/trial-claim.entity";
 import { EventEntity } from "./entities/event/event.entity";
 import { GuardrailPolicyEntity } from "./entities/guardrail/policy.entity";
 import { GuardrailViolationEntity } from "./entities/guardrail/violation.entity";
+import { IssueActivityEntity } from "./entities/issues/issue-activity.entity";
+import { IssueAssigneeEntity } from "./entities/issues/issue-assignee.entity";
+import { IssueOccurrenceEntity } from "./entities/issues/issue-occurrence.entity";
+import { IssueEntity } from "./entities/issues/issue.entity";
+import { IssueEvaluationEntity } from "./entities/issues/issue-evaluation.entity";
+import { IssueRecordProcessingEntity } from "./entities/issues/issue-record-processing.entity";
+import { IssueRecordEntity } from "./entities/issues/issue-record.entity";
 import { FilterPolicyEntity } from "./entities/organization/filter-policy.entity";
 import { OrganizationDomainEntity } from "./entities/organization/domain.entity";
 import { OrganizationUserEntity } from "./entities/organization/organization-user.entity";
 import { OrganizationEntity } from "./entities/organization/organization.entity";
+import { OrganizationPlanEntity } from "./entities/organization/organization-plan.entity";
+import { OrganizationCreationEventEntity } from "./entities/organization/organization-creation-event.entity";
+import { UserEntitlementEntity } from "./entities/organization/user-entitlement.entity";
 import { UserEntity } from "./entities/organization/user.entity";
 import { WorkspaceEntity } from "./entities/organization/workspace.entity";
 import { PromptBlockEntity } from "./entities/prompt/prompt-block.entity";
@@ -18,7 +29,11 @@ import { PromptVersionEntity } from "./entities/prompt/prompt-version.entity";
 import { PromptEntity } from "./entities/prompt/prompt.entity";
 import { SessionEntity } from "./entities/session/session.entity";
 import { WorkspaceApiKeyEntity } from "./entities/workspace/workspace-api-key.entity";
-import { WorkspacePlanEntity } from "./entities/workspace/workspace-plan.entity";
+import { WorkspaceMembershipEntity } from "./entities/workspace/workspace-membership.entity";
+import { AddScopedApiKeyAuthorization1784710800000 } from "./migrations/1784710800000-add-scoped-api-key-authorization";
+import { AddEventIngestionIndexes1784797200000 } from "./migrations/1784797200000-add-event-ingestion-indexes";
+import { AddOrganizationPlans1784883600000 } from "./migrations/1784883600000-add-organization-plans";
+import { AddIssueTracking1784887200000 } from "./migrations/1784887200000-add-issue-tracking";
 import { loadDatabaseEnv } from "./load-env";
 
 loadDatabaseEnv();
@@ -80,22 +95,38 @@ export const AppDataSource = new DataSource({
     AgentEntity,
     OidcAccountEntity,
     UserAccountEntity,
+    TrialClaimEntity,
     EventEntity,
     GuardrailPolicyEntity,
     GuardrailViolationEntity,
+    IssueActivityEntity,
+    IssueAssigneeEntity,
+    IssueOccurrenceEntity,
+    IssueEntity,
+    IssueEvaluationEntity,
+    IssueRecordProcessingEntity,
+    IssueRecordEntity,
     OrganizationDomainEntity,
     OrganizationUserEntity,
     OrganizationEntity,
+    OrganizationPlanEntity,
+    OrganizationCreationEventEntity,
+    UserEntitlementEntity,
     UserEntity,
     WorkspaceEntity,
     WorkspaceApiKeyEntity,
-    WorkspacePlanEntity,
+    WorkspaceMembershipEntity,
     PromptBlockEntity,
     PromptVersionEntity,
     PromptEntity,
     SessionEntity,
     FilterPolicyEntity,
   ],
-  migrations: [__dirname + "/migrations/*.ts"],
+  migrations: [
+    AddScopedApiKeyAuthorization1784710800000,
+    AddEventIngestionIndexes1784797200000,
+    AddOrganizationPlans1784883600000,
+    AddIssueTracking1784887200000,
+  ],
   subscribers: [],
 });

@@ -12,6 +12,7 @@ import { Button, buttonVariants } from "@repo/ui/components/ui/button";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
+import { authContract, getAuthEndpointPath } from "@repo/contract";
 
 export default function SSOLoginForm() {
   const t = useTranslations("auth");
@@ -20,7 +21,8 @@ export default function SSOLoginForm() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) return;
-    window.location.href = `/api/auth/sso/login?email=${encodeURIComponent(email)}`;
+    const query = new URLSearchParams({ email });
+    window.location.href = `/api${getAuthEndpointPath(authContract.ssoLogin)}?${query}`;
   };
 
   return (

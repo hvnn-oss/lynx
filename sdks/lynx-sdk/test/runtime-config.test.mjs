@@ -1,0 +1,312 @@
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { afterEach, test } from "node:test";
+import { LynxPolicyError, LynxTracer } from "../dist/index.js";
+
+const originalFetch = globalThis.fetch;
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+});
+
+function prompt(version, content) {
+  return {
+    promptId: "72adbb57-96ad-4d3d-a2dc-8faf071673e5",
+    name: "support-agent",
+    versionId:
+      version === "v1"
+        ? "c1821bc3-bf1e-46ef-b210-b9376a41cd0c"
+        : "ea3ed621-69c6-4859-9b3e-66521cb68ce4",
+    version,
+    content,
+    contentHash: createHash("sha256").update(content).digest("hex"),
+  };
+}
+
+function createTracer(overrides = {}) {
+  return new LynxTracer({
+    clientId: "test-client",
+    endpoint: "http://lynx.test",
+    apiKey: "test-api-key",
+    delivery: { flushIntervalMs: 60_000 },
+    runtimeConfig: { enabled: false },
+    ...overrides,
+  });
+}
+
+test("getPrompt loads and caches the current managed prompt", async () => {
+  const requests = [];
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url, headers: init.headers });
+    return new Response(
+      JSON.stringify({
+        revision: "revision-1",
+        prompts: [prompt("v1", "Be concise.")],
+        policies: [],
+      }),
+      { status: 200, headers: { ETag: '"revision-1"' } },
+    );
+  };
+
+  const tracer = createTracer();
+  const first = await tracer.getPrompt("support-agent");
+  const second = await tracer.getPrompt(first.promptId);
+
+  assert.equal(first.content, "Be concise.");
+  assert.strictEqual(first, second);
+  assert.equal(requests.length, 1);
+  assert.equal(
+    requests[0].url,
+    "http://lynx.test/openapi/v1/runtime-config",
+  );
+  assert.equal(requests[0].headers["X-API-Key"], "test-api-key");
+  assert.equal(tracer.getStatus().runtimeConfig.state, "READY");
+  await tracer.shutdown();
+});
+
+test("a run keeps its first prompt version across a later refresh", async () => {
+  let requestCount = 0;
+  globalThis.fetch = async () => {
+    requestCount += 1;
+    const current =
+      requestCount === 1
+        ? prompt("v1", "Version one")
+        : prompt("v2", "Version two");
+    return new Response(
+      JSON.stringify({
+        revision: `revision-${requestCount}`,
+        prompts: [current],
+        policies: [],
+      }),
+      { status: 200 },
+    );
+  };
+
+  const tracer = createTracer();
+  await tracer.run("SupportAgent", async () => {
+    const first = await tracer.getPrompt("support-agent");
+    await assert.rejects(() => tracer.getPrompt("missing-prompt"));
+    const pinned = await tracer.getPrompt("support-agent");
+
+    assert.equal(first.version, "v1");
+    assert.strictEqual(first, pinned);
+  });
+  assert.equal(requestCount, 2);
+  await tracer.shutdown();
+});
+
+test("a failed refresh preserves the last-known-good bundle", async () => {
+  let requestCount = 0;
+  globalThis.fetch = async () => {
+    requestCount += 1;
+    if (requestCount === 1) {
+      return new Response(
+        JSON.stringify({
+          revision: "revision-1",
+          prompts: [prompt("v1", "Stable prompt")],
+          policies: [],
+        }),
+        { status: 200 },
+      );
+    }
+    return new Response("unavailable", { status: 503 });
+  };
+
+  const tracer = createTracer();
+  const stable = await tracer.getPrompt("support-agent");
+  await assert.rejects(() => tracer.getPrompt("missing-prompt"));
+
+  assert.equal((await tracer.getPrompt("support-agent")).content, stable.content);
+  assert.equal(tracer.getStatus().runtimeConfig.state, "STALE");
+  await tracer.shutdown();
+});
+
+test("automatic first-run loading fails open when Lynx is unavailable", async () => {
+  globalThis.fetch = async (url) => {
+    if (String(url).endsWith("/runtime-config")) {
+      return new Response("unavailable", { status: 503 });
+    }
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+  const tracer = createTracer({ runtimeConfig: { enabled: true } });
+  let executed = false;
+
+  await tracer.run("SupportAgent", () => {
+    executed = true;
+  });
+
+  assert.equal(executed, true);
+  assert.equal(tracer.getStatus().runtimeConfig.state, "ERROR");
+  await tracer.shutdown();
+});
+
+test("guardTool blocks a call that matches a cached managed policy", async () => {
+  const telemetry = [];
+  const issueRecords = [];
+  globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith("/runtime-config")) {
+      return new Response(
+        JSON.stringify({
+          revision: "policy-revision-1",
+          prompts: [],
+          policies: [
+            {
+              policyId: "17",
+              name: "Block critical tools",
+              description: "Critical tools require an operator review.",
+              version: "v2",
+              condition: "tool.riskLevel == 'CRITICAL'",
+              severity: "CRITICAL",
+              action: "BLOCK",
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    }
+    if (String(url).endsWith("/issue-records")) {
+      issueRecords.push(JSON.parse(init.body));
+      return new Response(
+        JSON.stringify({
+          recordId: "4acb9bfb-36c7-49bc-bd69-13a930cff154",
+          status: "RECEIVED",
+          isNew: true,
+        }),
+        { status: 202 },
+      );
+    }
+    telemetry.push(...JSON.parse(init.body));
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+  const tracer = createTracer({ runtimeConfig: { enabled: true } });
+  let executed = false;
+  const destructiveTool = tracer.guardTool(
+    "delete-account",
+    async () => {
+      executed = true;
+    },
+    { riskLevel: "CRITICAL", sideEffect: true },
+  );
+
+  await assert.rejects(
+    () => tracer.run("SupportAgent", () => destructiveTool({ userId: "1" })),
+    (error) => {
+      assert.ok(error instanceof LynxPolicyError);
+      assert.equal(error.policyId, "17");
+      assert.equal(error.action, "BLOCK");
+      return true;
+    },
+  );
+  await tracer.shutdown();
+
+  assert.equal(executed, false);
+  const evaluation = telemetry.find(
+    (event) => event.eventType === "POLICY_EVALUATION",
+  );
+  assert.equal(evaluation.payload.policyId, "17");
+  assert.equal(evaluation.payload.policyVersion, "v2");
+  assert.equal(issueRecords.length, 1);
+  assert.equal(issueRecords[0].detectionType, "FIREWALL_BLOCK");
+  assert.equal(issueRecords[0].policyId, "17");
+  assert.equal(issueRecords[0].payload.toolName, "delete-account");
+  assert.equal(issueRecords[0].payload.input, undefined);
+});
+
+test("managed policies can match nested tool input without evaluating JavaScript", async () => {
+  globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith("/runtime-config")) {
+      return new Response(
+        JSON.stringify({
+          revision: "policy-revision-2",
+          prompts: [],
+          policies: [
+            {
+              policyId: "18",
+              name: "Refund limit",
+              description: null,
+              version: "v1",
+              condition: "input.amount > 100",
+              severity: "HIGH",
+              action: "BLOCK",
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    }
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+  const tracer = createTracer({ runtimeConfig: { enabled: true } });
+  const refund = tracer.guardTool(
+    "refund",
+    async ({ amount }) => amount,
+    { riskLevel: "HIGH" },
+  );
+
+  await assert.rejects(() =>
+    tracer.run("SupportAgent", () => refund({ amount: 500 })),
+  );
+  await tracer.shutdown();
+});
+
+test("the first loop threshold crossing submits one issue record", async () => {
+  const issueRecords = [];
+  globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith("/issue-records")) {
+      issueRecords.push(JSON.parse(init.body));
+      return new Response(
+        JSON.stringify({
+          recordId: "4acb9bfb-36c7-49bc-bd69-13a930cff154",
+          status: "RECEIVED",
+          isNew: true,
+        }),
+        { status: 202 },
+      );
+    }
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+  const tracer = createTracer({
+    issueReporting: { enabled: true },
+  });
+  const repeatedTool = tracer.instrumentTool("repeat", async () => "ok");
+
+  await tracer.run("LoopingAgent", async () => {
+    for (let index = 0; index < 6; index += 1) {
+      await repeatedTool({ same: true });
+    }
+  });
+  await tracer.shutdown();
+
+  assert.equal(issueRecords.length, 1);
+  assert.equal(issueRecords[0].detectionType, "LOOP_DETECTED");
+  assert.equal(issueRecords[0].payload.loopCount, 5);
+});
+
+test("issue reporting failure does not fail an allowed tool call", async () => {
+  globalThis.fetch = async (url) => {
+    if (String(url).endsWith("/issue-records")) {
+      throw new Error("issue endpoint unavailable");
+    }
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+  const tracer = createTracer({
+    issueReporting: { enabled: true, maxAttempts: 2 },
+  });
+  const warnedTool = tracer.guardTool(
+    "external-search",
+    async () => "result",
+    {
+      riskLevel: "LOW",
+      beforeCall: () => ({
+        action: "WARN",
+        policyId: "warning-policy",
+      }),
+    },
+  );
+
+  await assert.doesNotReject(async () => {
+    const result = await tracer.run("SupportAgent", () => warnedTool({}));
+    assert.equal(result, "result");
+  });
+  await tracer.shutdown();
+});

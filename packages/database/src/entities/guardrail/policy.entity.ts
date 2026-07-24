@@ -1,8 +1,8 @@
 ﻿import {
   GUARDRAIL_ACTIONS,
-  GUARDRAIL_SERVERITY,
+  GUARDRAIL_SEVERITY,
   type GuardrailActions,
-  type GuardrailServerity,
+  type GuardrailSeverity,
 } from "@repo/constants";
 import {
   Column,
@@ -28,8 +28,8 @@ export class GuardrailPolicyEntity {
   @Column()
   condition!: string;
 
-  @Column({ type: "varchar", default: GUARDRAIL_SERVERITY.MEDIUM })
-  serverity!: GuardrailServerity;
+  @Column({ type: "varchar", default: GUARDRAIL_SEVERITY.MEDIUM })
+  severity!: GuardrailSeverity;
 
   @Column({ type: "varchar", default: GUARDRAIL_ACTIONS.WARN })
   action!: GuardrailActions;

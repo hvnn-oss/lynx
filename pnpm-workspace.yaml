@@ -7,13 +7,16 @@ allowBuilds:
   "@parcel/watcher": false
   "@swc/core": false
   bcrypt: false
-  esbuild: false
+  esbuild: true
   keytar: false
   msw: false
   puppeteer: false
   sharp: false
   unrs-resolver: false
+minimumReleaseAgeExclude:
+  - hono@4.12.31
 overrides:
+  "@types/node": "25.9.3"
   recharts: "3.8.1"
   react: "19.2.4"
   react-dom: "19.2.4"

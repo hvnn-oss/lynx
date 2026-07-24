@@ -6,14 +6,21 @@ export * from "./auth/jwt-payloads";
 // errors
 export * from "./errors/errors";
 
+// organization
+export * from "./organization/plan";
+export * from "./organization/entitlement";
+
 // workspace
-export * from "./workspace/plan";
+export * from "./workspace/api-key";
 
 // session
 export * from "./session/eventType";
 
 // guardrail
 export * from "./guardrail/guardrail";
+
+// issues
+export * from "./issues/issue";
 
 // prompt
 export * from "./prompt/prompt";

@@ -2,7 +2,8 @@
 
 import CreateOrgForm from "@/components/screen/auth/signup/create-org";
 import SignupForm from "@/components/screen/auth/signup/signup";
-import { SignUpDto } from "@repo/dto";
+import { authContract, getAuthEndpointPath } from "@repo/contract";
+import type { SignUpDto } from "@repo/dto";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
@@ -57,13 +58,19 @@ export default function Signup() {
             setData(updatedData);
             setIsLoading(true);
             setError("");
+            const request = authContract.signUp.request.safeParse(updatedData);
+            if (!request.success) {
+              setError("errors.unknown");
+              setIsLoading(false);
+              return;
+            }
             try {
-              const res = await api.post("/auth/signup", updatedData);
-              if (res.data.success) {
-                window.location.href = "/login";
-              } else {
-                setError("errors.unknown");
-              }
+              const res = await api.post(
+                getAuthEndpointPath(authContract.signUp),
+                request.data,
+              );
+              authContract.signUp.response.parse(res.data);
+              window.location.href = "/login";
             } catch (err) {
               if (axios.isAxiosError(err)) {
                 const errors = err.response?.data?.errors;

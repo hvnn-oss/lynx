@@ -1,4 +1,4 @@
-import { LlmInstrumentationRule, LynxContext, LynxToolMetadata } from "../core/types.js";
+import { LlmInstrumentationRule, LynxToolMetadata } from "../core/types.js";
 import { generateSpanId } from "../utils/id.js";
 import { extractTokenUsage } from "../utils/usage.js";
 import { LynxTracer } from "../core/tracer.js";
@@ -16,7 +16,8 @@ function getProvider(path: string[], model?: string): string {
   const pathStr = path.join(".");
   if (pathStr.includes("messages.create")) return "anthropic";
   if (pathStr.includes("generateContent")) return "google";
-  if (pathStr.includes("generateText") || pathStr.includes("streamText")) return "vercel-ai";
+  if (pathStr.includes("generateText") || pathStr.includes("streamText"))
+    return "vercel-ai";
   if (pathStr.includes("ollama")) return "ollama";
   if (pathStr.includes("cohere")) return "cohere";
   if (model?.toLowerCase().includes("claude")) return "anthropic";
@@ -44,9 +45,12 @@ function getTextLength(data: any): number {
 function extractLlmMetadata(input: any, path: string[]) {
   const messages = getMessages(input);
   const systemMessage = messages?.find((item) => item?.role === "system");
-  const userMessage = [...(messages ?? [])].reverse().find((item) => item?.role === "user");
+  const userMessage = [...(messages ?? [])]
+    .reverse()
+    .find((item) => item?.role === "user");
   const model = input?.model ?? input?.modelName;
-  const maxTokens = input?.max_tokens ?? input?.maxTokens ?? input?.maxOutputTokens;
+  const maxTokens =
+    input?.max_tokens ?? input?.maxTokens ?? input?.maxOutputTokens;
 
   return {
     provider: getProvider(path, model),
@@ -66,12 +70,77 @@ function extractLlmMetadata(input: any, path: string[]) {
 function summarizeResult(result: any): string | undefined {
   if (result === undefined || result === null) return undefined;
   if (typeof result === "string") return result.slice(0, 240);
-  if (typeof result === "number" || typeof result === "boolean") return String(result);
+  if (typeof result === "number" || typeof result === "boolean")
+    return String(result);
   try {
     return JSON.stringify(result).slice(0, 240);
   } catch {
     return "[Unserializable Result]";
   }
+}
+
+function isPromiseLike<T = unknown>(value: unknown): value is PromiseLike<T> {
+  return (
+    value !== null &&
+    (typeof value === "object" || typeof value === "function") &&
+    typeof (value as PromiseLike<T>).then === "function"
+  );
+}
+
+function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
+  return (
+    value !== null &&
+    (typeof value === "object" || typeof value === "function") &&
+    typeof (value as AsyncIterable<unknown>)[Symbol.asyncIterator] === "function"
+  );
+}
+
+function wrapAsyncIterable<T extends AsyncIterable<unknown>>(
+  source: T,
+  onComplete: () => void,
+  onError: (error: unknown) => void,
+): T {
+  let isSettled = false;
+  const settleComplete = () => {
+    if (isSettled) return;
+    isSettled = true;
+    onComplete();
+  };
+  const settleError = (error: unknown) => {
+    if (isSettled) return;
+    isSettled = true;
+    onError(error);
+  };
+
+  return new Proxy(source, {
+    get(target, property, receiver) {
+      if (property !== Symbol.asyncIterator) {
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+      return async function* () {
+        try {
+          for await (const chunk of target) yield chunk;
+          settleComplete();
+        } catch (error) {
+          settleError(error);
+          throw error;
+        }
+      };
+    },
+  });
+}
+
+function createChildContext(
+  context: ReturnType<typeof LynxTracer.getStore>,
+  spanId: string,
+) {
+  if (!context) return undefined;
+  return {
+    ...context,
+    spanId,
+    parentSpanId: context.spanId,
+  };
 }
 
 /**
@@ -95,14 +164,17 @@ function summarizeResult(result: any): string | undefined {
 export function instrumentLLM<T extends object>(
   tracer: LynxTracer,
   instance: T,
-  optionsOrLabel: string | {
-    modelLabel?: string;
-    customRule?: Partial<LlmInstrumentationRule>;
-  } = "llm.inference"
+  optionsOrLabel:
+    | string
+    | {
+        modelLabel?: string;
+        customRule?: Partial<LlmInstrumentationRule>;
+      } = "llm.inference",
 ): T {
-  const options = typeof optionsOrLabel === "string"
-    ? { modelLabel: optionsOrLabel }
-    : optionsOrLabel;
+  const options =
+    typeof optionsOrLabel === "string"
+      ? { modelLabel: optionsOrLabel }
+      : optionsOrLabel;
 
   const modelLabel = options.modelLabel ?? "llm.inference";
   const customRule = options.customRule;
@@ -115,26 +187,29 @@ export function instrumentLLM<T extends object>(
     const pathStr = path.join(".");
     return (
       pathStr === "chat.completions.create" || // OpenAI
-      pathStr === "responses.create" ||        // OpenAI Responses API
-      pathStr === "messages.create" ||         // Anthropic (Claude)
-      pathStr === "models.generateContent" ||  // Google Gen AI 신규
-      pathStr === "generateContent" ||         // Google Generative AI 기존
-      pathStr === "generateText" ||            // Vercel AI SDK
-      pathStr === "streamText" ||             // Vercel AI SDK
-      pathStr === "generateObject" ||          // Vercel AI SDK
-      pathStr === "streamObject" ||            // Vercel AI SDK
-      pathStr === "ollama.chat" ||             // Ollama Chat
-      pathStr === "ollama.generate" ||         // Ollama Generate
-      pathStr === "cohere.chat" ||             // Cohere Chat
-      pathStr === "cohere.generate" ||         // Cohere Generate
-      pathStr === "chat" ||                    // Ollama/Cohere direct
-      pathStr === "invoke" ||                  // LangChain
-      pathStr === "predict"                    // LangChain
+      pathStr === "responses.create" || // OpenAI Responses API
+      pathStr === "messages.create" || // Anthropic (Claude)
+      pathStr === "models.generateContent" || // Google Gen AI 신규
+      pathStr === "generateContent" || // Google Generative AI 기존
+      pathStr === "generateText" || // Vercel AI SDK
+      pathStr === "streamText" || // Vercel AI SDK
+      pathStr === "generateObject" || // Vercel AI SDK
+      pathStr === "streamObject" || // Vercel AI SDK
+      pathStr === "ollama.chat" || // Ollama Chat
+      pathStr === "ollama.generate" || // Ollama Generate
+      pathStr === "cohere.chat" || // Cohere Chat
+      pathStr === "cohere.generate" || // Cohere Generate
+      pathStr === "chat" || // Ollama/Cohere direct
+      pathStr === "invoke" || // LangChain
+      pathStr === "predict" // LangChain
     );
   };
 
   const createRecursiveProxy = (target: any, path: string[] = []): any => {
-    if (target == null || (typeof target !== "object" && typeof target !== "function")) {
+    if (
+      target == null ||
+      (typeof target !== "object" && typeof target !== "function")
+    ) {
       return target;
     }
 
@@ -152,6 +227,7 @@ export function instrumentLLM<T extends object>(
             const context = LynxTracer.getStore();
             const spanId = generateSpanId();
             const parentSpanId = context?.spanId;
+            const childContext = createChildContext(context, spanId);
             const startTime = Date.now();
 
             const rawInput = customRule?.extractInput
@@ -160,52 +236,102 @@ export function instrumentLLM<T extends object>(
             const llmMetadata = extractLlmMetadata(rawInput, newPath);
 
             if (context) {
-              tracer.captureInternal("LLM_CALL", modelLabel, {
-                input: rawInput,
-                path: newPath.join("."),
-                phase: "start",
-                spanId,
-                parentSpanId,
-                ...llmMetadata
-              }, context);
+              tracer.captureInternal(
+                "LLM_CALL",
+                modelLabel,
+                {
+                  input: rawInput,
+                  path: newPath.join("."),
+                  phase: "start",
+                  spanId,
+                  parentSpanId,
+                  ...llmMetadata,
+                },
+                context,
+              );
             }
 
             try {
-              const result = Reflect.apply(val, obj, args);
-              const resolvedResult = result instanceof Promise ? await result : result;
-              const latency = Date.now() - startTime;
-              
-              const rawOutput = customRule?.extractOutput
-                ? customRule.extractOutput(resolvedResult)
-                : resolvedResult;
+              // Create the provider Promise inside the child context. Async
+              // resources created by the provider then inherit the LLM Span,
+              // so nested tools and callbacks attach to the correct parent.
+              const result = childContext
+                ? LynxTracer.runWithContext(childContext, () =>
+                    Reflect.apply(val, obj, args),
+                  )
+                : Reflect.apply(val, obj, args);
+              const resolvedResult = isPromiseLike(result)
+                ? await result
+                : result;
+              const captureEnd = (output: unknown) => {
+                const latency = Date.now() - startTime;
+                const rawOutput = customRule?.extractOutput
+                  ? customRule.extractOutput(output)
+                  : output;
+                const usage = customRule?.extractUsage
+                  ? customRule.extractUsage(output)
+                  : extractTokenUsage(output);
+                if (!context) return;
+                tracer.captureInternal(
+                  "LLM_CALL",
+                  modelLabel,
+                  {
+                    output: rawOutput,
+                    phase: "end",
+                    spanId,
+                    parentSpanId,
+                    latency,
+                    usage,
+                    ...llmMetadata,
+                  },
+                  childContext ?? context,
+                );
+              };
+              const captureStreamError = (err: unknown) => {
+                if (!context) return;
+                const error = err as Error;
+                tracer.captureInternal(
+                  "ERROR",
+                  modelLabel,
+                  {
+                    error: error.message,
+                    phase: "error",
+                    spanId,
+                    parentSpanId,
+                    latency: Date.now() - startTime,
+                  },
+                  childContext ?? context,
+                );
+              };
 
-              const usage = customRule?.extractUsage
-                ? customRule.extractUsage(resolvedResult)
-                : extractTokenUsage(resolvedResult);
-
-              if (context) {
-                tracer.captureInternal("LLM_CALL", modelLabel, {
-                  output: rawOutput,
-                  phase: "end",
-                  spanId,
-                  parentSpanId,
-                  latency,
-                  usage,
-                  ...llmMetadata
-                }, context);
+              // A streaming provider resolves before generation finishes. Keep
+              // its public iterable shape and close the Span only after the
+              // consumer reaches EOF or iteration throws.
+              if (isAsyncIterable(resolvedResult)) {
+                return wrapAsyncIterable(
+                  resolvedResult,
+                  () => captureEnd(resolvedResult),
+                  captureStreamError,
+                );
               }
+              captureEnd(resolvedResult);
               return resolvedResult;
             } catch (err: unknown) {
               const error = err as Error;
               const latency = Date.now() - startTime;
               if (context) {
-                tracer.captureInternal("ERROR", modelLabel, {
-                  error: error.message,
-                  phase: "error",
-                  spanId,
-                  parentSpanId,
-                  latency
-                }, context);
+                tracer.captureInternal(
+                  "ERROR",
+                  modelLabel,
+                  {
+                    error: error.message,
+                    phase: "error",
+                    spanId,
+                    parentSpanId,
+                    latency,
+                  },
+                  childContext ?? context,
+                );
               }
               throw err;
             }
@@ -248,61 +374,95 @@ export function instrumentTool<T extends (...args: any[]) => any>(
   fn: T,
   metadata: LynxToolMetadata = {},
 ): T {
-  return (async (...args: any[]) => {
+  return function (this: unknown, ...args: Parameters<T>) {
     const context = LynxTracer.getStore();
     const spanId = generateSpanId();
     const parentSpanId = context?.spanId;
+    const childContext = createChildContext(context, spanId);
     const startTime = Date.now();
 
     if (context) {
-      tracer.captureInternal("TOOL_CALL", toolName, {
+      tracer.captureInternal(
+        "TOOL_CALL",
         toolName,
-        toolVersion: metadata.toolVersion,
-        sideEffect: metadata.sideEffect,
-        riskLevel: metadata.riskLevel,
-        externalTarget: metadata.externalTarget,
-        idempotencyKey: metadata.idempotencyKey,
-        args: args[0],
-        argsHash: stableHash(args[0]),
-        input: args[0],
-        phase: "start",
-        spanId,
-        parentSpanId
-      }, context);
-    }
-
-    try {
-      const result = fn(...args);
-      const resolvedResult = result instanceof Promise ? await result : result;
-      const latency = Date.now() - startTime;
-      
-      if (context) {
-        tracer.captureInternal("TOOL_RESULT", toolName, {
+        {
           toolName,
           toolVersion: metadata.toolVersion,
-          result: resolvedResult,
-          resultSummary: summarizeResult(resolvedResult),
-          output: resolvedResult,
-          phase: "end",
+          sideEffect: metadata.sideEffect,
+          riskLevel: metadata.riskLevel,
+          externalTarget: metadata.externalTarget,
+          idempotencyKey: metadata.idempotencyKey,
+          args: args[0],
+          argsHash: stableHash(args[0]),
+          input: args[0],
+          phase: "start",
           spanId,
           parentSpanId,
-          latency
-        }, context);
+        },
+        context,
+      );
+    }
+
+    const captureSuccess = (resolvedResult: Awaited<ReturnType<T>>) => {
+      const latency = Date.now() - startTime;
+
+      if (context) {
+        tracer.captureInternal(
+          "TOOL_RESULT",
+          toolName,
+          {
+            toolName,
+            toolVersion: metadata.toolVersion,
+            result: resolvedResult,
+            resultSummary: summarizeResult(resolvedResult),
+            output: resolvedResult,
+            phase: "end",
+            spanId,
+            parentSpanId,
+            latency,
+          },
+          childContext ?? context,
+        );
       }
       return resolvedResult;
-    } catch (err: unknown) {
+    };
+
+    const captureError = (err: unknown): never => {
       const error = err as Error;
       const latency = Date.now() - startTime;
       if (context) {
-        tracer.captureInternal("ERROR", toolName, {
-          error: error.message,
-          phase: "error",
-          spanId,
-          parentSpanId,
-          latency
-        }, context);
+        tracer.captureInternal(
+          "ERROR",
+          toolName,
+          {
+            error: error.message,
+            phase: "error",
+            spanId,
+            parentSpanId,
+            latency,
+          },
+          childContext ?? context,
+        );
       }
       throw err;
+    };
+
+    try {
+      // Reflect.apply preserves methods that depend on their caller-provided
+      // `this`, while AsyncLocalStorage.run preserves the child Span for work
+      // started inside both synchronous and asynchronous tools.
+      const result = childContext
+        ? LynxTracer.runWithContext(childContext, () =>
+            Reflect.apply(fn, this, args),
+          )
+        : Reflect.apply(fn, this, args);
+
+      if (isPromiseLike<Awaited<ReturnType<T>>>(result)) {
+        return Promise.resolve(result).then(captureSuccess, captureError);
+      }
+      return captureSuccess(result as Awaited<ReturnType<T>>);
+    } catch (err: unknown) {
+      return captureError(err);
     }
-  }) as unknown as T;
+  } as T;
 }

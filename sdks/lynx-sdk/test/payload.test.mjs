@@ -115,3 +115,91 @@ test("metadata-only mode keeps hashes and removes raw input/output", async () =>
     globalThis.fetch = originalFetch;
   }
 });
+
+test("smart mode stores normal content as metadata", async () => {
+  const batches = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, init) => {
+    batches.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+
+  try {
+    const tracer = createTracer({ captureMode: "smart" });
+    await tracer.run("SupportAgent", async () => {
+      tracer.log("normal-event", {
+        input: "ordinary input",
+        output: "ordinary output",
+      });
+    });
+    await tracer.shutdown();
+
+    const event = batches.flat().find((item) => item.label === "normal-event");
+    assert.equal("input" in event.payload, false);
+    assert.equal("output" in event.payload, false);
+    assert.equal(typeof event.payload.promptHash, "string");
+    assert.equal(typeof event.payload.responseHash, "string");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("smart mode preserves masked detail for errors", async () => {
+  const batches = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, init) => {
+    batches.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+
+  try {
+    const tracer = createTracer({ captureMode: "smart" });
+    await tracer.run("SupportAgent", async () => {
+      tracer.log("error-detail", {
+        error: "provider failed",
+        input: "user@example.com",
+      });
+    });
+    await tracer.shutdown();
+
+    const event = batches
+      .flat()
+      .find((item) => item.label === "error-detail");
+    assert.equal(event.payload.error, "provider failed");
+    assert.equal(event.payload.input, "[MASKED_EMAIL]");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("processed payload stays within maxPayloadBytes", async () => {
+  const batches = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, init) => {
+    batches.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+
+  try {
+    const tracer = createTracer({
+      captureMode: "full",
+      maxPayloadBytes: 1024,
+    });
+    await tracer.run("SupportAgent", async () => {
+      tracer.log("large-payload", {
+        input: "x".repeat(20_000),
+        output: Array.from({ length: 100 }, () => "y".repeat(500)),
+      });
+    });
+    await tracer.shutdown();
+
+    const event = batches.flat().find((item) => item.label === "large-payload");
+    assert.equal(
+      Buffer.byteLength(JSON.stringify(event.payload), "utf8") <= 1024,
+      true,
+    );
+    assert.equal(event.payload.payloadTruncated, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

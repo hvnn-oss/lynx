@@ -1,5 +1,5 @@
 {
-  "name": "@repo/sdk",
+  "name": "@lynxops/sdk",
   "version": "1.0.0",
   "description": "TypeScript SDK for tracing, debugging, and governing AI agent runs with Lynx.",
   "type": "module",
@@ -33,7 +33,7 @@
   "homepage": "https://docs.lynxops.co",
   "devDependencies": {
     "@repo/typescript-config": "workspace:*",
-    "@types/node": "^25.9.1",
+    "@types/node": "25.9.3",
     "tsup": "^8.3.5",
     "typescript": "^5.0.0"
   },

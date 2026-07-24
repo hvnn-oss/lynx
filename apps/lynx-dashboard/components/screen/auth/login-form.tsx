@@ -15,6 +15,7 @@ import { useState } from "react";
 import api, { setStoredAccessToken } from "@/lib/api";
 import axios from "axios";
 import { DashRing } from "@repo/ui/components/ui/dash-ring";
+import { authContract, getAuthEndpointPath } from "@repo/contract";
 
 export default function LoginForm() {
   const t = useTranslations("auth");
@@ -25,22 +26,29 @@ export default function LoginForm() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) return;
+    const loginResult = authContract.login.request.safeParse({ email, password });
+    if (!loginResult.success) {
+      setError("errors.unknown");
+      return;
+    }
     setIsLoading(true);
     setError("");
     try {
-      const res = await api.post("/auth/login", { email, password });
-      if (res.data.success) {
-        setStoredAccessToken(res.data.accessToken);
-        window.location.href = "/dashboard";
-      } else {
-        setError("errors.unknown");
-      }
+      const res = await api.post(
+        getAuthEndpointPath(authContract.login),
+        loginResult.data,
+      );
+      const response = authContract.login.response.safeParse(res.data);
+      if (!response.success) throw new Error("Invalid login response.");
+
+      setStoredAccessToken(response.data.access_token);
+      window.location.href = "/dashboard";
     } catch (err) {
       if (axios.isAxiosError(err)) {
         // Validation errors returned as array of objects in response.data.errors
         const errors = err.response?.data?.errors;
-        const errCode = err.response?.data?.error_code || (errors && errors[0]?.error_code);
+        const errCode =
+          err.response?.data?.error_code || (errors && errors[0]?.error_code);
         if (errCode === "INVALID_CREDENTIALS") {
           setError("errors.invalid-credentials");
         } else if (errCode === "ORG_MUST_USE_SSO") {
@@ -89,7 +97,11 @@ export default function LoginForm() {
           )}
         </Field>
         <Field>
-          <Button type="submit" size={"lg"} disabled={isLoading || !email || !password}>
+          <Button
+            type="submit"
+            size={"lg"}
+            disabled={isLoading || !email || !password}
+          >
             {isLoading ? <DashRing /> : t("login.buttons.title")}
           </Button>
           <div className="flex gap-2 text-xs items-center">

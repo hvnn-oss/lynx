@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { LynxTracer } from "@repo/sdk";
+import { LynxTracer } from "@lynxops/sdk";
 
 export const runtime = "nodejs";
 

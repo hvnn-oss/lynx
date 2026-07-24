@@ -1,19 +1,34 @@
 import {
+  WORKSPACE_API_KEY_KINDS,
+  type ApiKeyScope,
+  type WorkspaceApiKeyKind,
+} from "@repo/constants";
+import {
   Column,
+  Check,
   CreateDateColumn,
   Entity,
   Index,
+  JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
 } from "typeorm";
 import { WorkspaceEntity } from "../organization/workspace.entity";
+import { UserEntity } from "../organization/user.entity";
 
 @Entity("workspace_api_key")
+@Check(
+  "CHK_workspace_api_key_kind",
+  `"kind" IN ('INGEST', 'SDK', 'AUTOMATION')`,
+)
 @Index("IDX_workspace_api_key_hash", ["keyHash"], { unique: true })
-@Index("IDX_workspace_api_key_workspace_active", ["workspace", "revokedAt"])
+@Index("IDX_workspace_api_key_workspace_active", ["workspaceId", "revokedAt"])
 export class WorkspaceApiKeyEntity {
   @PrimaryGeneratedColumn("uuid")
   id!: string;
+
+  @Column({ type: "uuid" })
+  workspaceId!: string;
 
   @Column({ type: "varchar", length: 24 })
   prefix!: string;
@@ -21,8 +36,15 @@ export class WorkspaceApiKeyEntity {
   @Column({ type: "varchar", length: 64 })
   keyHash!: string;
 
-  @Column({ type: "varchar", length: 120, nullable: true })
-  name?: string;
+  @Column({ type: "varchar", length: 120 })
+  name!: string;
+
+  @Column({
+    type: "varchar",
+    length: 20,
+    default: WORKSPACE_API_KEY_KINDS.INGEST,
+  })
+  kind!: WorkspaceApiKeyKind;
 
   @Column({ type: "uuid", nullable: true })
   createdByUserId?: string;
@@ -31,7 +53,7 @@ export class WorkspaceApiKeyEntity {
   createdByName?: string;
 
   @Column({ type: "text", array: true, default: () => "ARRAY['events:write']" })
-  scopes!: string[];
+  scopes!: ApiKeyScope[];
 
   @CreateDateColumn()
   createdAt!: Date;
@@ -52,5 +74,13 @@ export class WorkspaceApiKeyEntity {
       onDelete: "CASCADE",
     },
   )
+  @JoinColumn({ name: "workspaceId" })
   workspace!: WorkspaceEntity;
+
+  @ManyToOne(() => UserEntity, { nullable: true, onDelete: "SET NULL" })
+  @JoinColumn({
+    name: "createdByUserId",
+    foreignKeyConstraintName: "FK_workspace_api_key_created_by",
+  })
+  createdBy?: UserEntity;
 }

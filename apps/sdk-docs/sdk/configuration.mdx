@@ -48,7 +48,9 @@ const lynx = new LynxTracer({
 | `captureInput` | `true` | Whether input fields may be recorded. |
 | `captureOutput` | `true` | Whether output fields may be recorded. |
 | `captureMode` | `"smart"` | `full`, `metadata-only`, or `smart`. |
-| `maxPayloadLength` | `1000` | Maximum string length kept in `smart` mode. |
+| `maxPayloadLength` | — | Backward-compatible per-string truncation limit. |
+| `maxPayloadBytes` | `65536` | Maximum UTF-8 JSON size retained for one event payload. |
+| `smartDetailLatencyThresholdMs` | `10000` | Latency at which `smart` mode preserves masked detail. |
 
 ## Capture modes
 
@@ -110,6 +112,8 @@ import { lynx } from "@lynxops/sdk";
 | `LYNX_CAPTURE_OUTPUT` | `true` or `false`. |
 | `LYNX_CAPTURE_MODE` | `full`, `metadata-only`, or `smart`. |
 | `LYNX_MAX_PAYLOAD_LENGTH` | Maximum payload string length. |
+| `LYNX_MAX_PAYLOAD_BYTES` | Maximum UTF-8 JSON bytes retained per event payload. |
+| `LYNX_SMART_DETAIL_LATENCY_THRESHOLD_MS` | Latency threshold for preserving detail in `smart` mode. |
 | `LYNX_APP_VERSION` | Application version metadata. |
 | `LYNX_DEPLOYMENT_ID` | Deployment ID metadata. |
 | `LYNX_ENVIRONMENT` | Runtime environment. Falls back to `NODE_ENV`. |

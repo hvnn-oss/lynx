@@ -44,6 +44,12 @@ await lynx.run("SupportAgent", async () => {
 
 Lynx records model metadata, input and output according to your capture settings, latency, token usage when available, span IDs, and errors.
 
+For async iterable streaming APIs such as `streamText`, Lynx keeps the original
+iterator behavior and records the end of the LLM call only when iteration
+reaches completion. An error raised while consuming the stream is recorded on
+the same span. If a stream is created but never consumed, it has a start event
+without an end event.
+
 ## Wrap a tool
 
 Use `instrumentTool()` when you want to record a tool call without adding a policy check.

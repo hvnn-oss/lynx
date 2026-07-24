@@ -1,11 +1,12 @@
 {
   "name": "@repo/dto",
   "version": "1.0.0",
+  "type": "module",
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./src/index.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./src/index.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     }
@@ -19,8 +20,6 @@
     "typescript": "^5.9.2"
   },
   "dependencies": {
-    "class-validator": "^0.15.1",
-    "class-transformer": "^0.5.1",
-    "@repo/sdk-types": "workspace:*"
+    "zod": "^4.4.3"
   }
 }

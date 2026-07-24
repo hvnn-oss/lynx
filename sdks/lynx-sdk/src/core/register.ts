@@ -34,6 +34,10 @@ export const lynx = new LynxTracer({
   captureInput: parseBool(process.env.LYNX_CAPTURE_INPUT),
   captureOutput: parseBool(process.env.LYNX_CAPTURE_OUTPUT),
   maxPayloadLength: parseNum(process.env.LYNX_MAX_PAYLOAD_LENGTH),
+  maxPayloadBytes: parseNum(process.env.LYNX_MAX_PAYLOAD_BYTES),
+  smartDetailLatencyThresholdMs: parseNum(
+    process.env.LYNX_SMART_DETAIL_LATENCY_THRESHOLD_MS,
+  ),
   captureMode: (process.env.LYNX_CAPTURE_MODE as any) || "smart",
   workspaceId: process.env.LYNX_WORKSPACE_ID,
   agentId: process.env.LYNX_AGENT_ID,
@@ -42,6 +46,24 @@ export const lynx = new LynxTracer({
   deploymentId: process.env.LYNX_DEPLOYMENT_ID,
   environment: process.env.LYNX_ENVIRONMENT || process.env.NODE_ENV,
   policyVersion: process.env.LYNX_POLICY_VERSION,
+  runtimeConfig: {
+    enabled: parseBool(process.env.LYNX_RUNTIME_CONFIG_ENABLED),
+    refreshIntervalMs: parseNum(
+      process.env.LYNX_RUNTIME_CONFIG_REFRESH_INTERVAL_MS,
+    ),
+    requestTimeoutMs: parseNum(process.env.LYNX_RUNTIME_CONFIG_TIMEOUT_MS),
+    refreshJitterRatio: parseNum(
+      process.env.LYNX_RUNTIME_CONFIG_JITTER_RATIO,
+    ),
+  },
+  issueReporting: {
+    enabled: parseBool(process.env.LYNX_ISSUE_REPORTING_ENABLED),
+    timeoutMs: parseNum(process.env.LYNX_ISSUE_REPORTING_TIMEOUT_MS),
+    maxQueueSize: parseNum(
+      process.env.LYNX_ISSUE_REPORTING_MAX_QUEUE_SIZE,
+    ),
+    maxAttempts: parseNum(process.env.LYNX_ISSUE_REPORTING_MAX_ATTEMPTS),
+  },
 
   delivery: {
     mode: process.env.LYNX_DELIVERY_MODE as any,

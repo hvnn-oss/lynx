@@ -1,8 +1,6 @@
-import { WORKSPACE_PLANS } from "@repo/constants";
 import {
   Column,
   Entity,
-  JoinColumn,
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
@@ -12,7 +10,7 @@ import { GuardrailPolicyEntity } from "../guardrail/policy.entity";
 import { PromptVersionEntity } from "../prompt/prompt-version.entity";
 import { SessionEntity } from "../session/session.entity";
 import { WorkspaceApiKeyEntity } from "../workspace/workspace-api-key.entity";
-import { WorkspacePlanEntity } from "../workspace/workspace-plan.entity";
+import { WorkspaceMembershipEntity } from "../workspace/workspace-membership.entity";
 import { OrganizationEntity } from "./organization.entity";
 
 @Entity("workspace")
@@ -23,28 +21,17 @@ export class WorkspaceEntity {
   @Column()
   name!: string;
 
-  @Column({ type: "varchar", default: WORKSPACE_PLANS.FREE })
-  plan!: string;
-
-  @ManyToOne(
-    () => WorkspacePlanEntity,
-    (plan: WorkspacePlanEntity) => plan.workspaces,
-    {
-      eager: true,
-      nullable: true,
-    },
-  )
-  @JoinColumn({ name: "plan", referencedColumnName: "code" })
-  planConfig?: WorkspacePlanEntity;
-
-  @Column({ type: "varchar", nullable: true, unique: true })
-  apiKey?: string;
-
   @OneToMany(
     () => WorkspaceApiKeyEntity,
     (apiKey: WorkspaceApiKeyEntity) => apiKey.workspace,
   )
   apiKeys!: WorkspaceApiKeyEntity[];
+
+  @OneToMany(
+    () => WorkspaceMembershipEntity,
+    (membership: WorkspaceMembershipEntity) => membership.workspace,
+  )
+  memberships!: WorkspaceMembershipEntity[];
 
   @ManyToOne(
     () => OrganizationEntity,

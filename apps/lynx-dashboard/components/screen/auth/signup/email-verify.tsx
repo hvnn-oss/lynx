@@ -1,9 +1,6 @@
 import api from "@/lib/api";
 import { ERROR_CODES } from "@repo/constants";
-import {
-  CreateEmailVerificationDto,
-  CreateEmailVerificationResponseDto,
-} from "@repo/dto";
+import { authContract, getAuthEndpointPath } from "@repo/contract";
 import { Button } from "@repo/ui/components/ui/button";
 import { DashRing } from "@repo/ui/components/ui/dash-ring";
 import {
@@ -27,20 +24,27 @@ export default function RegisterEmailVerifyForm({
   const [error, setError] = useState("");
   const [email, setEmail] = useState("");
   const t = useTranslations("auth");
-  const emailRegex: RegExp = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  const isEmailValid = authContract.createEmailVerification.request.safeParse({
+    email,
+  }).success;
 
   const onSubmit = async () => {
     setLoading(true);
     setError("");
-    const reqBody: CreateEmailVerificationDto = {
+    const request = authContract.createEmailVerification.request.safeParse({
       email,
-    };
+    });
+    if (!request.success) {
+      setError("errors.unknown");
+      setLoading(false);
+      return;
+    }
     try {
-      const res = await api.post("/auth/signup/create-verify", reqBody);
-      const data = res.data as CreateEmailVerificationResponseDto;
-      if (!data.success) {
-        throw new Error();
-      }
+      const res = await api.post(
+        getAuthEndpointPath(authContract.createEmailVerification),
+        request.data,
+      );
+      authContract.createEmailVerification.response.parse(res.data);
       onSuccess(email);
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -73,12 +77,8 @@ export default function RegisterEmailVerifyForm({
   return (
     <main>
       <div className="mb-5">
-        <h1 className="text-lg font-semibold">
-          {t("register.intro.title")}
-        </h1>
-        <p className="text-sm font-light">
-          {t("register.intro.description")}
-        </p>
+        <h1 className="text-lg font-semibold">{t("register.intro.title")}</h1>
+        <p className="text-sm font-light">{t("register.intro.description")}</p>
       </div>
       <div>
         <FieldGroup>
@@ -104,7 +104,7 @@ export default function RegisterEmailVerifyForm({
             <Button
               type="submit"
               size={"lg"}
-              disabled={email === "" || !emailRegex.test(email) || isLoading}
+              disabled={!isEmailValid || isLoading}
               onClick={onSubmit}
             >
               {!isLoading ? t("register.send-verifycode") : <DashRing />}

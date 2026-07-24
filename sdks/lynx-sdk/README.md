@@ -344,6 +344,7 @@ const lynx = new LynxTracer({
   apiKey: process.env.LYNX_API_KEY,
   captureMode: "smart",
   maxPayloadLength: 16_000,
+  maxPayloadBytes: 64 * 1024,
 });
 ```
 
@@ -393,6 +394,7 @@ const lynx = new LynxTracer({
   captureOutput: true,
   captureMode: "smart",
   maxPayloadLength: 16_000,
+  maxPayloadBytes: 64 * 1024,
   delivery: {
     mode: "BACKGROUND",
     timeoutMs: 1000,
@@ -425,7 +427,9 @@ const lynx = new LynxTracer({
 | `captureInput` | Whether input payloads can be captured. |
 | `captureOutput` | Whether output payloads can be captured. |
 | `captureMode` | `full`, `metadata-only`, or `smart`. |
-| `maxPayloadLength` | Maximum serialized payload length per event. |
+| `maxPayloadLength` | Backward-compatible per-string truncation limit. |
+| `maxPayloadBytes` | Maximum UTF-8 JSON size retained for one event payload. |
+| `smartDetailLatencyThresholdMs` | Latency threshold for preserving masked detail in `smart` mode. |
 | `delivery.mode` | `BACKGROUND` or `BLOCKING`. |
 | `delivery.timeoutMs` | Timeout for one event delivery request. |
 | `delivery.flushOnRunEnd` | Whether `run()` tries to flush after the wrapped work finishes. |
@@ -454,6 +458,8 @@ The default `lynx` export reads these variables:
 | `LYNX_CAPTURE_OUTPUT` | `true` or `false`. |
 | `LYNX_CAPTURE_MODE` | `full`, `metadata-only`, or `smart`. |
 | `LYNX_MAX_PAYLOAD_LENGTH` | Maximum payload string length. |
+| `LYNX_MAX_PAYLOAD_BYTES` | Maximum UTF-8 JSON bytes retained per event payload. |
+| `LYNX_SMART_DETAIL_LATENCY_THRESHOLD_MS` | Smart-mode detail retention latency threshold. |
 | `LYNX_APP_VERSION` | Application version metadata. |
 | `LYNX_DEPLOYMENT_ID` | Deployment id metadata. |
 | `LYNX_ENVIRONMENT` | Runtime environment metadata. Falls back to `NODE_ENV`. |

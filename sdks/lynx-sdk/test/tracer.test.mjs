@@ -67,6 +67,44 @@ test("uses the hosted Lynx API endpoint by default", async () => {
   assert.equal(requestedUrl, "https://api.lynxops.co/openapi/v1/events/batch");
 });
 
+test("sends API keys only through X-API-Key", async () => {
+  let requestedHeaders;
+  globalThis.fetch = async (_url, init) => {
+    requestedHeaders = init.headers;
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+
+  const tracer = createTracer();
+  await tracer.run("SupportAgent", async () => {
+    tracer.log("manual-note", { ok: true });
+  });
+  await tracer.shutdown();
+
+  assert.equal(requestedHeaders["X-API-Key"], "test-api-key");
+  assert.equal(requestedHeaders.Authorization, undefined);
+});
+
+test("flush splits the queue into bounded batches", async () => {
+  const batchSizes = [];
+  globalThis.fetch = async (_url, init) => {
+    batchSizes.push(JSON.parse(init.body).length);
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+
+  const tracer = createTracer({
+    delivery: { batchSize: 2, flushIntervalMs: 60_000 },
+  });
+  await tracer.run("SupportAgent", async () => {
+    tracer.log("one", {});
+    tracer.log("two", {});
+    tracer.log("three", {});
+  });
+  await tracer.flush();
+  await tracer.shutdown();
+
+  assert.deepEqual(batchSizes, [2, 2, 1]);
+});
+
 test("shutdown flushes queued events and clears the timer", async () => {
   const batches = [];
   globalThis.fetch = async (_url, init) => {
@@ -173,6 +211,42 @@ test("circuit breaker skips immediate telemetry retries after failures", async (
   assert.equal(fetchCount, 1);
 });
 
+test("partial batch responses retry only retryable event ids on the next flush", async () => {
+  const requests = [];
+  globalThis.fetch = async (_url, init) => {
+    const events = JSON.parse(init.body);
+    requests.push(events);
+    if (requests.length === 1) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          retryableEventIds: [events[0].eventId],
+          rejectedEventIds: events.slice(1).map((event) => event.eventId),
+        }),
+        { status: 200 },
+      );
+    }
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+
+  const tracer = createTracer({
+    delivery: { batchSize: 50, flushIntervalMs: 60_000 },
+  });
+  await tracer.run("SupportAgent", () => {
+    tracer.log("manual-note", {});
+  });
+
+  await tracer.flush();
+  assert.equal(requests.length, 1);
+  assert.equal(tracer.getStatus().queueSize, 1);
+
+  await tracer.flush();
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].length, 1);
+  assert.equal(requests[1][0].eventId, requests[0][0].eventId);
+  await tracer.shutdown();
+});
+
 test("parallel runs keep AsyncLocalStorage contexts isolated", async () => {
   const batches = [];
   globalThis.fetch = async (_url, init) => {
@@ -181,6 +255,7 @@ test("parallel runs keep AsyncLocalStorage contexts isolated", async () => {
   };
 
   const tracer = createTracer({
+    captureMode: "full",
     delivery: { batchSize: 100, flushIntervalMs: 60_000 },
   });
   await Promise.all([
@@ -209,6 +284,73 @@ test("parallel runs keep AsyncLocalStorage contexts isolated", async () => {
   );
   assert.equal(decisionA.sessionId, "session-A");
   assert.equal(decisionB.sessionId, "session-B");
+});
+
+test("instrumentTool preserves synchronous returns and caller this", async () => {
+  const batches = [];
+  globalThis.fetch = async (_url, init) => {
+    batches.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+
+  const tracer = createTracer({
+    captureMode: "full",
+    delivery: { batchSize: 100, flushIntervalMs: 60_000 },
+  });
+  const calculator = {
+    base: 2,
+    add: tracer.instrumentTool("calculator.add", function (value) {
+      return this.base + value;
+    }),
+  };
+
+  let result;
+  await tracer.run("SupportAgent", () => {
+    result = calculator.add(3);
+  });
+  await tracer.shutdown();
+
+  assert.equal(result, 5);
+  assert.equal(result instanceof Promise, false);
+  assert.ok(
+    batches
+      .flat()
+      .some(
+        (event) =>
+          event.eventType === "TOOL_RESULT" && event.payload.output === 5,
+      ),
+  );
+});
+
+test("nested instrumented tools inherit the outer tool span", async () => {
+  const batches = [];
+  globalThis.fetch = async (_url, init) => {
+    batches.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+
+  const tracer = createTracer({
+    delivery: { batchSize: 100, flushIntervalMs: 60_000 },
+  });
+  const innerTool = tracer.instrumentTool("inner-tool", () => "done");
+  const outerTool = tracer.instrumentTool("outer-tool", () => innerTool());
+
+  await tracer.run("SupportAgent", () => outerTool());
+  await tracer.shutdown();
+
+  const events = batches.flat();
+  const outerStart = events.find(
+    (event) =>
+      event.eventType === "TOOL_CALL" && event.payload.toolName === "outer-tool",
+  );
+  const innerStart = events.find(
+    (event) =>
+      event.eventType === "TOOL_CALL" && event.payload.toolName === "inner-tool",
+  );
+
+  assert.ok(outerStart);
+  assert.ok(innerStart);
+  assert.equal(innerStart.payload.parentSpanId, outerStart.payload.spanId);
 });
 
 test("delivery queue drops oldest events when maxQueueSize is reached", async () => {
@@ -277,7 +419,7 @@ test("guardTool supports action decisions and input shortcut", async () => {
     return new Response(JSON.stringify({ success: true }), { status: 200 });
   };
 
-  const tracer = createTracer();
+  const tracer = createTracer({ captureMode: "full" });
   const refund = tracer.guardTool(
     "refund",
     async ({ amount }) => ({ refunded: amount }),
@@ -354,6 +496,56 @@ test("shutdown can return after the configured timeout", async () => {
   const start = Date.now();
   await tracer.shutdown({ timeoutMs: 20 });
   assert.equal(Date.now() - start < 500, true);
+});
+
+test("concurrent shutdown callers keep their own timeout", async () => {
+  globalThis.fetch = async () => new Promise(() => {});
+
+  const tracer = createTracer({
+    delivery: {
+      batchSize: 50,
+      flushIntervalMs: 60_000,
+    },
+  });
+  await tracer.run("SupportAgent", () => {
+    tracer.log("manual-note", { ok: true });
+  });
+
+  const start = Date.now();
+  await Promise.all([
+    tracer.shutdown({ timeoutMs: 10 }),
+    tracer.shutdown({ timeoutMs: 20 }),
+  ]);
+
+  assert.equal(Date.now() - start < 500, true);
+});
+
+test("events captured after shutdown are rejected instead of stranded", async () => {
+  let fetchCount = 0;
+  globalThis.fetch = async () => {
+    fetchCount += 1;
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+
+  const tracer = createTracer({
+    delivery: {
+      batchSize: 50,
+      flushIntervalMs: 60_000,
+    },
+  });
+  await tracer.run("SupportAgent", () => {
+    tracer.log("before-shutdown", {});
+  });
+  await tracer.shutdown();
+
+  await tracer.run("SupportAgent", () => {
+    tracer.log("after-shutdown", {});
+  });
+  await tracer.flush();
+
+  assert.equal(fetchCount, 1);
+  assert.equal(tracer.getStatus().queueSize, 0);
+  assert.equal(tracer.getStatus().droppedEvents, 3);
 });
 
 test("guardTool applies failureMode when policy evaluation throws", async () => {
@@ -476,6 +668,41 @@ test("instrumentLLM captures OpenAI Responses API calls", async () => {
   assert.equal(llmEvents[0].payload.promptVersion, "support-summary-v3");
   assert.equal(llmEvents[1].payload.phase, "end");
   assert.equal(llmEvents[1].payload.usage.totalTokens, 20);
+});
+
+test("instrumentLLM closes streaming spans after iteration completes", async () => {
+  const batches = [];
+  globalThis.fetch = async (_url, init) => {
+    batches.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+
+  const tracer = createTracer();
+  const client = tracer.instrumentLLM({
+    async streamText() {
+      return (async function* () {
+        yield "hello";
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        yield " world";
+      })();
+    },
+  });
+
+  await tracer.run("SupportAgent", async () => {
+    const chunks = [];
+    for await (const chunk of await client.streamText({ model: "test-model" })) {
+      chunks.push(chunk);
+    }
+    assert.equal(chunks.join(""), "hello world");
+  });
+  await tracer.shutdown();
+
+  const llmEvents = batches
+    .flat()
+    .filter((event) => event.eventType === "LLM_CALL");
+  assert.deepEqual(llmEvents.map((event) => event.payload.phase), ["start", "end"]);
+  assert.equal(llmEvents[1].payload.spanId, llmEvents[0].payload.spanId);
+  assert.equal(llmEvents[1].payload.latency >= 5, true);
 });
 
 test("instrumentTool captures tool call metadata and result summary", async () => {

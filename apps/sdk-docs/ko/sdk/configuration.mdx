@@ -48,7 +48,9 @@ const lynx = new LynxTracer({
 | `captureInput` | `true` | 입력 필드를 기록할 수 있는지 정합니다. |
 | `captureOutput` | `true` | 출력 필드를 기록할 수 있는지 정합니다. |
 | `captureMode` | `"smart"` | `full`, `metadata-only`, `smart` 중 하나입니다. |
-| `maxPayloadLength` | `1000` | `smart` 모드에서 보관할 문자열 최대 길이입니다. |
+| `maxPayloadLength` | — | 이전 설정과 호환되는 문자열별 축약 한도입니다. |
+| `maxPayloadBytes` | `65536` | 이벤트 payload 하나에 보관할 UTF-8 JSON 최대 크기입니다. |
+| `smartDetailLatencyThresholdMs` | `10000` | `smart` 모드에서 마스킹된 상세 데이터를 보존할 지연 시간 기준입니다. |
 
 ## 수집 모드
 
@@ -110,6 +112,8 @@ import { lynx } from "@lynxops/sdk";
 | `LYNX_CAPTURE_OUTPUT` | `true` 또는 `false`입니다. |
 | `LYNX_CAPTURE_MODE` | `full`, `metadata-only`, `smart` 중 하나입니다. |
 | `LYNX_MAX_PAYLOAD_LENGTH` | payload 문자열 최대 길이입니다. |
+| `LYNX_MAX_PAYLOAD_BYTES` | 이벤트 payload 하나에 보관할 UTF-8 JSON 최대 byte입니다. |
+| `LYNX_SMART_DETAIL_LATENCY_THRESHOLD_MS` | `smart` 모드의 상세 데이터 보존 지연 시간 기준입니다. |
 | `LYNX_APP_VERSION` | 애플리케이션 버전 메타데이터입니다. |
 | `LYNX_DEPLOYMENT_ID` | 배포 ID 메타데이터입니다. |
 | `LYNX_ENVIRONMENT` | 실행 환경입니다. 없으면 `NODE_ENV`를 사용합니다. |

@@ -1,13 +1,15 @@
-﻿import {
+import {
   Column,
   CreateDateColumn,
   Entity,
   OneToMany,
+  OneToOne,
   PrimaryGeneratedColumn,
 } from "typeorm";
-import { OrganizationEntity } from "./organization.entity";
 import { UserAccountEntity } from "../auth/user-account.entity";
+import { WorkspaceMembershipEntity } from "../workspace/workspace-membership.entity";
 import { OrganizationUserEntity } from "./organization-user.entity";
+import { UserEntitlementEntity } from "./user-entitlement.entity";
 
 @Entity("user")
 export class UserEntity {
@@ -26,6 +28,21 @@ export class UserEntity {
   @OneToMany(() => UserAccountEntity, (account: UserAccountEntity) => account.user)
   accounts!: UserAccountEntity[];
 
-  @OneToMany(() => OrganizationUserEntity, (organization: OrganizationUserEntity) => organization.user)
-  organizations!: OrganizationEntity[];
+  @OneToMany(
+    () => OrganizationUserEntity,
+    (organization: OrganizationUserEntity) => organization.user,
+  )
+  organizations!: OrganizationUserEntity[];
+
+  @OneToMany(
+    () => WorkspaceMembershipEntity,
+    (membership: WorkspaceMembershipEntity) => membership.user,
+  )
+  workspaceMemberships!: WorkspaceMembershipEntity[];
+
+  @OneToOne(
+    () => UserEntitlementEntity,
+    (entitlement: UserEntitlementEntity) => entitlement.user,
+  )
+  entitlement?: UserEntitlementEntity;
 }

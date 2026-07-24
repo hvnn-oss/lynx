@@ -16,6 +16,7 @@ export * from "./entities/admin/admin-user.entity.js";
 // auth
 export * from "./entities/auth/oidc-account.entity.js";
 export * from "./entities/auth/user-account.entity.js";
+export * from "./entities/auth/trial-claim.entity.js";
 
 // event
 export * from "./entities/event/event.entity.js";
@@ -24,17 +25,29 @@ export * from "./entities/event/event.entity.js";
 export * from "./entities/guardrail/policy.entity.js";
 export * from "./entities/guardrail/violation.entity.js";
 
+// issues
+export * from "./entities/issues/issue.entity.js";
+export * from "./entities/issues/issue-occurrence.entity.js";
+export * from "./entities/issues/issue-activity.entity.js";
+export * from "./entities/issues/issue-assignee.entity.js";
+export * from "./entities/issues/issue-record.entity.js";
+export * from "./entities/issues/issue-record-processing.entity.js";
+export * from "./entities/issues/issue-evaluation.entity.js";
+
 // organization
 export * from "./entities/organization/domain.entity.js";
 export * from "./entities/organization/organization-user.entity.js";
 export * from "./entities/organization/organization.entity.js";
+export * from "./entities/organization/organization-plan.entity.js";
+export * from "./entities/organization/organization-creation-event.entity.js";
+export * from "./entities/organization/user-entitlement.entity.js";
 export * from "./entities/organization/user.entity.js";
 export * from "./entities/organization/workspace.entity.js";
 export * from "./entities/organization/filter-policy.entity.js";
 
 // workspace
 export * from "./entities/workspace/workspace-api-key.entity.js";
-export * from "./entities/workspace/workspace-plan.entity.js";
+export * from "./entities/workspace/workspace-membership.entity.js";
 
 // prompt
 export * from "./entities/prompt/prompt-block.entity.js";

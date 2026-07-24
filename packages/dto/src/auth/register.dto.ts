@@ -1,51 +1,17 @@
-import {
-  IsBoolean,
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  IsUUID,
-  MaxLength,
-  MinLength,
-  ValidateNested,
-} from "class-validator";
-import { Type } from "class-transformer";
+import { z } from "zod";
+import { RegisterOrganizationSchema } from "../organization/register.dto.js";
 
-// 회원가입 시 생성할 조직 정보 DTO
-export class RegisterOrganizationDto {
-  @IsNotEmpty()
-  @IsString()
-  @MinLength(2)
-  @MaxLength(20)
-  name!: string;
-}
+export const SignUpSchema = z.object({
+  token: z.uuid(),
+  password: z.string().min(8).max(20),
+  name: z.string().min(2).max(10),
+  organization_info: RegisterOrganizationSchema.optional(),
+});
 
-// 회원가입 요청 DTO
-export class SignUpDto {
-  @IsNotEmpty()
-  @IsUUID()
-  token!: string;
+export type SignUpDto = z.infer<typeof SignUpSchema>;
 
-  @IsNotEmpty()
-  @IsString()
-  @MinLength(8)
-  @MaxLength(20)
-  password!: string;
+export const SignUpResponseSchema = z.object({
+  success: z.literal(true),
+});
 
-  @IsNotEmpty()
-  @IsString()
-  @MinLength(2)
-  @MaxLength(10)
-  name!: string;
-
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => RegisterOrganizationDto)
-  organization_info?: RegisterOrganizationDto;
-}
-
-// 회원가입 응답 DTO
-export class SignUpResponseDto {
-  @IsNotEmpty()
-  @IsBoolean()
-  success!: boolean;
-}
+export type SignUpResponseDto = z.infer<typeof SignUpResponseSchema>;

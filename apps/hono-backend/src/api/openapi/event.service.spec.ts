@@ -1,0 +1,63 @@
+import type { OpenAPIEventRepository } from "./event.repository.js";
+import type { IngestEvent } from "./event.schema.js";
+import { OpenAPIEventService } from "./event.service.js";
+
+function event(overrides: Partial<IngestEvent> = {}): IngestEvent {
+  return {
+    eventId: "event-1",
+    clientId: "client-1",
+    runId: "run-1",
+    agentName: "support-agent",
+    eventType: "USER_INPUT",
+    label: "input",
+    payload: {},
+    timestamp: Date.now(),
+    ...overrides,
+  };
+}
+
+describe("OpenAPIEventService", () => {
+  it("rejects a tenant hint that differs from the authenticated workspace", async () => {
+    const repository = {
+      findEvent: jest.fn(),
+      findOrCreateAgent: jest.fn(),
+      findOrCreateSession: jest.fn(),
+      saveEvent: jest.fn(),
+    } as unknown as OpenAPIEventRepository;
+    const service = new OpenAPIEventService(repository);
+
+    const result = await service.ingestBatch("workspace-1", "prod", [
+      event({ workspaceId: "workspace-2" }),
+    ]);
+
+    expect(result).toEqual({
+      success: false,
+      accepted: 0,
+      retryableEventIds: [],
+      rejectedEventIds: ["event-1"],
+    });
+    expect(repository.saveEvent).not.toHaveBeenCalled();
+  });
+
+  it("reports transient per-event failures without failing accepted events", async () => {
+    const repository = {
+      findEvent: jest.fn().mockResolvedValue(null),
+      findOrCreateAgent: jest
+        .fn()
+        .mockResolvedValueOnce({ id: "agent-1" })
+        .mockRejectedValueOnce(new Error("database unavailable")),
+      findOrCreateSession: jest.fn().mockResolvedValue({ id: "session-1" }),
+      saveEvent: jest.fn().mockResolvedValue({ id: "stored-event" }),
+    } as unknown as OpenAPIEventRepository;
+    const service = new OpenAPIEventService(repository);
+
+    const result = await service.ingestBatch("workspace-1", "prod", [
+      event(),
+      event({ eventId: "event-2" }),
+    ]);
+
+    expect(result.accepted).toBe(1);
+    expect(result.retryableEventIds).toEqual(["event-2"]);
+    expect(result.rejectedEventIds).toEqual([]);
+  });
+});

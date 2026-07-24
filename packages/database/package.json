@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "description": "",
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./src/index.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./src/index.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     }
@@ -14,7 +14,7 @@
   "scripts": {
     "build": "tsc",
     "seed:admin": "pnpm build && node dist/seeds/admin-user.seed.js",
-    "seed:plans": "pnpm build && node dist/seeds/workspace-plans.seed.js",
+    "seed:plans": "pnpm build && node dist/seeds/organization-plans.seed.js",
     "backfill:workspace-api-keys": "pnpm build && node dist/seeds/workspace-api-keys.backfill.js",
     "test": "echo 'No tests defined'"
   },
@@ -29,6 +29,7 @@
     "typeorm": "^0.3.20"
   },
   "devDependencies": {
-    "@types/node": "^25.9.3"
+    "@types/node": "25.9.3",
+    "typescript": "^5.9.2"
   }
 }

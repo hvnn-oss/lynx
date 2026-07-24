@@ -1,7 +1,7 @@
 "use client";
 
 import api from "@/lib/api";
-import { VerifyEmailTokenDto, VerifyEmailTokenResponseDto } from "@repo/dto";
+import { authContract, getAuthEndpointPath } from "@repo/contract";
 import { Button } from "@repo/ui/components/ui/button";
 import { DashRing } from "@repo/ui/components/ui/dash-ring";
 import {
@@ -45,15 +45,18 @@ export default function SignupForm({
         window.location.href = "/signup";
         throw Error("Couldn't find email verify token.");
       }
-      const reqBody: VerifyEmailTokenDto = {
-        token,
-      };
+      const request = authContract.verifyEmailToken.request.safeParse({ token });
+      if (!request.success) {
+        setError({ etc: "INVALID_SIGNUP_TOKEN" });
+        setLoading(false);
+        return;
+      }
       try {
-        const res = await api.post("/auth/signup/verify", reqBody);
-        const data = res.data as VerifyEmailTokenResponseDto;
-        if (!data.success) {
-          throw new Error();
-        }
+        const res = await api.post(
+          getAuthEndpointPath(authContract.verifyEmailToken),
+          request.data,
+        );
+        const data = authContract.verifyEmailToken.response.parse(res.data);
         setEmail(data.email);
         setLoading(false);
       } catch (error) {
@@ -88,9 +91,7 @@ export default function SignupForm({
   return (
     <div>
       <div className="mb-5">
-        <h1 className="text-lg font-semibold">
-          {t("register.profile.title")}
-        </h1>
+        <h1 className="text-lg font-semibold">{t("register.profile.title")}</h1>
         <p className="text-sm font-light">
           {t("register.profile.description")}
         </p>

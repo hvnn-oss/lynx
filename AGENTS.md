@@ -327,3 +327,16 @@ The short version:
   default.
 - Prefer reusable primitives from `packages/ui`; add shared components there
   before duplicating app-local UI.
+
+## Dependency and module safety
+
+이 저장소에서는 일반적인 코드 수정과 검증 과정에서 의존성 설치 상태를 변경하지 않는다.
+
+- 사용자가 명시적으로 요청하고 승인하지 않는 한 `pnpm install`, `pnpm add`, `pnpm remove`, `pnpm update`, `pnpm prune` 및 `--force`가 포함된 의존성 명령을 실행하지 않는다.
+- 사용자가 명시적으로 요청하고 승인하지 않는 한 `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.npmrc`의 의존성 및 패키지 매니저 설정을 변경하지 않는다.
+- 사용자가 명시적으로 요청하고 승인하지 않는 한 `node_modules`, pnpm store, workspace symlink 및 패키지 빌드 산출물을 삭제하거나 재생성하지 않는다.
+- 의존성 변경이 필요하다고 판단되면 먼저 원인, 변경할 파일과 패키지, 예상 영향을 사용자에게 설명하고 승인을 받은 뒤 진행한다.
+- 코드 변경 후에는 현재 설치된 의존성을 그대로 사용하여 가장 가까운 패키지의 타입 검사와 테스트부터 하나씩 실행한다. 검증 실패를 의존성 재설치로 자동 해결하지 않는다.
+- `Cannot find module`, 타입 정의 누락, workspace 패키지 해석 오류가 발생하면 먼저 `tsconfig`, package export, workspace alias, 빌드 산출물 의존 여부를 읽기 전용으로 조사한다.
+- 여러 빌드, 타입 검사, 테스트 또는 패키지 매니저 작업을 동시에 실행하여 시스템 부하를 높이지 않는다.
+- `.npmrc`, 환경 변수, 레지스트리 인증 정보 등 비밀값이 포함될 수 있는 파일이나 출력은 불필요하게 읽거나 노출하지 않는다.
