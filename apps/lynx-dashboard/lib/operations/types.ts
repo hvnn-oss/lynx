@@ -20,7 +20,7 @@ export interface IssueEvent {
   title: string;
   summary: string;
   timestamp: string;
-  type: "LLM_CALL" | "TOOL_CALL" | "POLICY_CHECK" | "GUARDRAIL_ACTIVATED";
+  type: "LLM_CALL" | "TOOL_CALL" | "POLICY_CHECK" | "FIREWALL_ACTIVATED";
   input?: string;
   output?: string;
   payload?: string;

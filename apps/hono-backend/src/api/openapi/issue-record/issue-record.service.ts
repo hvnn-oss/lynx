@@ -7,7 +7,7 @@ import {
 } from "@repo/constants";
 import type { IssueRecordEntity } from "@repo/database";
 import type { IssueRecordDetectionDecision } from "../../../common/types/issue.js";
-import { IssueService, issueService } from "../../issues/issue.service.js";
+import { IssueService, issueService } from "./issue.service.js";
 import {
   IssueRecordRepository,
   issueRecordRepository,
@@ -104,7 +104,10 @@ export class IssueRecordService {
         summary: decision.summary,
         category: decision.category ?? ISSUE_CATEGORY.MODEL_ERROR,
         severity: decision.severity ?? ISSUE_SEVERITY.WARNING,
-        source: ISSUE_SOURCE.SDK,
+        source:
+          claimed.record.detectionType === "PROMPT_REGRESSION"
+            ? ISSUE_SOURCE.DETECTOR
+            : ISSUE_SOURCE.SDK,
         environment: claimed.record.environment,
         agentId: context.agent.id,
         policyId: this.readPolicyId(claimed.record.reportedPolicyId),
@@ -121,8 +124,14 @@ export class IssueRecordService {
         detectorVersion: decision.evaluatorVersion,
         clientOccurrenceId: claimed.record.id,
         reporter: {
-          type: ISSUE_ACTOR_TYPE.SDK,
-          name: claimed.record.sdkInstanceId,
+          type:
+            claimed.record.detectionType === "PROMPT_REGRESSION"
+              ? ISSUE_ACTOR_TYPE.SYSTEM
+              : ISSUE_ACTOR_TYPE.SDK,
+          name:
+            claimed.record.detectionType === "PROMPT_REGRESSION"
+              ? "prompt-regression-detector"
+              : claimed.record.sdkInstanceId,
         },
         riskSignals: this.readStringArray(claimed.record.payload.riskSignals),
         tags: [claimed.record.detectionType],
@@ -183,7 +192,7 @@ export class IssueRecordService {
         reasonCode: "FIREWALL_BLOCKED",
         title: "Firewall blocked an agent action",
         summary: "The SDK firewall blocked a policy-violating agent action.",
-        category: ISSUE_CATEGORY.GUARDRAIL,
+        category: ISSUE_CATEGORY.FIREWALL,
         severity: ISSUE_SEVERITY.CRITICAL,
         isBlocked: true,
       };
@@ -195,7 +204,7 @@ export class IssueRecordService {
         reasonCode: "FIREWALL_WARNING",
         title: "Firewall detected a risky agent action",
         summary: "The SDK firewall reported a risky agent action.",
-        category: ISSUE_CATEGORY.GUARDRAIL,
+        category: ISSUE_CATEGORY.FIREWALL,
         severity: ISSUE_SEVERITY.WARNING,
         isBlocked: false,
       };
@@ -210,6 +219,25 @@ export class IssueRecordService {
         category: ISSUE_CATEGORY.LOOP,
         severity: ISSUE_SEVERITY.WARNING,
         isBlocked: false,
+      };
+    }
+    if (record.detectionType === "PROMPT_REGRESSION") {
+      return {
+        ...common,
+        action: "CREATE",
+        reasonCode: "PROMPT_VERSION_REGRESSION",
+        title: "Prompt version performance regressed",
+        summary:
+          "The deployed prompt version crossed a configured success, error, or cost regression threshold.",
+        category: ISSUE_CATEGORY.PROMPT_REGRESSION,
+        severity: ISSUE_SEVERITY.WARNING,
+        isBlocked: false,
+        evidence: {
+          ...common.evidence,
+          current: record.payload.current,
+          baseline: record.payload.baseline,
+          baseVersionId: record.payload.baseVersionId,
+        },
       };
     }
     return {

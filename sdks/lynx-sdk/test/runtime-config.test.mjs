@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import {
+  createHash,
+  generateKeyPairSync,
+  sign as signPayload,
+} from "node:crypto";
 import { afterEach, test } from "node:test";
 import { LynxPolicyError, LynxTracer } from "../dist/index.js";
 
@@ -48,18 +52,22 @@ test("getPrompt loads and caches the current managed prompt", async () => {
     );
   };
 
-  const tracer = createTracer();
+  const tracer = createTracer({
+    agentId: "675a2136-57fd-44af-8e1e-c77a7d2034c8",
+  });
   const first = await tracer.getPrompt("support-agent");
   const second = await tracer.getPrompt(first.promptId);
 
   assert.equal(first.content, "Be concise.");
   assert.strictEqual(first, second);
   assert.equal(requests.length, 1);
-  assert.equal(
-    requests[0].url,
-    "http://lynx.test/openapi/v1/runtime-config",
-  );
+  assert.equal(requests[0].url, "http://lynx.test/openapi/v1/runtime-config");
   assert.equal(requests[0].headers["X-API-Key"], "test-api-key");
+  assert.equal(requests[0].headers["X-Lynx-Client-ID"], "test-client");
+  assert.equal(
+    requests[0].headers["X-Lynx-Agent-ID"],
+    "675a2136-57fd-44af-8e1e-c77a7d2034c8",
+  );
   assert.equal(tracer.getStatus().runtimeConfig.state, "READY");
   await tracer.shutdown();
 });
@@ -116,7 +124,10 @@ test("a failed refresh preserves the last-known-good bundle", async () => {
   const stable = await tracer.getPrompt("support-agent");
   await assert.rejects(() => tracer.getPrompt("missing-prompt"));
 
-  assert.equal((await tracer.getPrompt("support-agent")).content, stable.content);
+  assert.equal(
+    (await tracer.getPrompt("support-agent")).content,
+    stable.content,
+  );
   assert.equal(tracer.getStatus().runtimeConfig.state, "STALE");
   await tracer.shutdown();
 });
@@ -140,7 +151,7 @@ test("automatic first-run loading fails open when Lynx is unavailable", async ()
   await tracer.shutdown();
 });
 
-test("guardTool blocks a call that matches a cached managed policy", async () => {
+test("firewallTool blocks a call that matches a cached managed policy", async () => {
   const telemetry = [];
   const issueRecords = [];
   globalThis.fetch = async (url, init) => {
@@ -180,7 +191,7 @@ test("guardTool blocks a call that matches a cached managed policy", async () =>
   };
   const tracer = createTracer({ runtimeConfig: { enabled: true } });
   let executed = false;
-  const destructiveTool = tracer.guardTool(
+  const destructiveTool = tracer.firewallTool(
     "delete-account",
     async () => {
       executed = true;
@@ -237,14 +248,164 @@ test("managed policies can match nested tool input without evaluating JavaScript
     return new Response(JSON.stringify({ success: true }), { status: 200 });
   };
   const tracer = createTracer({ runtimeConfig: { enabled: true } });
-  const refund = tracer.guardTool(
-    "refund",
-    async ({ amount }) => amount,
-    { riskLevel: "HIGH" },
-  );
+  const refund = tracer.firewallTool("refund", async ({ amount }) => amount, {
+    riskLevel: "HIGH",
+  });
 
   await assert.rejects(() =>
     tracer.run("SupportAgent", () => refund({ amount: 500 })),
+  );
+  await tracer.shutdown();
+});
+
+test("managed policies support boolean groups and run-local state", async () => {
+  globalThis.fetch = async (url) => {
+    if (String(url).endsWith("/runtime-config")) {
+      return new Response(
+        JSON.stringify({
+          revision: "state-policy-1",
+          prompts: [],
+          policies: [
+            {
+              policyId: "19",
+              name: "Repeated critical refund",
+              description: null,
+              version: "v1",
+              condition:
+                "(tool.riskLevel == 'CRITICAL' AND state.callCount >= 2) OR state.totalCost > 10",
+              severity: "CRITICAL",
+              action: "BLOCK",
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    }
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+  const tracer = createTracer({ runtimeConfig: { enabled: true } });
+  const refund = tracer.firewallTool("refund", async ({ amount }) => amount, {
+    riskLevel: "CRITICAL",
+  });
+
+  await tracer.run("SupportAgent", async () => {
+    assert.equal(await refund({ amount: 10 }), 10);
+    await assert.rejects(() => refund({ amount: 20 }), LynxPolicyError);
+  });
+  await tracer.shutdown();
+});
+
+test("an approved REQUIRE_APPROVAL decision resumes the original tool call", async () => {
+  let approvalPolls = 0;
+  globalThis.fetch = async (url, init) => {
+    const path = String(url);
+    if (path.endsWith("/runtime-config")) {
+      return new Response(
+        JSON.stringify({
+          revision: "approval-policy-1",
+          prompts: [],
+          policies: [
+            {
+              policyId: "20",
+              name: "Approve external write",
+              description: "Operator approval required.",
+              version: "v1",
+              condition: "tool.sideEffect == true",
+              severity: "HIGH",
+              action: "REQUIRE_APPROVAL",
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    }
+    if (path.endsWith("/firewall-approvals") && init.method === "POST") {
+      return new Response(
+        JSON.stringify({
+          id: "8c6e30bd-e743-4bc3-b430-074184c9c887",
+          status: "PENDING",
+          expiresAt: "2026-07-25T12:00:00.000Z",
+          decidedAt: null,
+          decisionReason: null,
+        }),
+        { status: 201 },
+      );
+    }
+    if (path.includes("/firewall-approvals/")) {
+      approvalPolls += 1;
+      return new Response(
+        JSON.stringify({
+          id: "8c6e30bd-e743-4bc3-b430-074184c9c887",
+          status: "APPROVED",
+          expiresAt: "2026-07-25T12:00:00.000Z",
+          decidedAt: "2026-07-25T11:00:00.000Z",
+          decisionReason: "Approved by operator.",
+        }),
+        { status: 200 },
+      );
+    }
+    if (path.endsWith("/issue-records")) {
+      return new Response(
+        JSON.stringify({
+          recordId: "4acb9bfb-36c7-49bc-bd69-13a930cff154",
+          status: "RECEIVED",
+          isNew: true,
+        }),
+        { status: 202 },
+      );
+    }
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+  const tracer = createTracer({
+    runtimeConfig: { enabled: true },
+    approval: { enabled: true, pollIntervalMs: 1, timeoutMs: 1_000 },
+  });
+  const write = tracer.firewallTool("external.write", async () => "completed", {
+    sideEffect: true,
+    riskLevel: "HIGH",
+  });
+
+  const result = await tracer.run("SupportAgent", () => write({ value: 1 }));
+  await tracer.shutdown();
+
+  assert.equal(result, "completed");
+  assert.equal(approvalPolls, 1);
+});
+
+test("a tampered signed runtime bundle is rejected", async () => {
+  const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+  const prompts = [prompt("v1", "Signed prompt")];
+  const policies = [];
+  const revision = "signed-revision-1";
+  const signature = signPayload(
+    null,
+    Buffer.from(JSON.stringify({ revision, prompts, policies })),
+    privateKey,
+  ).toString("base64url");
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        revision,
+        prompts: [{ ...prompts[0], content: "Tampered prompt" }],
+        policies,
+        signing: { algorithm: "Ed25519", keyId: "test", signature },
+      }),
+      { status: 200 },
+    );
+  const tracer = createTracer({
+    runtimeConfig: {
+      enabled: false,
+      requireSignature: true,
+      signaturePublicKey: publicKey.export({
+        type: "spki",
+        format: "pem",
+      }),
+    },
+  });
+
+  await assert.rejects(
+    () => tracer.getPrompt("support-agent"),
+    /integrity check|signature verification/,
   );
   await tracer.shutdown();
 });
@@ -292,7 +453,7 @@ test("issue reporting failure does not fail an allowed tool call", async () => {
   const tracer = createTracer({
     issueReporting: { enabled: true, maxAttempts: 2 },
   });
-  const warnedTool = tracer.guardTool(
+  const warnedTool = tracer.firewallTool(
     "external-search",
     async () => "result",
     {

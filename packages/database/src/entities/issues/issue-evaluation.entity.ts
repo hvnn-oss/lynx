@@ -31,6 +31,12 @@ import { IssueRecordEntity } from "./issue-record.entity";
   "stableFingerprintVersion",
   "stableFingerprint",
 ])
+@Index("IDX_issue_evaluation_matched_issue_created", [
+  "workspaceId",
+  "matchedIssueId",
+  "createdAt",
+  "id",
+])
 export class IssueEvaluationEntity {
   @PrimaryGeneratedColumn("uuid")
   id!: string;

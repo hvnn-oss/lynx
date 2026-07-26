@@ -112,7 +112,7 @@ Advanced filters:
 - Policy version
 - Latency/cost/token range
 - Error type
-- Guardrail status
+- Firewall status
 - SDK version
 
 Search placeholders should be explicit, for example:

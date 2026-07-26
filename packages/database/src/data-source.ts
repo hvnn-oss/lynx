@@ -6,8 +6,10 @@ import { OidcAccountEntity } from "./entities/auth/oidc-account.entity";
 import { UserAccountEntity } from "./entities/auth/user-account.entity";
 import { TrialClaimEntity } from "./entities/auth/trial-claim.entity";
 import { EventEntity } from "./entities/event/event.entity";
-import { GuardrailPolicyEntity } from "./entities/guardrail/policy.entity";
-import { GuardrailViolationEntity } from "./entities/guardrail/violation.entity";
+import { FirewallPolicyEntity } from "./entities/firewall/policy.entity";
+import { FirewallPolicyRevisionEntity } from "./entities/firewall/policy-revision.entity";
+import { FirewallViolationEntity } from "./entities/firewall/violation.entity";
+import { FirewallApprovalRequestEntity } from "./entities/firewall/approval-request.entity";
 import { IssueActivityEntity } from "./entities/issues/issue-activity.entity";
 import { IssueAssigneeEntity } from "./entities/issues/issue-assignee.entity";
 import { IssueOccurrenceEntity } from "./entities/issues/issue-occurrence.entity";
@@ -27,6 +29,8 @@ import { WorkspaceEntity } from "./entities/organization/workspace.entity";
 import { PromptBlockEntity } from "./entities/prompt/prompt-block.entity";
 import { PromptVersionEntity } from "./entities/prompt/prompt-version.entity";
 import { PromptEntity } from "./entities/prompt/prompt.entity";
+import { PromptDeploymentEntity } from "./entities/prompt/prompt-deployment.entity";
+import { PromptExperimentEntity } from "./entities/prompt/prompt-experiment.entity";
 import { SessionEntity } from "./entities/session/session.entity";
 import { RunEntity } from "./entities/run/run.entity";
 import { WorkspaceApiKeyEntity } from "./entities/workspace/workspace-api-key.entity";
@@ -36,6 +40,11 @@ import { AddEventIngestionIndexes1784797200000 } from "./migrations/178479720000
 import { AddOrganizationPlans1784883600000 } from "./migrations/1784883600000-add-organization-plans";
 import { AddIssueTracking1784887200000 } from "./migrations/1784887200000-add-issue-tracking";
 import { SeparateRunsFromSessions1784973600000 } from "./migrations/1784973600000-separate-runs-from-sessions";
+import { AddIssueQueryIndexes1785060000000 } from "./migrations/1785060000000-add-issue-query-indexes";
+import { AddProfileImages1785146400000 } from "./migrations/1785146400000-add-profile-images";
+import { AddFirewallPolicyManagement1785232800000 } from "./migrations/1785232800000-add-firewall-policy-management";
+import { AddFirewallApprovalsAndWebhooks1785319200000 } from "./migrations/1785319200000-add-firewall-approvals-and-webhooks";
+import { AddPromptOperations1785405600000 } from "./migrations/1785405600000-add-prompt-operations";
 import { loadDatabaseEnv } from "./load-env";
 
 loadDatabaseEnv();
@@ -99,8 +108,10 @@ export const AppDataSource = new DataSource({
     UserAccountEntity,
     TrialClaimEntity,
     EventEntity,
-    GuardrailPolicyEntity,
-    GuardrailViolationEntity,
+    FirewallPolicyEntity,
+    FirewallPolicyRevisionEntity,
+    FirewallViolationEntity,
+    FirewallApprovalRequestEntity,
     IssueActivityEntity,
     IssueAssigneeEntity,
     IssueOccurrenceEntity,
@@ -121,6 +132,8 @@ export const AppDataSource = new DataSource({
     PromptBlockEntity,
     PromptVersionEntity,
     PromptEntity,
+    PromptDeploymentEntity,
+    PromptExperimentEntity,
     SessionEntity,
     RunEntity,
     FilterPolicyEntity,
@@ -131,6 +144,11 @@ export const AppDataSource = new DataSource({
     AddOrganizationPlans1784883600000,
     AddIssueTracking1784887200000,
     SeparateRunsFromSessions1784973600000,
+    AddIssueQueryIndexes1785060000000,
+    AddProfileImages1785146400000,
+    AddFirewallPolicyManagement1785232800000,
+    AddFirewallApprovalsAndWebhooks1785319200000,
+    AddPromptOperations1785405600000,
   ],
   subscribers: [],
 });

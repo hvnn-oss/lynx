@@ -1,6 +1,6 @@
 import type { IssueRecordRepository } from "./issue-record.repository.js";
 import { IssueRecordService } from "./issue-record.service.js";
-import type { IssueService } from "../issues/issue.service.js";
+import type { IssueService } from "./issue.service.js";
 
 describe("IssueRecordService", () => {
   it("stores the original record without evaluating it", async () => {

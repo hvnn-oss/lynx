@@ -6,7 +6,7 @@ import {
   PrimaryGeneratedColumn,
 } from "typeorm";
 import { AgentEntity } from "../agent/agent.entity";
-import { GuardrailPolicyEntity } from "../guardrail/policy.entity";
+import { FirewallPolicyEntity } from "../firewall/policy.entity";
 import { PromptVersionEntity } from "../prompt/prompt-version.entity";
 import { SessionEntity } from "../session/session.entity";
 import { WorkspaceApiKeyEntity } from "../workspace/workspace-api-key.entity";
@@ -57,8 +57,8 @@ export class WorkspaceEntity {
   prompts!: PromptVersionEntity[];
 
   @OneToMany(
-    () => GuardrailPolicyEntity,
-    (guardrailPolicy: GuardrailPolicyEntity) => guardrailPolicy.workspace,
+    () => FirewallPolicyEntity,
+    (firewallPolicy: FirewallPolicyEntity) => firewallPolicy.workspace,
   )
-  guardrailPolicy!: GuardrailPolicyEntity[];
+  firewallPolicy!: FirewallPolicyEntity[];
 }

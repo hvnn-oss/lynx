@@ -81,7 +81,7 @@ const pageData: Record<
     items: [
       { title: "리서치 요약 agent", description: "긴 컨텍스트와 LLM retry", value: "$62.40", tone: "warning" },
       { title: "환불 상담 agent", description: "고객 상담 production", value: "$48.12" },
-      { title: "고객 지원 agent", description: "PII guardrail 포함", value: "$31.72" },
+      { title: "고객 지원 agent", description: "PII firewall 포함", value: "$31.72" },
       { title: "온콜 triage agent", description: "야간 batch run", value: "$22.09" },
       { title: "문서 검색 agent", description: "retriever span 중심", value: "$19.87" },
     ],

@@ -54,6 +54,26 @@ const envSchema = z.object({
   SMTP_SECURE: booleanFromEnv.default(false),
   SMTP_FROM_EMAIL: z.email(),
 
+  IMAGE_STORAGE_DRIVER: z.enum(["s3"]).default("s3"),
+  IMAGE_S3_REGION: z.string().trim().min(1).optional(),
+  IMAGE_S3_BUCKET: z.string().trim().min(1).optional(),
+  IMAGE_S3_ENDPOINT: z.url().optional(),
+  IMAGE_S3_ACCESS_KEY_ID: z.string().trim().min(1).optional(),
+  IMAGE_S3_SECRET_ACCESS_KEY: z.string().trim().min(1).optional(),
+  IMAGE_S3_SESSION_TOKEN: z.string().trim().min(1).optional(),
+  IMAGE_S3_FORCE_PATH_STYLE: booleanFromEnv.default(false),
+  IMAGE_CDN_BASE_URL: z.url().optional(),
+  IMAGE_MAX_UPLOAD_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(5 * 1024 * 1024),
+
+  RUNTIME_CONFIG_SIGNING_PRIVATE_KEY: z.string().trim().min(1).optional(),
+  RUNTIME_CONFIG_SIGNING_KEY_ID: z.string().trim().min(1).default("default"),
+  FIREWALL_WEBHOOK_SIGNING_SECRET: z.string().trim().min(16).optional(),
+  FIREWALL_WEBHOOK_ALLOW_PRIVATE_NETWORK: booleanFromEnv.default(false),
+
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info"),

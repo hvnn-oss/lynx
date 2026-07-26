@@ -1,6 +1,6 @@
-import api from "@/lib/api";
+import { requestContract } from "@/lib/api";
 import { ERROR_CODES } from "@repo/constants";
-import { authContract, getAuthEndpointPath } from "@repo/contract";
+import { authContract } from "@repo/contract";
 import { Button } from "@repo/ui/components/ui/button";
 import { DashRing } from "@repo/ui/components/ui/dash-ring";
 import {
@@ -40,28 +40,30 @@ export default function RegisterEmailVerifyForm({
       return;
     }
     try {
-      const res = await api.post(
-        getAuthEndpointPath(authContract.createEmailVerification),
-        request.data,
-      );
-      authContract.createEmailVerification.response.parse(res.data);
+      await requestContract({
+        basePath: authContract.basePath,
+        endpoint: authContract.createEmailVerification,
+        request: request.data,
+      });
       onSuccess(email);
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        if (error.response?.data.error_code === ERROR_CODES.ORG_MUST_USE_SSO) {
+        const errorCode =
+          error.response?.data.code ?? error.response?.data.error_code;
+        if (errorCode === ERROR_CODES.ORG_MUST_USE_SSO) {
           setError("errors.org-must-use-sso");
           setLoading(false);
           return;
         }
         if (
-          error.response?.data.error_code === ERROR_CODES.COULD_NOT_SEND_EMAIL
+          errorCode === ERROR_CODES.COULD_NOT_SEND_EMAIL
         ) {
           setError("errors.could-not-send-email");
           setLoading(false);
           return;
         }
         if (
-          error.response?.data.error_code === ERROR_CODES.USER_ALREADY_EXISTS
+          errorCode === ERROR_CODES.USER_ALREADY_EXISTS
         ) {
           setError("errors.user_already_exists");
           setLoading(false);

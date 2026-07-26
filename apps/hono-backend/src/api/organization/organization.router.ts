@@ -15,3 +15,23 @@ orgRouter.on(
   organizationContract.create.path,
   ...orgHandlers.createOrg,
 );
+orgRouter.on(
+  organizationContract.getProfile.method,
+  organizationContract.getProfile.path,
+  ...orgHandlers.getProfile,
+);
+orgRouter.on(
+  organizationContract.updateProfile.method,
+  organizationContract.updateProfile.path,
+  ...orgHandlers.updateProfile,
+);
+orgRouter.on(
+  organizationContract.listMembers.method,
+  organizationContract.listMembers.path,
+  ...orgHandlers.listMembers,
+);
+orgRouter.on(
+  organizationContract.uploadProfileImage.method,
+  organizationContract.uploadProfileImage.path,
+  ...orgHandlers.uploadProfileImage,
+);

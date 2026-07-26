@@ -108,7 +108,7 @@ export class AddIssueTracking1784887200000 implements MigrationInterface {
         CONSTRAINT "CHK_issue_category"
           CHECK ("category" IN (
             'TOOL_RISK',
-            'GUARDRAIL',
+            'FIREWALL',
             'LOOP',
             'MODEL_ERROR',
             'PROMPT_REGRESSION',
@@ -137,7 +137,7 @@ export class AddIssueTracking1784887200000 implements MigrationInterface {
           FOREIGN KEY ("agentId") REFERENCES "agent"("id")
           ON DELETE SET NULL,
         CONSTRAINT "FK_issue_policy"
-          FOREIGN KEY ("policyId") REFERENCES "guardrail-policy"("id")
+          FOREIGN KEY ("policyId") REFERENCES "firewall-policy"("id")
           ON DELETE SET NULL,
         CONSTRAINT "FK_issue_prompt_version"
           FOREIGN KEY ("representativePromptVersionId")
@@ -184,7 +184,7 @@ export class AddIssueTracking1784887200000 implements MigrationInterface {
         "issueId" uuid NOT NULL,
         "sessionId" uuid NOT NULL,
         "eventId" uuid,
-        "guardrailViolationId" uuid,
+        "firewallViolationId" uuid,
         "agentId" uuid,
         "policyId" bigint,
         "promptVersionId" uuid,
@@ -212,14 +212,14 @@ export class AddIssueTracking1784887200000 implements MigrationInterface {
         CONSTRAINT "FK_issue_occurrence_event"
           FOREIGN KEY ("eventId") REFERENCES "event"("id")
           ON DELETE SET NULL,
-        CONSTRAINT "FK_issue_occurrence_guardrail_violation"
-          FOREIGN KEY ("guardrailViolationId") REFERENCES "guardrail-violation"("id")
+        CONSTRAINT "FK_issue_occurrence_firewall_violation"
+          FOREIGN KEY ("firewallViolationId") REFERENCES "firewall-violation"("id")
           ON DELETE SET NULL,
         CONSTRAINT "FK_issue_occurrence_agent"
           FOREIGN KEY ("agentId") REFERENCES "agent"("id")
           ON DELETE SET NULL,
         CONSTRAINT "FK_issue_occurrence_policy"
-          FOREIGN KEY ("policyId") REFERENCES "guardrail-policy"("id")
+          FOREIGN KEY ("policyId") REFERENCES "firewall-policy"("id")
           ON DELETE SET NULL,
         CONSTRAINT "FK_issue_occurrence_prompt_version"
           FOREIGN KEY ("promptVersionId") REFERENCES "prompt-version"("id")

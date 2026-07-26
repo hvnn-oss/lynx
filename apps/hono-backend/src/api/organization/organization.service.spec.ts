@@ -1,8 +1,10 @@
-import { ERROR_CODES } from "@repo/constants";
+import { ERROR_CODES, USER_PERMISSIONS } from "@repo/constants";
 import type { UserEntitlementEntity } from "@repo/database";
 import { randomUUID } from "node:crypto";
 import { HTTPException } from "hono/http-exception";
 import type { EntityManager } from "typeorm";
+import type { AccessControlService } from "../../common/access-control/access-control.service.js";
+import type { ImageService } from "../../provider/image/image.service.js";
 import type { OrganizationRepository } from "./organization.repository.js";
 import { OrganizationService } from "./organization.service.js";
 
@@ -95,5 +97,58 @@ describe("OrganizationService", () => {
     });
     expect(repository.countOwnedOrganizations).not.toHaveBeenCalled();
     expect(repository.createRecords).not.toHaveBeenCalled();
+  });
+
+  it("조직 관리자에게 조직 프로필 이미지 변경을 허용한다", async () => {
+    const organizationId = randomUUID();
+    const repository = createRepository({
+      findProfile: jest.fn().mockResolvedValue({
+        organization: {
+          id: organizationId,
+          name: "Lynx",
+          profileImageKey: null,
+        },
+        role: USER_PERMISSIONS.ADMIN,
+      }),
+      updateProfileImageKey: jest.fn(),
+    } as Partial<OrganizationRepository>);
+    const accessControl = {
+      assertOrganizationCapability: jest.fn(),
+    } as unknown as AccessControlService;
+    const images = {
+      upload: jest.fn().mockResolvedValue({
+        storageKey: `profile-images/organizations/${organizationId}/profile`,
+        url: "https://images.example.com/organization",
+      }),
+    } as unknown as ImageService;
+    const service = new OrganizationService(
+      repository,
+      accessControl,
+      () => images,
+    );
+
+    await expect(
+      service.uploadProfileImage({
+        userId: input.userId,
+        organizationId,
+        upload: {
+          contentType: "image/png",
+          bytes: new Uint8Array([1, 2]),
+        },
+      }),
+    ).resolves.toEqual({
+      profileImageUrl: "https://images.example.com/organization",
+    });
+
+    expect(images.upload).toHaveBeenCalledWith({
+      ownerType: "organization",
+      ownerId: organizationId,
+      contentType: "image/png",
+      bytes: new Uint8Array([1, 2]),
+    });
+    expect(repository.updateProfileImageKey).toHaveBeenCalledWith(
+      organizationId,
+      `profile-images/organizations/${organizationId}/profile`,
+    );
   });
 });

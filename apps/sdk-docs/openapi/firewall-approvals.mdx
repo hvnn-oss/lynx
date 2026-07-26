@@ -1,0 +1,89 @@
+---
+title: "Request firewall approval"
+description: "Pause a protected tool call until an operator approves or rejects it."
+---
+
+Use the approval API when a local firewall policy returns
+`REQUIRE_APPROVAL`. The integration creates one request, polls its status for a
+bounded time, and executes the protected tool only after an `APPROVED` result.
+
+Both endpoints require a stable `X-Lynx-Client-ID` header. Lynx uses it with
+`clientRequestId` to make retries idempotent and to prevent another SDK instance
+from reading the request.
+
+## Create a request
+
+`POST /openapi/v1/firewall-approvals` requires `events:write`.
+
+```bash
+curl --request POST \
+  --url https://api.lynxops.co/openapi/v1/firewall-approvals \
+  --header "X-API-Key: $LYNX_API_KEY" \
+  --header "X-Lynx-Client-ID: support-worker-01" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "clientRequestId": "approval_refund_run_01JZQ3VY4K",
+    "runId": "run_01JZQ3VY4K",
+    "sessionId": "session_customer_42",
+    "agentId": "support-agent",
+    "policyId": "17",
+    "toolName": "refund",
+    "inputHash": "b11c0c8f2dbe3be223af31f44a9faca0f8f5d4ff2595428815ed4de6c56e4f35",
+    "reason": "Refund exceeds the automatic approval limit.",
+    "timeoutMs": 300000
+  }'
+```
+
+`timeoutMs` must be between 1 second and 24 hours. Keep
+`clientRequestId` stable when retrying the same protected tool call. Do not reuse
+it for a different call.
+
+The API returns `201` with the current request state:
+
+```json
+{
+  "id": "2cbde2b2-a22d-4b52-b304-7fe45eec8391",
+  "status": "PENDING",
+  "expiresAt": "2026-07-25T06:30:00.000Z",
+  "decidedAt": null,
+  "decisionReason": null
+}
+```
+
+## Poll the result
+
+`GET /openapi/v1/firewall-approvals/{approvalId}` requires `policies:read`.
+Send the same `X-Lynx-Client-ID` used to create the request.
+
+```bash
+curl --request GET \
+  --url https://api.lynxops.co/openapi/v1/firewall-approvals/2cbde2b2-a22d-4b52-b304-7fe45eec8391 \
+  --header "X-API-Key: $LYNX_API_KEY" \
+  --header "X-Lynx-Client-ID: support-worker-01"
+```
+
+Possible statuses are:
+
+- `PENDING`: wait before polling again.
+- `APPROVED`: execute the exact protected call associated with `inputHash`.
+- `REJECTED`: do not execute the tool.
+- `EXPIRED`: do not execute the tool.
+
+Use a fixed or jittered polling interval of at least one second and stop at the
+local deadline. Network errors, timeouts, invalid responses, and unexpected
+statuses must never allow the tool to run implicitly.
+
+## Recommended flow
+
+1. Evaluate the active firewall policy locally.
+2. Create an approval request only for `REQUIRE_APPROVAL`.
+3. Preserve the request ID and `clientRequestId` across retries.
+4. Poll until approved, rejected, expired, or the local deadline is reached.
+5. Before execution, verify the tool name and input hash still match.
+6. Record the approval result in the same run and session.
+
+<Warning>
+  Tool arguments and approval reasons may contain sensitive data. Send a
+  deterministic hash instead of raw tool input, mask secrets in the reason, and
+  never log the API key or approval credentials.
+</Warning>

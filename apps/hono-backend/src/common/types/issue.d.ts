@@ -45,7 +45,7 @@ export interface RecordIssueInput {
   promptVersionId?: string;
   sessionId: string;
   eventId?: string;
-  guardrailViolationId?: string;
+  firewallViolationId?: string;
   isBlocked: boolean;
   detectedAt: Date;
   evidence?: Record<string, unknown>;

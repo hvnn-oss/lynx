@@ -1,4 +1,9 @@
 import { SDK_VERSION } from "../version.js";
+import {
+  SdkIngestEventBatchResponseSchema,
+  SdkIngestEventBatchSchema,
+  type SdkIngestEventBatchResponse,
+} from "@repo/sdk-types";
 import type { LynxEventDto } from "../core/types.js";
 import type {
   DeliveryBatchResult,
@@ -24,13 +29,27 @@ export class HttpTransport implements LynxTransport {
   }
 
   async sendBatch(events: LynxEventDto[]): Promise<DeliveryBatchResult> {
+    // The public ingestion API always requires a Workspace API key. Treat a
+    // missing key as a local configuration error instead of generating noisy,
+    // guaranteed-to-fail network requests.
+    if (!this.options.apiKey) {
+      return { status: "permanent-error", reason: "api_key_missing" };
+    }
+    const request = SdkIngestEventBatchSchema.safeParse(events);
+    if (!request.success) {
+      return {
+        status: "permanent-error",
+        reason: "request_contract_invalid",
+      };
+    }
+
     try {
       const response = await this.fetchImpl(
         `${this.options.endpoint}/openapi/v1/events/batch`,
         {
           method: "POST",
           headers: this.createHeaders(),
-          body: JSON.stringify(events),
+          body: JSON.stringify(request.data),
           signal: AbortSignal.timeout(this.options.timeoutMs),
         },
       );
@@ -39,8 +58,16 @@ export class HttpTransport implements LynxTransport {
         return this.classifyHttpError(response);
       }
 
-      const body = await response.json().catch(() => undefined);
-      return this.parseSuccessResponse(body);
+      const body = SdkIngestEventBatchResponseSchema.safeParse(
+        await response.json().catch(() => undefined),
+      );
+      if (!body.success) {
+        return {
+          status: "retryable-error",
+          reason: "response_contract_invalid",
+        };
+      }
+      return this.parseSuccessResponse(body.data);
     } catch {
       // Network errors and timeouts are retryable. The SDK deliberately avoids
       // logging the raw error because runtimes may attach request credentials.
@@ -72,9 +99,9 @@ export class HttpTransport implements LynxTransport {
     return { status: "permanent-error", reason: `http_${response.status}` };
   }
 
-  private parseSuccessResponse(body: unknown): DeliveryBatchResult {
-    if (!body || typeof body !== "object") return { status: "success" };
-    const result = body as Record<string, unknown>;
+  private parseSuccessResponse(
+    result: SdkIngestEventBatchResponse,
+  ): DeliveryBatchResult {
     if (result.success !== false) return { status: "success" };
 
     const retryableEventIds = this.readEventIds(result.retryableEventIds);

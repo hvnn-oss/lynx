@@ -1,6 +1,6 @@
 ---
 title: "API 레퍼런스"
-description: "LynxTracer, 기본 lynx 인스턴스, 가드레일 오류, SDK 옵션을 정리합니다."
+description: "LynxTracer, 기본 lynx 인스턴스, 방화벽 오류, SDK 옵션을 정리합니다."
 ---
 
 이 문서는 주요 SDK API를 빠르게 확인하기 위한 레퍼런스입니다. 자세한 예시는 각 기능 문서를 참고하세요.
@@ -77,7 +77,7 @@ await lynx.run(
 | --- | --- |
 | `instrumentLLM(client, options?)` | LLM 클라이언트 객체를 감쌉니다. |
 | `instrumentTool(name, fn, metadata?)` | 도구 함수를 감쌉니다. |
-| `guardTool(name, fn, options?)` | 도구 함수를 로컬 정책 평가와 함께 감쌉니다. |
+| `firewallTool(name, fn, options?)` | 도구 함수를 로컬 정책 평가와 함께 감쌉니다. |
 
 ## 전송 helper
 
@@ -89,7 +89,7 @@ await lynx.run(
 
 ## `LynxPolicyError`
 
-`guardTool()`이 도구 호출을 차단하면 `LynxPolicyError`를 던집니다.
+`firewallTool()`이 도구 호출을 차단하면 `LynxPolicyError`를 던집니다.
 
 ```ts
 import { LynxPolicyError } from "@lynxops/sdk";

@@ -3,6 +3,10 @@ import type {
   RuntimeConfigTransport,
   RuntimeConfigTransportResult,
 } from "./runtime-config.types.js";
+import {
+  SdkRuntimeConfigRequestSchema,
+  SdkRuntimeConfigResponseSchema,
+} from "@repo/sdk-types";
 
 /** Connection details for the Lynx runtime configuration endpoint. */
 interface HttpRuntimeConfigTransportOptions {
@@ -12,6 +16,8 @@ interface HttpRuntimeConfigTransportOptions {
   apiKey?: string;
   /** Stable identifier for the SDK installation or host service. */
   clientId: string;
+  /** Optional managed Agent identifier used for Agent-scoped prompt deployments. */
+  agentId?: string;
   /** Maximum duration of one HTTP request. */
   timeoutMs: number;
 }
@@ -39,14 +45,21 @@ export class HttpRuntimeConfigTransport implements RuntimeConfigTransport {
 
     const controller = new AbortController();
     // AbortController bounds control-plane latency independently of telemetry.
-    const timeout = setTimeout(() => controller.abort(), this.options.timeoutMs);
+    const timeout = setTimeout(
+      () => controller.abort(),
+      this.options.timeoutMs,
+    );
     timeout.unref?.();
 
     try {
+      SdkRuntimeConfigRequestSchema.parse({});
       const headers: Record<string, string> = {
         "X-API-Key": this.options.apiKey,
         "X-Lynx-Client-ID": this.options.clientId,
       };
+      if (this.options.agentId) {
+        headers["X-Lynx-Agent-ID"] = this.options.agentId;
+      }
       if (etag) headers["If-None-Match"] = etag;
 
       const response = await fetch(
@@ -68,7 +81,9 @@ export class HttpRuntimeConfigTransport implements RuntimeConfigTransport {
       return {
         status: "UPDATED",
         etag: response.headers.get("etag") ?? undefined,
-        bundle: (await response.json()) as RuntimeConfigBundle,
+        bundle: SdkRuntimeConfigResponseSchema.parse(
+          await response.json(),
+        ) satisfies RuntimeConfigBundle,
       };
     } finally {
       clearTimeout(timeout);

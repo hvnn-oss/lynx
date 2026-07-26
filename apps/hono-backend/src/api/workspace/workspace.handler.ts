@@ -12,6 +12,14 @@ const factory = createFactory<AppEnv>();
  * @returns 라우터에 등록할 워크스페이스 생성 핸들러입니다.
  */
 export function createWorkspaceHandlers() {
+  const list = factory.createHandlers(async (c) =>
+    c.json(
+      workspaceContract.list.response.parse(
+        await workspaceService.listWorkspaces(c.get("currentUserId")),
+      ),
+    ),
+  );
+
   /** 조직 권한과 요금제 한도를 확인해 새 워크스페이스를 생성합니다. */
   const create = factory.createHandlers(
     zValidator("json", workspaceContract.create.request),
@@ -22,9 +30,7 @@ export function createWorkspaceHandlers() {
       });
 
       return c.json(
-        workspace satisfies z.infer<
-          typeof workspaceContract.create.response
-        >,
+        workspaceContract.create.response.parse(workspace),
         201,
       );
     },
@@ -45,19 +51,66 @@ export function createWorkspaceHandlers() {
         expiresAt: created.expiresAt?.toISOString() ?? null,
       } satisfies z.infer<typeof workspaceContract.createApiKey.response>;
 
-      return c.json(response, 201);
+      return c.json(
+        workspaceContract.createApiKey.response.parse(response),
+        201,
+      );
     },
+  );
+
+  const listApiKeys = factory.createHandlers(
+    zValidator("param", workspaceContract.listApiKeys.params!),
+    async (c) =>
+      c.json(
+        workspaceContract.listApiKeys.response.parse(
+          await workspaceService.listApiKeys({
+            userId: c.get("currentUserId"),
+            workspaceId: c.req.valid("param").workspaceId,
+          }),
+        ),
+      ),
+  );
+
+  const revokeApiKey = factory.createHandlers(
+    zValidator("param", workspaceContract.revokeApiKey.params!),
+    async (c) =>
+      c.json(
+        workspaceContract.revokeApiKey.response.parse(
+          await workspaceService.revokeApiKey({
+            userId: c.get("currentUserId"),
+            ...c.req.valid("param"),
+          }),
+        ),
+      ),
+  );
+
+  const deleteApiKey = factory.createHandlers(
+    zValidator("param", workspaceContract.deleteApiKey.params!),
+    async (c) =>
+      c.json(
+        workspaceContract.deleteApiKey.response.parse(
+          await workspaceService.deleteApiKey({
+            userId: c.get("currentUserId"),
+            ...c.req.valid("param"),
+          }),
+        ),
+      ),
   );
 
   /** 로그인 사용자가 접근 가능한 워크스페이스의 Run 목록을 반환합니다. */
   const listRuns = factory.createHandlers(
     zValidator("param", workspaceContract.listRuns.params!),
     zValidator("query", workspaceContract.listRuns.request),
-    async (c) => c.json(await workspaceService.listRuns({
-      userId: c.get("currentUserId"),
-      workspaceId: c.req.valid("param").workspaceId,
-      ...c.req.valid("query"),
-    })),
+    async (c) =>
+      c.json(
+        workspaceContract.listRuns.response.parse(
+          await workspaceService.listRuns({
+            userId: c.get("currentUserId"),
+            workspaceId: c.req.valid("param").workspaceId,
+            ...c.req.valid("query"),
+          }),
+        ),
+      ),
   );
 
   /** 로그인 사용자가 접근 가능한 Run의 Event 타임라인을 반환합니다. */
@@ -71,10 +124,19 @@ export function createWorkspaceHandlers() {
         runId: params.runId,
       });
       return run
-        ? c.json(run)
+        ? c.json(workspaceContract.getRun.response.parse(run))
         : c.json({ code: "RUN_NOT_FOUND", message: "Run was not found." }, 404);
     },
   );
 
-  return { create, createApiKey, listRuns, getRun };
+  return {
+    list,
+    create,
+    createApiKey,
+    listApiKeys,
+    revokeApiKey,
+    deleteApiKey,
+    listRuns,
+    getRun,
+  };
 }

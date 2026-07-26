@@ -1,0 +1,55 @@
+---
+title: "OpenAPI schema"
+description: "Download the machine-readable contract for SDK generation and API tooling."
+---
+
+Lynx publishes its public runtime contract as an OpenAPI 3.0 JSON document:
+
+```text
+https://api.lynxops.co/openapi.json
+```
+
+The schema endpoint is public and does not require an API key. Operations
+described by the schema still require their documented workspace API key
+scopes.
+
+```bash
+curl --fail \
+  --url https://api.lynxops.co/openapi.json \
+  --output lynx-openapi.json
+```
+
+The document includes:
+
+- request and response schemas generated from the same Zod DTOs used by the API;
+- `X-API-Key` authentication metadata;
+- the `x-required-scopes` extension for each operation;
+- path, query, and required SDK headers;
+- stable `operationId` values suitable for Python, Go, and other generators;
+- common error and rate-limit responses.
+
+## Generate a client
+
+Pass `lynx-openapi.json` to an OpenAPI 3-compatible generator. Keep the
+generated transport behind a small Lynx-specific layer that handles API keys,
+event batching, retries, local storage, and firewall policy evaluation.
+
+Generated clients cover the HTTP contract only. They do not automatically
+provide run context propagation, background delivery, bounded queues, local
+firewall decisions, approval polling deadlines, `flush()`, or `shutdown()`.
+
+## Compatibility
+
+The document uses the relative server URL `/openapi/v1`, so interactive tools
+use the same origin that served `openapi.json`. A generator may let you replace
+that URL with the Lynx host for each environment.
+
+Treat removed operations, removed fields, and newly required fields as breaking
+changes. Additive optional fields and new operations remain backward
+compatible.
+
+<Warning>
+  Generated clients still send prompts, tool arguments, model responses, logs,
+  or payload fields supplied by your integration. Mask sensitive values before
+  transmission and keep workspace API keys out of generated debug logs.
+</Warning>

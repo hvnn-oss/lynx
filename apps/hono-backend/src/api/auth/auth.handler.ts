@@ -4,7 +4,6 @@ import { authContract } from "@repo/contract";
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { createFactory } from "hono/factory";
-import type { z } from "zod";
 import { env } from "../../common/config/config.js";
 import { UnauthorizedErrorException } from "../../common/exceptions/unauthorized.js";
 import type { AppEnv } from "../../common/types/app-env.js";
@@ -12,6 +11,7 @@ import { authService } from "./auth.service.js";
 import { localAuthService } from "./local.service.js";
 
 const factory = createFactory<AppEnv>();
+const REFRESH_TOKEN_COOKIE_PATH = "/";
 
 /**
  * 인증 API의 입력 검증과 HTTP 응답 처리를 구성합니다.
@@ -26,9 +26,7 @@ export function createAuthHandlers() {
         c.req.valid("json"),
       );
       return c.json(
-        response satisfies z.infer<
-          typeof authContract.createEmailVerification.response
-        >,
+        authContract.createEmailVerification.response.parse(response),
         200,
       );
     },
@@ -40,9 +38,7 @@ export function createAuthHandlers() {
     async (c) => {
       const response = await authService.verifyEmail(c.req.valid("json").token);
       return c.json(
-        response satisfies z.infer<
-          typeof authContract.verifyEmailToken.response
-        >,
+        authContract.verifyEmailToken.response.parse(response),
         200,
       );
     },
@@ -54,7 +50,7 @@ export function createAuthHandlers() {
     async (c) => {
       const response = await authService.register(c.req.valid("json"));
       return c.json(
-        response satisfies z.infer<typeof authContract.signUp.response>,
+        authContract.signUp.response.parse(response),
         201,
       );
     },
@@ -76,49 +72,55 @@ export function createAuthHandlers() {
       setRefreshTokenCookie(c, refresh_token);
 
       return c.json(
-        {
+        authContract.login.response.parse({
           success: true,
           access_token,
-        } satisfies z.infer<typeof authContract.login.response>,
+        }),
         200,
       );
     },
   );
 
   /** 쿠키의 Refresh Token을 회전하고 새 Access Token을 반환합니다. */
-  const refresh = factory.createHandlers(async (c) => {
-    const refreshToken = getCookie(c, "rid");
-    if (!refreshToken) {
-      throw new UnauthorizedErrorException(ERROR_CODES.INVALID_REFRESH_TOKEN);
-    }
-    const { access_token, refresh_token } =
-      await authService.refresh(refreshToken);
-    setRefreshTokenCookie(c, refresh_token);
+  const refresh = factory.createHandlers(
+    zValidator("json", authContract.refresh.request),
+    async (c) => {
+      const refreshToken = getCookie(c, "rid");
+      if (!refreshToken) {
+        throw new UnauthorizedErrorException(
+          ERROR_CODES.INVALID_REFRESH_TOKEN,
+        );
+      }
+      const { access_token, refresh_token } =
+        await authService.refresh(refreshToken);
+      setRefreshTokenCookie(c, refresh_token);
 
-    return c.json(
-      { success: true, access_token } satisfies z.infer<
-        typeof authContract.refresh.response
-      >,
-      200,
-    );
-  });
+      return c.json(
+        authContract.refresh.response.parse({ success: true, access_token }),
+        200,
+      );
+    },
+  );
 
   /** 현재 Refresh Token 세션을 폐기하고 브라우저 쿠키를 제거합니다. */
-  const logout = factory.createHandlers(async (c) => {
-    const refreshToken = getCookie(c, "rid");
-    if (refreshToken) await authService.logout(refreshToken);
+  const logout = factory.createHandlers(
+    zValidator("json", authContract.logout.request),
+    async (c) => {
+      const refreshToken = getCookie(c, "rid");
+      if (refreshToken) await authService.logout(refreshToken);
 
-    deleteCookie(c, "rid", {
-      secure: env.NODE_ENV === "production",
-      sameSite: "Lax",
-      path: authContract.basePath,
-    });
+      deleteCookie(c, "rid", {
+        secure: env.NODE_ENV === "production",
+        sameSite: "Lax",
+        path: REFRESH_TOKEN_COOKIE_PATH,
+      });
 
-    return c.json(
-      { success: true } satisfies z.infer<typeof authContract.logout.response>,
-      200,
-    );
-  });
+      return c.json(
+        authContract.logout.response.parse({ success: true }),
+        200,
+      );
+    },
+  );
 
   return {
     createEmailVerification,
@@ -136,7 +138,7 @@ function setRefreshTokenCookie(c: Context<AppEnv>, refreshToken: string): void {
     httpOnly: true,
     secure: env.NODE_ENV === "production",
     sameSite: "Lax",
-    path: authContract.basePath,
+    path: REFRESH_TOKEN_COOKIE_PATH,
     maxAge: env.REFRESH_TOKEN_TTL_SECONDS,
   });
 }

@@ -1,9 +1,12 @@
 import {
   AgentEntity,
   EventEntity,
+  FirewallPolicyEntity,
+  FirewallViolationEntity,
   RunEntity,
   SessionEntity,
 } from "@repo/database";
+import type { EntityManager } from "typeorm";
 import { AppDataSource } from "../../provider/database/typeorm-config.js";
 import type { IngestEvent } from "./event.schema.js";
 
@@ -139,7 +142,13 @@ export class OpenAPIEventRepository {
   }
 
   /** Event 저장과 Run 집계 증가를 하나의 트랜잭션으로 처리합니다. */
-  async saveEvent(session: SessionEntity, run: RunEntity, event: IngestEvent) {
+  async saveEvent(
+    workspaceId: string,
+    agent: AgentEntity,
+    session: SessionEntity,
+    run: RunEntity,
+    event: IngestEvent,
+  ) {
     const usage = event.payload.usage as Record<string, unknown> | undefined;
     const latency = Number(event.payload.latency);
     const cost = Number(event.payload.cost);
@@ -163,6 +172,15 @@ export class OpenAPIEventRepository {
           session,
           run,
         }),
+      );
+
+      await this.saveFirewallViolation(
+        manager,
+        workspaceId,
+        agent,
+        session,
+        saved,
+        event,
       );
 
       const promptTokens = this.number(usage?.promptTokens);
@@ -190,6 +208,85 @@ export class OpenAPIEventRepository {
         .execute();
       return saved;
     });
+  }
+
+  /** 비허용 정책 평가 이벤트를 중복 없이 방화벽 위반 레코드로 남깁니다. */
+  private async saveFirewallViolation(
+    manager: EntityManager,
+    workspaceId: string,
+    agent: AgentEntity,
+    session: SessionEntity,
+    savedEvent: EventEntity,
+    event: IngestEvent,
+  ): Promise<void> {
+    if (event.eventType !== "POLICY_EVALUATION") return;
+    const action = String(event.payload.action ?? "ALLOW");
+    if (
+      action !== "WARN" &&
+      action !== "BLOCK" &&
+      action !== "REQUIRE_APPROVAL"
+    ) {
+      return;
+    }
+
+    const reportedPolicyId =
+      typeof event.payload.policyId === "string"
+        ? event.payload.policyId
+        : null;
+    const policy =
+      reportedPolicyId && /^\d+$/.test(reportedPolicyId)
+        ? await manager.getRepository(FirewallPolicyEntity).findOne({
+            where: {
+              id: Number(reportedPolicyId),
+              workspace: { id: workspaceId },
+            },
+          })
+        : null;
+    const metadata =
+      event.payload.metadata &&
+      typeof event.payload.metadata === "object" &&
+      !Array.isArray(event.payload.metadata)
+        ? (event.payload.metadata as Record<string, unknown>)
+        : null;
+    const evidence = {
+      argsHash:
+        typeof event.payload.argsHash === "string"
+          ? event.payload.argsHash
+          : null,
+      policyVersion:
+        typeof event.payload.policyVersion === "string"
+          ? event.payload.policyVersion
+          : null,
+      allow:
+        typeof event.payload.allow === "boolean" ? event.payload.allow : null,
+      metadata,
+    };
+    const violations = manager.getRepository(FirewallViolationEntity);
+    await violations.save(
+      violations.create({
+        action: action as FirewallViolationEntity["action"],
+        createdAt: new Date(event.timestamp),
+        workspaceId,
+        eventId: savedEvent.id,
+        reportedPolicyId,
+        toolName:
+          typeof event.payload.toolName === "string"
+            ? event.payload.toolName
+            : null,
+        severity:
+          typeof event.payload.severity === "string"
+            ? event.payload.severity
+            : null,
+        message:
+          typeof event.payload.reason === "string"
+            ? event.payload.reason
+            : null,
+        evidence,
+        reason: policy,
+        session,
+        agent,
+      }),
+    );
   }
 
   /** 최신순 복합 커서와 선택 필터를 적용해 Run 목록을 조회합니다. */

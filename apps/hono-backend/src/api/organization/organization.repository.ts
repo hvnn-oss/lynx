@@ -6,12 +6,65 @@ import {
   UserEntitlementEntity,
   UserEntity,
 } from "@repo/database";
+import type { UserPermissions } from "@repo/constants";
 import type { EntityManager } from "typeorm";
 import { AppDataSource } from "../../provider/database/typeorm-config.js";
 import { CreateOrganizationRecordInput } from "../../common/types/org.js";
 
 /** 조직 생성에 필요한 권한, 사용량, 영속화 작업을 제공합니다. */
 export class OrganizationRepository {
+  listMembers(organizationId: string) {
+    return AppDataSource.getRepository(OrganizationUserEntity).find({
+      where: { organization: { id: organizationId } },
+      relations: { user: true },
+      order: { joinedAt: "ASC", id: "ASC" },
+    });
+  }
+
+  /** 요청 사용자가 속한 조직의 프로필과 역할을 조회합니다. */
+  async findProfile(
+    organizationId: string,
+    userId: string,
+  ): Promise<{
+    organization: OrganizationEntity;
+    role: UserPermissions;
+  } | null> {
+    const membership = await AppDataSource.getRepository(
+      OrganizationUserEntity,
+    ).findOne({
+      where: {
+        organization: { id: organizationId },
+        user: { id: userId },
+      },
+      relations: { organization: true },
+    });
+    if (!membership) return null;
+
+    return {
+      organization: membership.organization,
+      role: membership.role,
+    };
+  }
+
+  /** 조직 이름을 변경합니다. */
+  async updateProfileName(organizationId: string, name: string): Promise<void> {
+    await AppDataSource.getRepository(OrganizationEntity).update(
+      { id: organizationId },
+      { name },
+    );
+  }
+
+  /** 조직 프로필 이미지 저장소 키를 변경합니다. */
+  async updateProfileImageKey(
+    organizationId: string,
+    profileImageKey: string,
+  ): Promise<void> {
+    await AppDataSource.getRepository(OrganizationEntity).update(
+      { id: organizationId },
+      { profileImageKey },
+    );
+  }
+
   /**
    * 사용자 권한 행을 잠그고 같은 사용자의 동시 조직 생성을 직렬화합니다.
    * @param manager 현재 조직 생성 트랜잭션의 엔티티 매니저입니다.

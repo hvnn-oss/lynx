@@ -3,12 +3,6 @@ import { createFactory } from "hono/factory";
 import { openAPIContract } from "@repo/contract";
 import type { AppEnv } from "../../common/types/app-env.js";
 import { openAPIEventService } from "./event.service.js";
-import {
-  ingestBatchSchema,
-  runListQuerySchema,
-  runParamsSchema,
-  runEventListQuerySchema,
-} from "./event.schema.js";
 
 const factory = createFactory<AppEnv>();
 
@@ -21,7 +15,7 @@ const factory = createFactory<AppEnv>();
 export function createOpenAPIEventHandlers() {
   /** 검증된 SDK 이벤트 배치를 현재 API 키의 워크스페이스에 저장합니다. */
   const ingestBatch = factory.createHandlers(
-    zValidator("json", ingestBatchSchema),
+    zValidator("json", openAPIContract.ingestEvents.request),
     async (c) =>
       c.json(
         openAPIContract.ingestEvents.response.parse(
@@ -37,7 +31,7 @@ export function createOpenAPIEventHandlers() {
 
   /** 현재 워크스페이스의 최근 Run을 커서 기반으로 조회합니다. */
   const listRuns = factory.createHandlers(
-    zValidator("query", runListQuerySchema),
+    zValidator("query", openAPIContract.listRuns.request),
     async (c) =>
       c.json(
         openAPIContract.listRuns.response.parse(
@@ -51,7 +45,7 @@ export function createOpenAPIEventHandlers() {
 
   /** 하나의 Run과 시간순 이벤트 타임라인을 조회합니다. */
   const getRun = factory.createHandlers(
-    zValidator("param", runParamsSchema),
+    zValidator("param", openAPIContract.getRun.params!),
     async (c) => {
       const run = await openAPIEventService.getRun(
         c.get("currentWorkspaceId"),
@@ -65,8 +59,8 @@ export function createOpenAPIEventHandlers() {
 
   /** Run의 Event 타임라인을 커서 기반으로 조회합니다. */
   const listRunEvents = factory.createHandlers(
-    zValidator("param", runParamsSchema),
-    zValidator("query", runEventListQuerySchema),
+    zValidator("param", openAPIContract.listRunEvents.params!),
+    zValidator("query", openAPIContract.listRunEvents.request),
     async (c) =>
       c.json(
         openAPIContract.listRunEvents.response.parse(

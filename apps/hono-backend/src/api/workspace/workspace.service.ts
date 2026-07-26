@@ -32,6 +32,13 @@ export class WorkspaceService {
     private readonly apiKeyPolicy: ApiKeyIssuancePolicy = apiKeyIssuancePolicy,
   ) {}
 
+  /** Returns the bounded workspace selector data available to the user. */
+  async listWorkspaces(userId: string) {
+    return {
+      items: await this.repository.listForUser(userId),
+    };
+  }
+
   /**
    * 요청 사용자의 조직 관리 권한을 확인하고 워크스페이스를 생성합니다.
    * @param input 사용자, 조직, 워크스페이스 이름을 포함한 생성 입력입니다.
@@ -94,6 +101,62 @@ export class WorkspaceService {
       scopes: saved.scopes,
       expiresAt: saved.expiresAt ?? null,
     };
+  }
+
+  async listApiKeys(input: { userId: string; workspaceId: string }) {
+    await this.accessControl.assertWorkspaceCapability({
+      ...input,
+      capability: CAPABILITIES.WORKSPACE_API_KEY_LIST,
+    });
+    return {
+      items: (await this.repository.listApiKeys(input.workspaceId)).map(
+        (apiKey) => ({
+          id: apiKey.id,
+          name: apiKey.name,
+          prefix: apiKey.prefix,
+          kind: apiKey.kind,
+          scopes: apiKey.scopes,
+          createdAt: apiKey.createdAt.toISOString(),
+          lastUsedAt: apiKey.lastUsedAt?.toISOString() ?? null,
+          expiresAt: apiKey.expiresAt?.toISOString() ?? null,
+          revokedAt: apiKey.revokedAt?.toISOString() ?? null,
+        }),
+      ),
+    };
+  }
+
+  async revokeApiKey(input: {
+    userId: string;
+    workspaceId: string;
+    apiKeyId: string;
+  }) {
+    await this.accessControl.assertWorkspaceCapability({
+      userId: input.userId,
+      workspaceId: input.workspaceId,
+      capability: CAPABILITIES.WORKSPACE_API_KEY_REVOKE,
+    });
+    await this.repository.revokeApiKey(input.workspaceId, input.apiKeyId);
+    return { success: true as const };
+  }
+
+  async deleteApiKey(input: {
+    userId: string;
+    workspaceId: string;
+    apiKeyId: string;
+  }) {
+    await this.accessControl.assertWorkspaceCapability({
+      userId: input.userId,
+      workspaceId: input.workspaceId,
+      capability: CAPABILITIES.WORKSPACE_API_KEY_REVOKE,
+    });
+    const wasDeleted = await this.repository.deleteRevokedApiKey(
+      input.workspaceId,
+      input.apiKeyId,
+    );
+    if (!wasDeleted) {
+      throw new BadRequestErrorException(ERROR_CODES.INVALID_INPUT);
+    }
+    return { success: true as const };
   }
 
   /** 접근 가능한 워크스페이스의 최근 Run 요약을 조회합니다. */

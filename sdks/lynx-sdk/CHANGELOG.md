@@ -9,8 +9,10 @@ All notable changes to `@lynxops/sdk` will be documented in this file.
 - Added `flush()`, `shutdown()`, and `getStatus()` lifecycle APIs.
 - Added semantic event helpers for user input, decisions, context, memory, and
   outcomes.
-- Added local-first `guardTool()` policy evaluation.
+- Added local-first `firewallTool()` policy evaluation (`guardTool()` remains as a deprecated compatibility alias).
 - Added `full`, `metadata-only`, and `smart` capture modes.
 - Added sensitive payload masking before delivery.
+- Added optional atomic `.lynxconf` persistence for validated prompts and
+  firewall policies, including OS cache paths and custom storage adapters.
 - Added OpenAI, Anthropic, Google, Vercel AI SDK, LangChain, Ollama, and Cohere
   instrumentation helpers.

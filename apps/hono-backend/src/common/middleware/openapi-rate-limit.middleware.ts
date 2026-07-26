@@ -2,6 +2,7 @@ import { createMiddleware } from "hono/factory";
 import { env } from "../config/config.js";
 import type { AppEnv } from "../types/app-env.js";
 import { coreRedis } from "../../provider/redis/redis-config.js";
+import { PublicErrorResponseSchema } from "@repo/dto";
 
 /** Workspace API 키별 OpenAPI 요청 수를 고정 시간 구간으로 제한합니다. */
 export const openApiRateLimitMiddleware = createMiddleware<AppEnv>(
@@ -20,11 +21,11 @@ export const openApiRateLimitMiddleware = createMiddleware<AppEnv>(
       if (count > env.OPENAPI_RATE_LIMIT_MAX) {
         c.header("Retry-After", String(windowSeconds));
         return c.json(
-          {
+          PublicErrorResponseSchema.parse({
             code: "OPENAPI_RATE_LIMIT_EXCEEDED",
             message: "Too many OpenAPI requests.",
             requestId: c.get("requestId"),
-          },
+          }),
           429,
         );
       }

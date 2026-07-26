@@ -9,13 +9,19 @@ jest.mock("./runtime-config.service.js", () => ({
 }));
 
 const mockedService = jest.mocked(runtimeConfigService);
-const bundle = { revision: "revision-1", prompts: [], policies: [] };
+const bundle = {
+  revision: "revision-1",
+  prompts: [],
+  policies: [],
+  signing: null,
+};
 
 function createApp() {
   const app = new Hono<AppEnv>();
   const handlers = createRuntimeConfigHandlers();
   app.use("*", async (c, next) => {
     c.set("currentWorkspaceId", "workspace-1");
+    c.set("currentApiKeyEnvironment", "staging");
     await next();
   });
   app.on(
@@ -35,6 +41,12 @@ describe("runtime config HTTP handlers", () => {
     );
 
     expect(response.status).toBe(200);
+    expect(mockedService.get).toHaveBeenCalledWith(
+      "workspace-1",
+      "staging",
+      undefined,
+      "anonymous",
+    );
     expect(response.headers.get("etag")).toBe('"revision-1"');
     await expect(response.json()).resolves.toEqual(bundle);
   });

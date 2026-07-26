@@ -4,3 +4,8 @@ export * from "./workspace/index.js";
 export * from "./event/index.js";
 export * from "./issues/index.js";
 export * from "./runtime-config/index.js";
+export * from "./profile/index.js";
+export * from "./firewall/index.js";
+export * from "./dashboard/index.js";
+export * from "./prompt/index.js";
+export * from "./common/index.js";

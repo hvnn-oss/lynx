@@ -21,6 +21,9 @@ export class OrganizationEntity {
   @Column()
   name!: string;
 
+  @Column({ type: "varchar", length: 500, nullable: true })
+  profileImageKey!: string | null;
+
   @Column({ type: "uuid" })
   planId!: string;
 
@@ -90,5 +93,4 @@ export class OrganizationEntity {
     (workspace: WorkspaceEntity) => workspace.organization,
   )
   workspaces!: WorkspaceEntity[];
-
 }

@@ -1,6 +1,6 @@
 ---
 title: "API reference"
-description: "Reference for LynxTracer, the default lynx instance, guardrail errors, and SDK options."
+description: "Reference for LynxTracer, the default lynx instance, firewall errors, and SDK options."
 ---
 
 This page summarizes the primary SDK APIs. Use the feature guides for longer examples.
@@ -77,7 +77,7 @@ await lynx.run(
 | --- | --- |
 | `instrumentLLM(client, options?)` | Wraps an LLM client object. |
 | `instrumentTool(name, fn, metadata?)` | Wraps a tool function. |
-| `guardTool(name, fn, options?)` | Wraps a tool with local policy evaluation. |
+| `firewallTool(name, fn, options?)` | Wraps a tool with local policy evaluation. |
 
 ## Delivery helpers
 
@@ -89,7 +89,7 @@ await lynx.run(
 
 ## `LynxPolicyError`
 
-`guardTool()` throws `LynxPolicyError` when a tool call is blocked.
+`firewallTool()` throws `LynxPolicyError` when a tool call is blocked.
 
 ```ts
 import { LynxPolicyError } from "@lynxops/sdk";

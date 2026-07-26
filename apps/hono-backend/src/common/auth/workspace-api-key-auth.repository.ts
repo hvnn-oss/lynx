@@ -1,4 +1,5 @@
-import { AppDataSource, WorkspaceApiKeyEntity } from "@repo/database";
+import { WorkspaceApiKeyEntity } from "@repo/database";
+import { AppDataSource } from "../../provider/database/typeorm-config.js";
 
 /** Workspace API 키 인증에 필요한 최소 저장소 작업을 제공합니다. */
 export class WorkspaceApiKeyAuthRepository {

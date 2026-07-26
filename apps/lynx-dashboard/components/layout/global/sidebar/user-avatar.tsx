@@ -4,9 +4,11 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@repo/ui/components/ui/avatar";
-import api, { clearStoredAccessToken } from "@/lib/api";
+import { clearStoredAccessToken, requestContract } from "@/lib/api";
+import { authContract } from "@repo/contract";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 
 export function SidebarUserAvatar() {
   const [isOpen, setOpen] = useState(false);
@@ -17,7 +19,11 @@ export function SidebarUserAvatar() {
 
   const handleLogout = async () => {
     try {
-      await api.post("/auth/logout");
+      await requestContract({
+        basePath: authContract.basePath,
+        endpoint: authContract.logout,
+        request: {},
+      });
     } finally {
       clearStoredAccessToken();
       window.location.href = "/login";
@@ -72,9 +78,12 @@ export function SidebarUserAvatar() {
             <p className="font-semibold">Dan Lee</p>
           </div>
           <div className="w-full h-px bg-border mb-1.5"></div>
-          <button className="flex gap-3 text-sm items-center p-3 cursor-pointer font-semibold hover:bg-foreground/5 w-full">
+          <Link
+            href="/settings/personal/general"
+            className="flex gap-3 text-sm items-center p-3 cursor-pointer font-semibold hover:bg-foreground/5 w-full"
+          >
             {t("avatar.account_settings")}
-          </button>
+          </Link>
           <button className="flex gap-3 text-sm items-center p-3 cursor-pointer font-semibold hover:bg-foreground/5 w-full">
             {t("avatar.product_feedback")}
           </button>

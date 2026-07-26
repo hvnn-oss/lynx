@@ -20,6 +20,8 @@
     "typescript": "^5.9.2"
   },
   "dependencies": {
+    "@repo/constants": "workspace:*",
+    "@repo/sdk-types": "workspace:*",
     "zod": "^4.4.3"
   }
 }

@@ -2,11 +2,11 @@
 
 import CreateOrgForm from "@/components/screen/auth/signup/create-org";
 import SignupForm from "@/components/screen/auth/signup/signup";
-import { authContract, getAuthEndpointPath } from "@repo/contract";
+import { authContract } from "@repo/contract";
 import type { SignUpDto } from "@repo/dto";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import api from "@/lib/api";
+import { requestContract } from "@/lib/api";
 import axios from "axios";
 
 export default function Signup() {
@@ -65,16 +65,17 @@ export default function Signup() {
               return;
             }
             try {
-              const res = await api.post(
-                getAuthEndpointPath(authContract.signUp),
-                request.data,
-              );
-              authContract.signUp.response.parse(res.data);
+              await requestContract({
+                basePath: authContract.basePath,
+                endpoint: authContract.signUp,
+                request: request.data,
+              });
               window.location.href = "/login";
             } catch (err) {
               if (axios.isAxiosError(err)) {
                 const errors = err.response?.data?.errors;
                 const errCode =
+                  err.response?.data?.code ||
                   err.response?.data?.error_code ||
                   (errors && errors[0]?.error_code);
                 if (errCode === "USER_ALREADY_EXISTS") {

@@ -2,7 +2,7 @@
   "name": "hono-backend",
   "type": "module",
   "scripts": {
-    "build:dependencies": "pnpm --filter @repo/constants build && pnpm --filter @repo/dto build && pnpm --filter @repo/database build && pnpm --filter @repo/contract build",
+    "build:dependencies": "pnpm --filter @repo/constants build && pnpm --filter @repo/sdk-types build && pnpm --filter @repo/dto build && pnpm --filter @repo/database build && pnpm --filter @repo/contract build",
     "predev": "pnpm build:dependencies",
     "dev": "tsx watch src/index.ts",
     "prebuild": "pnpm build:dependencies",

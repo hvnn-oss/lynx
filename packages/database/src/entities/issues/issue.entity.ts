@@ -21,7 +21,7 @@ import {
   UpdateDateColumn,
 } from "typeorm";
 import { AgentEntity } from "../agent/agent.entity";
-import { GuardrailPolicyEntity } from "../guardrail/policy.entity";
+import { FirewallPolicyEntity } from "../firewall/policy.entity";
 import { WorkspaceEntity } from "../organization/workspace.entity";
 import { PromptVersionEntity } from "../prompt/prompt-version.entity";
 import { UserEntity } from "../organization/user.entity";
@@ -50,7 +50,7 @@ import { IssueOccurrenceEntity } from "./issue-occurrence.entity";
 )
 @Check(
   "CHK_issue_category",
-  `"category" IN ('TOOL_RISK', 'GUARDRAIL', 'LOOP', 'MODEL_ERROR', 'PROMPT_REGRESSION', 'LATENCY', 'COST', 'DATA_EXPOSURE')`,
+  `"category" IN ('TOOL_RISK', 'FIREWALL', 'LOOP', 'MODEL_ERROR', 'PROMPT_REGRESSION', 'LATENCY', 'COST', 'DATA_EXPOSURE')`,
 )
 @Check(
   "CHK_issue_reporter_type",
@@ -212,7 +212,7 @@ export class IssueEntity {
   })
   agent!: AgentEntity | null;
 
-  @ManyToOne(() => GuardrailPolicyEntity, {
+  @ManyToOne(() => FirewallPolicyEntity, {
     nullable: true,
     onDelete: "SET NULL",
   })
@@ -220,7 +220,7 @@ export class IssueEntity {
     name: "policyId",
     foreignKeyConstraintName: "FK_issue_policy",
   })
-  policy!: GuardrailPolicyEntity | null;
+  policy!: FirewallPolicyEntity | null;
 
   @ManyToOne(() => PromptVersionEntity, {
     nullable: true,

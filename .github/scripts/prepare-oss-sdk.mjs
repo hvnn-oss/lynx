@@ -41,7 +41,7 @@ packageJson.keywords = [
   "observability",
   "tracing",
   "debugging",
-  "guardrails",
+  "firewalls",
   "lynx",
 ];
 packageJson.repository = {

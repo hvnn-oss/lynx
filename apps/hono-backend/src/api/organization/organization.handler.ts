@@ -1,10 +1,12 @@
 import { zValidator } from "@hono/zod-validator";
 import { ORGANIZATION_CREATION_SOURCES } from "@repo/constants";
 import { organizationContract } from "@repo/contract";
+import { OrganizationIdParamsSchema } from "@repo/dto";
 import { randomUUID } from "node:crypto";
 import { createFactory } from "hono/factory";
 import { z } from "zod";
 import type { AppEnv } from "../../common/types/app-env.js";
+import { readImageUpload } from "../../common/util/read-image-upload.js";
 import { orgService } from "./organization.service.js";
 
 const factory = createFactory<AppEnv>();
@@ -32,13 +34,74 @@ export function createOrgHandlers() {
       });
 
       return c.json(
-        organization satisfies z.infer<
-          typeof organizationContract.create.response
-        >,
+        organizationContract.create.response.parse(organization),
         201,
       );
     },
   );
 
-  return { createOrg };
+  const getProfile = factory.createHandlers(
+    zValidator("param", OrganizationIdParamsSchema),
+    async (c) => {
+      const { organizationId } = c.req.valid("param");
+      const profile = await orgService.getProfile({
+        userId: c.get("currentUserId"),
+        organizationId,
+      });
+      return c.json(organizationContract.getProfile.response.parse(profile));
+    },
+  );
+
+  const updateProfile = factory.createHandlers(
+    zValidator("param", OrganizationIdParamsSchema),
+    zValidator("json", organizationContract.updateProfile.request),
+    async (c) => {
+      const { organizationId } = c.req.valid("param");
+      const profile = await orgService.updateProfile({
+        userId: c.get("currentUserId"),
+        organizationId,
+        profile: c.req.valid("json"),
+      });
+      return c.json(organizationContract.updateProfile.response.parse(profile));
+    },
+  );
+
+  const listMembers = factory.createHandlers(
+    zValidator("param", OrganizationIdParamsSchema),
+    async (c) => {
+      const { organizationId } = c.req.valid("param");
+      return c.json(
+        organizationContract.listMembers.response.parse(
+          await orgService.listMembers({
+            userId: c.get("currentUserId"),
+            organizationId,
+          }),
+        ),
+      );
+    },
+  );
+
+  const uploadProfileImage = factory.createHandlers(
+    zValidator("param", OrganizationIdParamsSchema),
+    async (c) => {
+      const { organizationId } = c.req.valid("param");
+      const upload = await readImageUpload(c);
+      const image = await orgService.uploadProfileImage({
+        userId: c.get("currentUserId"),
+        organizationId,
+        upload,
+      });
+      return c.json(
+        organizationContract.uploadProfileImage.response.parse(image),
+      );
+    },
+  );
+
+  return {
+    createOrg,
+    getProfile,
+    updateProfile,
+    listMembers,
+    uploadProfileImage,
+  };
 }

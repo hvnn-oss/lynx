@@ -57,7 +57,27 @@
         }
       },
       "settings": {
-        "title": "설정"
+        "title": "설정",
+        "organization": {
+          "title": "조직",
+          "general": "일반",
+          "members": "멤버",
+          "integrations": "Integration",
+          "apiKeys": "API 키 관리",
+          "security": "보안"
+        },
+        "personal": {
+          "title": "개인",
+          "general": "일반",
+          "security": "비밀번호 및 보안",
+          "preferences": "환경 설정"
+        },
+        "openapi": {
+          "title": "OpenAPI",
+          "general": "개요",
+          "ingestion": "이벤트 수집",
+          "runtimeConfig": "Runtime Config"
+        }
       }
     },
     "avatar": {

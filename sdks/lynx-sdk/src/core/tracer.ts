@@ -5,7 +5,7 @@ import {
   LynxRunOptions,
   LlmInstrumentationRule,
   LynxEventDto,
-  LynxGuardToolOptions,
+  LynxFirewallToolOptions,
   LynxOutcomeOptions,
   LynxPolicyDecision,
   LynxPolicyAction,
@@ -27,8 +27,10 @@ import { DeliveryManager } from "../delivery/delivery-manager.js";
 import { HttpTransport } from "../delivery/http-transport.js";
 import { RuntimeConfigManager } from "../runtime-config/runtime-config-manager.js";
 import { HttpRuntimeConfigTransport } from "../runtime-config/runtime-config-transport.js";
-import { LocalPolicyEvaluator } from "../guardrail/local-policy-evaluator.js";
+import { createRuntimeConfigCache } from "../runtime-config/runtime-config-cache.js";
+import { LocalPolicyEvaluator } from "../firewall/local-policy-evaluator.js";
 import { IssueRecordReporter } from "../issue-reporting/issue-record-reporter.js";
+import { ApprovalClient } from "../approval/approval-client.js";
 
 export const DEFAULT_ENDPOINT = "https://api.lynxops.co";
 
@@ -93,6 +95,7 @@ export class LynxTracer {
   private readonly runtimeConfig: RuntimeConfigManager;
   private readonly localPolicyEvaluator = new LocalPolicyEvaluator();
   private readonly issueReporter: IssueRecordReporter;
+  private readonly approvalClient: ApprovalClient;
 
   /**
    * Creates a tracer with the provided Lynx telemetry configuration.
@@ -123,9 +126,18 @@ export class LynxTracer {
         endpoint: this.config.endpoint,
         apiKey: this.config.apiKey,
         clientId: this.config.clientId,
+        agentId: this.config.agentId,
         timeoutMs: this.config.runtimeConfig?.requestTimeoutMs ?? 1000,
       }),
       this.config.runtimeConfig,
+      createRuntimeConfigCache({
+        options: this.config.runtimeConfig?.cache,
+        endpoint: this.config.endpoint,
+        workspaceId: this.config.workspaceId,
+        clientId: this.config.clientId,
+        agentId: this.config.agentId,
+        apiKey: this.config.apiKey,
+      }),
     );
     this.issueReporter = new IssueRecordReporter(
       {
@@ -140,6 +152,14 @@ export class LynxTracer {
           this.config.runtimeConfig?.enabled ??
           false,
       },
+    );
+    this.approvalClient = new ApprovalClient(
+      {
+        endpoint: this.config.endpoint,
+        apiKey: this.config.apiKey,
+        clientId: this.config.clientId,
+      },
+      this.config.approval,
     );
 
     LynxTracer.instances.add(this);
@@ -208,7 +228,7 @@ export class LynxTracer {
   }
 
   /**
-   * Loads the latest managed prompts and guardrail policies.
+   * Loads the latest managed prompts and firewall policies.
    *
    * Concurrent calls share one request. Once a valid bundle has loaded, failed
    * refreshes keep serving that last-known-good snapshot.
@@ -263,7 +283,7 @@ export class LynxTracer {
    * @returns A promise that resolves after pending telemetry transmissions settle.
    */
   async shutdown(options: LynxShutdownOptions = {}): Promise<void> {
-    this.runtimeConfig.shutdown();
+    await this.runtimeConfig.shutdown();
     await this.issueReporter.shutdown(options.timeoutMs);
     await this.delivery.shutdown(options);
     LynxTracer.instances.delete(this);
@@ -351,6 +371,11 @@ export class LynxTracer {
       agentId,
       sessionId,
       eventCounts: parentContext?.eventCounts ?? {},
+      firewallState: parentContext?.firewallState ?? {
+        startedAt: Date.now(),
+        totalCost: 0,
+        toolCallCounts: {},
+      },
       attributes: { ...parentContext?.attributes },
       promptVersions: { ...parentContext?.promptVersions },
     };
@@ -616,6 +641,15 @@ export class LynxTracer {
     payload: any,
     context: LynxContext,
   ): void {
+    const capturedCost = Number(payload?.cost);
+    if (
+      context.firewallState &&
+      Number.isFinite(capturedCost) &&
+      capturedCost > 0 &&
+      payload?.phase !== "start"
+    ) {
+      context.firewallState.totalCost += capturedCost;
+    }
     // Tail-based/adaptive sampling fallback keeps error-related events even
     // when the current context is sampled out, so failures remain debuggable.
     const isError =
@@ -693,7 +727,6 @@ export class LynxTracer {
         context,
       );
     }
-
   }
 
   /**
@@ -832,9 +865,24 @@ export class LynxTracer {
         status.lastError ?? "Managed Lynx policies are not available",
       );
     }
+    const context = LynxTracer.storage.getStore();
+    const firewallState = context?.firewallState;
+    const callCount = (firewallState?.toolCallCounts[toolName] ?? 0) + 1;
+    if (firewallState) firewallState.toolCallCounts[toolName] = callCount;
+    const loopCount = Math.max(0, ...Object.values(context?.eventCounts ?? {}));
     return this.localPolicyEvaluator.evaluate(
       this.runtimeConfig.getPolicies(),
-      { toolName, input, metadata: options },
+      {
+        toolName,
+        input,
+        metadata: options,
+        state: {
+          callCount,
+          totalCost: firewallState?.totalCost ?? 0,
+          elapsedMs: firewallState ? Date.now() - firewallState.startedAt : 0,
+          loopCount,
+        },
+      },
     );
   }
 
@@ -882,22 +930,23 @@ export class LynxTracer {
   /**
    * Wraps a tool with a local policy check before execution.
    *
-   * `guardTool()` emits a `POLICY_EVALUATION` event before the tool runs. When
+   * `firewallTool()` emits a `POLICY_EVALUATION` event before the tool runs. When
    * `beforeCall` returns `{ allow: false }`, Lynx also emits
-   * `POLICY_VIOLATION` and `GUARDRAIL_ACTIVATED`, then throws before executing
+   * `POLICY_VIOLATION` and the legacy `FIREWALL_ACTIVATED` wire event, then
+   * throws before executing
    * the original tool. This provides the SDK-side hook needed for "observe first,
    * then prevent recurrence" workflows.
    *
    * @typeParam T Tool function type.
    * @param toolName Stable tool name shown in traces and policy events.
-   * @param fn Tool function to guard.
+   * @param fn Tool function to protect.
    * @param options Tool metadata and an optional `beforeCall` policy callback.
-   * @returns A guarded function with the same call signature as `fn`.
+   * @returns A protected function with the same call signature as `fn`.
    */
-  guardTool<T extends (...args: any[]) => any>(
+  firewallTool<T extends (...args: any[]) => any>(
     toolName: string,
     fn: T,
-    options: LynxGuardToolOptions<Parameters<T>> = {},
+    options: LynxFirewallToolOptions<Parameters<T>> = {},
   ): T {
     const guarded = (async (...args: Parameters<T>) => {
       const input = args[0];
@@ -946,6 +995,72 @@ export class LynxTracer {
       });
       this.reportPolicyDetection(toolName, input, decision);
 
+      if (
+        decision.action === "REQUIRE_APPROVAL" &&
+        this.config.approval?.enabled === true
+      ) {
+        const context = LynxTracer.storage.getStore();
+        if (!context) {
+          throw new LynxPolicyError(
+            "Lynx approval requires an active run context",
+            "REQUIRE_APPROVAL",
+            decision.policyId,
+            decision.severity,
+            decision.reason,
+          );
+        }
+        let approval;
+        try {
+          approval = await this.approvalClient.request({
+            clientRequestId: generateEventId(),
+            runId: context.runId,
+            sessionId: context.sessionId ?? `session_${context.runId}`,
+            agentId: context.agentId ?? context.agentName,
+            policyId: decision.policyId,
+            toolName,
+            inputHash: stableHash(input),
+            reason: decision.reason,
+          });
+        } catch (error) {
+          throw new LynxPolicyError(
+            error instanceof Error
+              ? `Lynx approval failed: ${error.message}`
+              : "Lynx approval failed",
+            "REQUIRE_APPROVAL",
+            decision.policyId,
+            decision.severity,
+            decision.reason,
+            decision.metadata,
+          );
+        }
+        this.capture("AGENT_DECISION", `approval:${toolName}`, {
+          approvalId: approval.id,
+          approvalStatus: approval.status,
+          policyId: decision.policyId,
+          toolName,
+          reason: approval.decisionReason,
+        });
+        if (approval.status === "APPROVED") {
+          decision = {
+            ...decision,
+            action: "ALLOW",
+            allow: true,
+            metadata: {
+              ...decision.metadata,
+              approvalId: approval.id,
+              approved: true,
+            },
+          };
+        } else {
+          decision = {
+            ...decision,
+            reason:
+              approval.decisionReason ??
+              `Lynx approval ${approval.status.toLowerCase()}`,
+          };
+        }
+      }
+
       if (!decision.allow) {
         this.capture("POLICY_VIOLATION", `policy.violation:${toolName}`, {
           toolName,
@@ -961,14 +1076,15 @@ export class LynxTracer {
           reason: decision.reason,
           severity: decision.severity ?? options.riskLevel,
         });
-        this.capture("GUARDRAIL_ACTIVATED", `guardrail.blocked:${toolName}`, {
+        // Keep the established wire identifier for backward-compatible ingestion.
+        this.capture("FIREWALL_ACTIVATED", `firewall.blocked:${toolName}`, {
           toolName,
           action: decision.action,
           reason: decision.reason,
           riskLevel: decision.severity ?? options.riskLevel,
         });
         throw new LynxPolicyError(
-          decision.reason || `Lynx guard blocked tool call: ${toolName}`,
+          decision.reason || `Lynx firewall blocked tool call: ${toolName}`,
           decision.action === "REQUIRE_APPROVAL" ? "REQUIRE_APPROVAL" : "BLOCK",
           decision.policyId,
           decision.severity ?? options.riskLevel,
@@ -982,6 +1098,17 @@ export class LynxTracer {
     }) as unknown as T;
 
     return guarded;
+  }
+
+  /**
+   * @deprecated Use `firewallTool()`.
+   */
+  guardTool<T extends (...args: any[]) => any>(
+    toolName: string,
+    fn: T,
+    options: LynxFirewallToolOptions<Parameters<T>> = {},
+  ): T {
+    return this.firewallTool(toolName, fn, options);
   }
 
   private detectLoop(

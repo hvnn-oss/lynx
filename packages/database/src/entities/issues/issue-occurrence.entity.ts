@@ -9,8 +9,8 @@ import {
 } from "typeorm";
 import { AgentEntity } from "../agent/agent.entity";
 import { EventEntity } from "../event/event.entity";
-import { GuardrailPolicyEntity } from "../guardrail/policy.entity";
-import { GuardrailViolationEntity } from "../guardrail/violation.entity";
+import { FirewallPolicyEntity } from "../firewall/policy.entity";
+import { FirewallViolationEntity } from "../firewall/violation.entity";
 import { WorkspaceEntity } from "../organization/workspace.entity";
 import { PromptVersionEntity } from "../prompt/prompt-version.entity";
 import { SessionEntity } from "../session/session.entity";
@@ -47,7 +47,7 @@ export class IssueOccurrenceEntity {
   eventId!: string | null;
 
   @Column({ type: "uuid", nullable: true })
-  guardrailViolationId!: string | null;
+  firewallViolationId!: string | null;
 
   @Column({ type: "uuid", nullable: true })
   agentId!: string | null;
@@ -113,15 +113,15 @@ export class IssueOccurrenceEntity {
   })
   event!: EventEntity | null;
 
-  @ManyToOne(() => GuardrailViolationEntity, {
+  @ManyToOne(() => FirewallViolationEntity, {
     nullable: true,
     onDelete: "SET NULL",
   })
   @JoinColumn({
-    name: "guardrailViolationId",
-    foreignKeyConstraintName: "FK_issue_occurrence_guardrail_violation",
+    name: "firewallViolationId",
+    foreignKeyConstraintName: "FK_issue_occurrence_firewall_violation",
   })
-  guardrailViolation!: GuardrailViolationEntity | null;
+  firewallViolation!: FirewallViolationEntity | null;
 
   @ManyToOne(() => AgentEntity, { nullable: true, onDelete: "SET NULL" })
   @JoinColumn({
@@ -130,7 +130,7 @@ export class IssueOccurrenceEntity {
   })
   agent!: AgentEntity | null;
 
-  @ManyToOne(() => GuardrailPolicyEntity, {
+  @ManyToOne(() => FirewallPolicyEntity, {
     nullable: true,
     onDelete: "SET NULL",
   })
@@ -138,7 +138,7 @@ export class IssueOccurrenceEntity {
     name: "policyId",
     foreignKeyConstraintName: "FK_issue_occurrence_policy",
   })
-  policy!: GuardrailPolicyEntity | null;
+  policy!: FirewallPolicyEntity | null;
 
   @ManyToOne(() => PromptVersionEntity, {
     nullable: true,

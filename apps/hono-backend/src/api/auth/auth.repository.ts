@@ -1,4 +1,5 @@
-import { AppDataSource, UserAccountEntity, UserEntity } from "@repo/database";
+import { UserAccountEntity, UserEntity } from "@repo/database";
+import { AppDataSource } from "../../provider/database/typeorm-config.js";
 
 /** 공통 인증 흐름에서 필요한 사용자 계정 데이터를 조회합니다. */
 class AuthRepository {

@@ -5,7 +5,7 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
 } from "typeorm";
-import { GuardrailViolationEntity } from "../guardrail/violation.entity";
+import { FirewallViolationEntity } from "../firewall/violation.entity";
 import { WorkspaceEntity } from "../organization/workspace.entity";
 import { SessionEntity } from "../session/session.entity";
 
@@ -39,8 +39,8 @@ export class AgentEntity {
   sessions!: SessionEntity[];
 
   @OneToMany(
-    () => GuardrailViolationEntity,
-    (blocked: GuardrailViolationEntity) => blocked.agent,
+    () => FirewallViolationEntity,
+    (blocked: FirewallViolationEntity) => blocked.agent,
   )
-  blocked!: GuardrailViolationEntity[];
+  blocked!: FirewallViolationEntity[];
 }

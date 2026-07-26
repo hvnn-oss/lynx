@@ -10,7 +10,7 @@ import { WorkspaceEntity } from "../organization/workspace.entity";
 import { AgentEntity } from "../agent/agent.entity";
 import { EventEntity } from "../event/event.entity";
 import { PromptEntity } from "../prompt/prompt.entity";
-import { GuardrailViolationEntity } from "../guardrail/violation.entity";
+import { FirewallViolationEntity } from "../firewall/violation.entity";
 
 @Entity("session")
 export class SessionEntity {
@@ -72,8 +72,8 @@ export class SessionEntity {
   events!: EventEntity[];
 
   @OneToMany(
-    () => GuardrailViolationEntity,
-    (blocked: GuardrailViolationEntity) => blocked.session,
+    () => FirewallViolationEntity,
+    (blocked: FirewallViolationEntity) => blocked.session,
   )
-  blocked!: GuardrailViolationEntity[];
+  blocked!: FirewallViolationEntity[];
 }

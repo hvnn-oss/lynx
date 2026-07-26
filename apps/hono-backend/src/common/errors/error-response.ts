@@ -1,10 +1,11 @@
 import { HTTPException } from "hono/http-exception";
+import {
+  PublicErrorResponseSchema,
+  type PublicErrorResponseDto,
+} from "@repo/dto";
 
 /** 클라이언트에 공개할 수 있는 공통 오류 응답입니다. */
-export type PublicErrorResponse = {
-  code: string;
-  message: string;
-  requestId: string;
+export type PublicErrorResponse = PublicErrorResponseDto & {
   status: number;
 };
 
@@ -19,27 +20,34 @@ export function createPublicErrorResponse(
   requestId: string,
 ): PublicErrorResponse {
   if (error instanceof HTTPException) {
-    return {
+    return parsePublicErrorResponse({
       code: error.message || "REQUEST_FAILED",
       message: error.message || "The request failed.",
       requestId,
       status: error.status,
-    };
+    });
   }
 
   if (error instanceof Error) {
-    return {
+    return parsePublicErrorResponse({
       code: "INTERNAL_SERVER_ERROR",
       message: "An unexpected error occurred.",
       requestId,
       status: 500,
-    };
+    });
   }
 
-  return {
+  return parsePublicErrorResponse({
     code: "INTERNAL_SERVER_ERROR",
     message: "An unexpected error occurred.",
     requestId,
     status: 500,
-  };
+  });
+}
+
+function parsePublicErrorResponse(
+  response: PublicErrorResponse,
+): PublicErrorResponse {
+  const { status, ...body } = response;
+  return { ...PublicErrorResponseSchema.parse(body), status };
 }

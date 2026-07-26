@@ -7,8 +7,7 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"],
-      "@lynxops/sdk": ["../../sdks/lynx-sdk/src/index.ts"]
+      "@/*": ["./*"]
     },
     "strictNullChecks": true
   },

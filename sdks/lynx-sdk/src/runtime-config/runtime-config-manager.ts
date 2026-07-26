@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, verify as verifySignature } from "node:crypto";
 import type {
   LynxPromptSnapshot,
   LynxRuntimeConfigOptions,
@@ -9,6 +9,10 @@ import type {
   RuntimeConfigBundle,
   RuntimeConfigTransport,
 } from "./runtime-config.types.js";
+import {
+  getDisabledRuntimeConfigCacheStatus,
+  RuntimeConfigCache,
+} from "./runtime-config-cache.js";
 
 const DEFAULT_REFRESH_INTERVAL_MS = 60_000;
 const MIN_REFRESH_INTERVAL_MS = 5_000;
@@ -24,8 +28,11 @@ const DEFAULT_REFRESH_JITTER_RATIO = 0.1;
 export class RuntimeConfigManager {
   private bundle?: RuntimeConfigBundle;
   private etag?: string;
+  private initializationPromise?: Promise<void>;
   private refreshPromise?: Promise<void>;
   private refreshTimer?: ReturnType<typeof setTimeout>;
+  private hasInitialized = false;
+  private isShutdown = false;
   private state: LynxRuntimeConfigStatus["state"] = "NOT_INITIALIZED";
   private lastUpdatedAt?: string;
   private nextRefreshAt?: string;
@@ -34,6 +41,7 @@ export class RuntimeConfigManager {
   constructor(
     private readonly transport: RuntimeConfigTransport,
     private readonly options: LynxRuntimeConfigOptions = {},
+    private readonly cache?: RuntimeConfigCache,
   ) {}
 
   /**
@@ -45,8 +53,13 @@ export class RuntimeConfigManager {
    * @throws When no valid bundle has ever been loaded and the request fails.
    */
   initialize(): Promise<void> {
-    if (this.bundle) return Promise.resolve();
-    return this.refresh(true);
+    if (this.hasInitialized) return Promise.resolve();
+    if (this.initializationPromise) return this.initializationPromise;
+
+    this.initializationPromise = this.performInitialize().finally(() => {
+      this.initializationPromise = undefined;
+    });
+    return this.initializationPromise;
   }
 
   /**
@@ -85,14 +98,45 @@ export class RuntimeConfigManager {
       lastError: this.lastError,
       promptCount: this.bundle?.prompts.length ?? 0,
       policyCount: this.bundle?.policies.length ?? 0,
+      cache: this.cache?.getStatus() ?? getDisabledRuntimeConfigCacheStatus(),
     };
   }
 
-  /** Stops future background refreshes without discarding the cached bundle. */
-  shutdown(): void {
+  /** Stops refreshes and waits for the latest cache write to settle. */
+  async shutdown(): Promise<void> {
+    this.isShutdown = true;
     if (this.refreshTimer) clearTimeout(this.refreshTimer);
     this.refreshTimer = undefined;
     this.nextRefreshAt = undefined;
+    await Promise.allSettled(
+      [this.initializationPromise, this.refreshPromise].filter(
+        (promise): promise is Promise<void> => Boolean(promise),
+      ),
+    );
+    await this.cache?.shutdown();
+  }
+
+  /** Restores disk state first and revalidates it in the background. */
+  private async performInitialize(): Promise<void> {
+    const cached = await this.cache?.load();
+    if (cached) {
+      try {
+        this.validateBundle(cached.bundle);
+        this.bundle = this.freezeBundle(cached.bundle);
+        this.etag = cached.etag;
+        this.state = "READY";
+        this.lastUpdatedAt = new Date(cached.savedAt).toISOString();
+        this.lastError = undefined;
+        this.hasInitialized = true;
+        void this.refresh(false);
+        return;
+      } catch (error) {
+        await this.cache?.discard(error);
+      }
+    }
+
+    await this.refresh(true);
+    this.hasInitialized = true;
   }
 
   /** Coalesces simultaneous refresh requests into one transport operation. */
@@ -118,9 +162,16 @@ export class RuntimeConfigManager {
         this.etag = result.etag ?? this.etag;
       } else {
         this.validateBundle(result.bundle);
+        const previousRevision = this.bundle?.revision;
         // Publish only after the entire incoming bundle passes validation.
         this.bundle = this.freezeBundle(result.bundle);
         this.etag = result.etag;
+        if (result.bundle.revision !== previousRevision) {
+          this.cache?.persist({
+            bundle: result.bundle,
+            etag: result.etag,
+          });
+        }
       }
       this.state = "READY";
       this.lastUpdatedAt = new Date().toISOString();
@@ -131,7 +182,9 @@ export class RuntimeConfigManager {
       this.state = this.bundle ? "STALE" : "ERROR";
       if (throwOnFailure && !this.bundle) throw error;
     } finally {
-      if (this.options.enabled !== false) this.scheduleRefresh();
+      if (!this.isShutdown && this.options.enabled !== false) {
+        this.scheduleRefresh();
+      }
     }
   }
 
@@ -181,8 +234,41 @@ export class RuntimeConfigManager {
         .update(prompt.content, "utf8")
         .digest("hex");
       if (actualHash !== prompt.contentHash) {
-        throw new Error(`Runtime prompt "${prompt.name}" failed integrity check`);
+        throw new Error(
+          `Runtime prompt "${prompt.name}" failed integrity check`,
+        );
       }
+    }
+    this.verifyBundleSignature(bundle);
+  }
+
+  /** Verifies the Ed25519 signature before a bundle becomes executable. */
+  private verifyBundleSignature(bundle: RuntimeConfigBundle): void {
+    const publicKey = this.options.signaturePublicKey;
+    const mustVerify =
+      this.options.requireSignature === true || Boolean(publicKey);
+    if (!mustVerify) return;
+    if (!publicKey || !bundle.signing) {
+      throw new Error("Runtime configuration signature is required");
+    }
+    if (bundle.signing.algorithm !== "Ed25519") {
+      throw new Error(
+        "Runtime configuration signature algorithm is unsupported",
+      );
+    }
+    const payload = JSON.stringify({
+      revision: bundle.revision,
+      prompts: bundle.prompts,
+      policies: bundle.policies,
+    });
+    const isValid = verifySignature(
+      null,
+      Buffer.from(payload, "utf8"),
+      publicKey.replace(/\\n/g, "\n"),
+      Buffer.from(bundle.signing.signature, "base64url"),
+    );
+    if (!isValid) {
+      throw new Error("Runtime configuration signature verification failed");
     }
   }
 
@@ -197,7 +283,12 @@ export class RuntimeConfigManager {
     return Object.freeze({
       revision: bundle.revision,
       prompts: Object.freeze(prompts) as unknown as LynxPromptSnapshot[],
-      policies: Object.freeze(policies) as unknown as LynxRuntimePolicySnapshot[],
+      policies: Object.freeze(
+        policies,
+      ) as unknown as LynxRuntimePolicySnapshot[],
+      signing: bundle.signing
+        ? Object.freeze({ ...bundle.signing })
+        : bundle.signing,
     });
   }
 }

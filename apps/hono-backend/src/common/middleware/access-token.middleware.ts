@@ -13,6 +13,7 @@ export const requireAccessToken = createMiddleware<AppEnv>(async (c, next) => {
     throw new UnauthorizedErrorException(ERROR_CODES.TOKEN_EXPIRED);
   }
 
+  let userId: string;
   try {
     const payload = await verify(token, env.JWT_SECRET, "HS256");
     if (
@@ -23,9 +24,12 @@ export const requireAccessToken = createMiddleware<AppEnv>(async (c, next) => {
       throw new Error("Invalid access token payload");
     }
 
-    c.set("currentUserId", payload.sub);
-    await next();
+    userId = payload.sub;
   } catch {
     throw new UnauthorizedErrorException(ERROR_CODES.TOKEN_EXPIRED);
   }
+
+  // Preserve downstream errors instead of reporting them as token failures.
+  c.set("currentUserId", userId);
+  await next();
 });

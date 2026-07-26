@@ -12,10 +12,10 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
-import api, { setStoredAccessToken } from "@/lib/api";
+import { requestContract, setStoredAccessToken } from "@/lib/api";
 import axios from "axios";
 import { DashRing } from "@repo/ui/components/ui/dash-ring";
-import { authContract, getAuthEndpointPath } from "@repo/contract";
+import { authContract } from "@repo/contract";
 
 export default function LoginForm() {
   const t = useTranslations("auth");
@@ -34,21 +34,21 @@ export default function LoginForm() {
     setIsLoading(true);
     setError("");
     try {
-      const res = await api.post(
-        getAuthEndpointPath(authContract.login),
-        loginResult.data,
-      );
-      const response = authContract.login.response.safeParse(res.data);
-      if (!response.success) throw new Error("Invalid login response.");
-
-      setStoredAccessToken(response.data.access_token);
+      const response = await requestContract({
+        basePath: authContract.basePath,
+        endpoint: authContract.login,
+        request: loginResult.data,
+      });
+      setStoredAccessToken(response.access_token);
       window.location.href = "/dashboard";
     } catch (err) {
       if (axios.isAxiosError(err)) {
         // Validation errors returned as array of objects in response.data.errors
         const errors = err.response?.data?.errors;
         const errCode =
-          err.response?.data?.error_code || (errors && errors[0]?.error_code);
+          err.response?.data?.code ||
+          err.response?.data?.error_code ||
+          (errors && errors[0]?.error_code);
         if (errCode === "INVALID_CREDENTIALS") {
           setError("errors.invalid-credentials");
         } else if (errCode === "ORG_MUST_USE_SSO") {

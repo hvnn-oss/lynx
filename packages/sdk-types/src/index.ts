@@ -18,6 +18,12 @@ export interface LynxContext {
   sessionId?: string;
   /** Request-local counters used for repeated-call detection. */
   eventCounts?: Record<string, number>;
+  /** Run-local counters used by stateful firewall policies. */
+  firewallState?: {
+    startedAt: number;
+    totalCost: number;
+    toolCallCounts: Record<string, number>;
+  };
   /** Metadata merged into every subsequently captured event in this context. */
   attributes?: Record<string, any>;
   /** Prompt versions pinned for the lifetime of this run. */
@@ -50,7 +56,7 @@ export interface LynxConfig {
   policyVersion?: string;
 
   /**
-   * Centrally managed prompts and guardrail policies.
+   * Centrally managed prompts and firewall policies.
    *
    * When enabled, the SDK loads the latest bundle before the first run and
    * refreshes it in the background. Explicit `initialize()` and `getPrompt()`
@@ -60,6 +66,9 @@ export interface LynxConfig {
 
   /** Controls asynchronous reporting of SDK detections for server-side review. */
   issueReporting?: LynxIssueReportingOptions;
+
+  /** Human approval flow used by `REQUIRE_APPROVAL` firewall decisions. */
+  approval?: LynxApprovalOptions;
 
   /**
    * Telemetry sampling ratio between 0.0 and 1.0.
@@ -134,9 +143,21 @@ export interface LynxConfig {
   };
 }
 
+/** Controls server-backed human approval polling for protected tool calls. */
+export interface LynxApprovalOptions {
+  /** Enables approval requests. Disabled keeps REQUIRE_APPROVAL fail-closed. */
+  enabled?: boolean;
+  /** Maximum time a tool call waits for an operator decision. */
+  timeoutMs?: number;
+  /** Delay between approval status checks. */
+  pollIntervalMs?: number;
+  /** Deadline for each create or status HTTP request. */
+  requestTimeoutMs?: number;
+}
+
 /** Controls the bounded background queue used to submit issue records. */
 export interface LynxIssueReportingOptions {
-  /** Enables automatic reporting of guardrail and loop detections. */
+  /** Enables automatic reporting of firewall and loop detections. */
   enabled?: boolean;
   /** Deadline in milliseconds for one issue-record request. */
   timeoutMs?: number;
@@ -160,6 +181,49 @@ export interface LynxRuntimeConfigOptions {
   requestTimeoutMs?: number;
   /** Randomizes refresh timing from `0` to `1` to avoid synchronized requests. */
   refreshJitterRatio?: number;
+  /** Ed25519 public key used to verify server-signed runtime bundles. */
+  signaturePublicKey?: string;
+  /** Rejects unsigned bundles instead of accepting them for compatibility. */
+  requireSignature?: boolean;
+  /** Optional persistent cache for the last validated runtime configuration. */
+  cache?: LynxRuntimeConfigCacheOptions;
+}
+
+/** Portable byte storage used for persisted `.lynxconf` cache files. */
+export interface LynxRuntimeConfigCacheStorage {
+  /** Reads the previously stored cache, or `null` when it does not exist. */
+  read(): Promise<Uint8Array | null>;
+  /** Atomically replaces the stored cache with the supplied bytes. */
+  write(data: Uint8Array): Promise<void>;
+  /** Removes a corrupt or obsolete cache when supported by the environment. */
+  remove?(): Promise<void>;
+}
+
+/** Controls whether and where managed prompts and policies are persisted. */
+export interface LynxRuntimeConfigCacheOptions {
+  /** Enables persistent caching. Defaults to `false`. */
+  enabled?: boolean;
+  /**
+   * Exact `.lynxconf` file path used by the built-in Node.js storage.
+   *
+   * When omitted, the SDK uses the operating system's user cache directory.
+   */
+  path?: string;
+  /** Replaces file storage for environments such as IndexedDB or mobile apps. */
+  storage?: LynxRuntimeConfigCacheStorage;
+}
+
+/** Local persistence status for the last-known-good runtime configuration. */
+export interface LynxRuntimeConfigCacheStatus {
+  state: "DISABLED" | "EMPTY" | "READY" | "ERROR";
+  /** Resolved path when the built-in Node.js file storage is used. */
+  path?: string;
+  /** Whether the current in-memory bundle was initially restored from cache. */
+  loadedFromCache: boolean;
+  /** ISO timestamp of the most recent successful cache write. */
+  lastSavedAt?: string;
+  /** Most recent non-fatal cache read or write error. */
+  lastError?: string;
 }
 
 /** Immutable description of one published prompt version used by the SDK. */
@@ -178,7 +242,7 @@ export interface LynxPromptSnapshot {
   contentHash: string;
 }
 
-/** Immutable description of one active remotely managed guardrail policy. */
+/** Immutable description of one active remotely managed firewall policy. */
 export interface LynxRuntimePolicySnapshot {
   /** Stable server-side policy identifier. */
   policyId: string;
@@ -212,6 +276,8 @@ export interface LynxRuntimeConfigStatus {
   promptCount: number;
   /** Number of active policies in the current last-known-good bundle. */
   policyCount: number;
+  /** Persistent cache health and location. */
+  cache: LynxRuntimeConfigCacheStatus;
 }
 
 /**
@@ -233,10 +299,13 @@ export type LynxPolicyAction =
   | "REQUIRE_APPROVAL"
   | "REDACT"
   | "MODIFY";
-export type LynxGuardFailureMode =
+export type LynxFirewallFailureMode =
   | "FAIL_OPEN"
   | "FAIL_CLOSED"
   | "REQUIRE_APPROVAL";
+
+/** @deprecated Use `LynxFirewallFailureMode`. */
+export type LynxGuardFailureMode = LynxFirewallFailureMode;
 
 export interface LynxOutcomeOptions {
   status: LynxSessionStatus;
@@ -262,7 +331,7 @@ export interface LynxToolMetadata {
   riskLevel?: LynxRiskLevel;
   externalTarget?: string;
   idempotencyKey?: string;
-  failureMode?: LynxGuardFailureMode;
+  failureMode?: LynxFirewallFailureMode;
   [key: string]: any;
 }
 
@@ -276,7 +345,7 @@ export interface LynxPolicyDecision {
   metadata?: Record<string, any>;
 }
 
-export interface LynxGuardToolOptions<
+export interface LynxFirewallToolOptions<
   TArgs extends any[] = any[],
 > extends LynxToolMetadata {
   beforeCall?: (context: {
@@ -286,6 +355,10 @@ export interface LynxGuardToolOptions<
     metadata?: LynxToolMetadata;
   }) => LynxPolicyDecision | Promise<LynxPolicyDecision>;
 }
+
+/** @deprecated Use `LynxFirewallToolOptions`. */
+export type LynxGuardToolOptions<TArgs extends any[] = any[]> =
+  LynxFirewallToolOptions<TArgs>;
 
 export interface LynxShutdownOptions {
   timeoutMs?: number;
@@ -301,6 +374,8 @@ export interface LynxStatus {
   /** Health and freshness of managed prompts and policies. */
   runtimeConfig: LynxRuntimeConfigStatus;
 }
+
+export * from "./openapi-contract.js";
 
 /**
  * Custom instrumentation rule for wrapping an LLM client method.
@@ -351,7 +426,7 @@ export type LynxEventType =
   | "CONTEXT_RETRIEVAL"
   | "POLICY_EVALUATION"
   | "POLICY_VIOLATION"
-  | "GUARDRAIL_ACTIVATED"
+  | "FIREWALL_ACTIVATED"
   | "SESSION_OUTCOME"
   | "LOOP_DETECTED"
   | "ERROR"

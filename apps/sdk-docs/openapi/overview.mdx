@@ -17,6 +17,10 @@ https://api.lynxops.co/openapi/v1
 
 Self-hosted installations replace the origin and keep `/openapi/v1`.
 
+The machine-readable OpenAPI 3.0 document is available without authentication
+at `https://api.lynxops.co/openapi.json`. See [OpenAPI schema](/openapi/schema)
+for code generation guidance.
+
 Send the workspace API key in every request:
 
 ```http
@@ -28,14 +32,16 @@ Do not use an end-user Bearer token. The API key selects the workspace and envir
 
 ## Endpoints
 
-| Method | Path | Required scope | Purpose |
-| --- | --- | --- | --- |
-| `POST` | `/events/batch` | `events:write` | Record up to 100 events. |
-| `POST` | `/issue-records` | `events:write` | Submit a detection or recovery record for asynchronous review. |
-| `GET` | `/runtime-config` | `config:read`, `policies:read` | Load current prompt versions and active policies. |
-| `GET` | `/runs` | `usage:read` | List runs with cursor pagination. |
-| `GET` | `/runs/{runId}` | `usage:read` | Read one run and its first event page. |
-| `GET` | `/runs/{runId}/events` | `usage:read` | Read the remaining event timeline. |
+| Method | Path                               | Required scope                 | Purpose                                                        |
+| ------ | ---------------------------------- | ------------------------------ | -------------------------------------------------------------- |
+| `POST` | `/events/batch`                    | `events:write`                 | Record up to 100 events.                                       |
+| `POST` | `/issue-records`                   | `events:write`                 | Submit a detection or recovery record for asynchronous review. |
+| `GET`  | `/runtime-config`                  | `config:read`, `policies:read` | Load current prompt versions and active policies.              |
+| `POST` | `/firewall-approvals`              | `events:write`                 | Request approval for one protected tool call.                  |
+| `GET`  | `/firewall-approvals/{approvalId}` | `policies:read`                | Poll the current approval status.                              |
+| `GET`  | `/runs`                            | `usage:read`                   | List runs with cursor pagination.                              |
+| `GET`  | `/runs/{runId}`                    | `usage:read`                   | Read one run and its first event page.                         |
+| `GET`  | `/runs/{runId}/events`             | `usage:read`                   | Read the remaining event timeline.                             |
 
 ## Minimal request
 
@@ -73,9 +79,15 @@ A production integration should contain these components:
 6. Stable `eventId` and `clientRecordId` values across retries.
 7. A runtime configuration cache that uses `ETag`.
 8. Local policy evaluation before a tool executes.
-9. `flush` and `shutdown` operations for graceful process exit.
+9. A bounded approval flow for `REQUIRE_APPROVAL` decisions.
+10. `flush` and `shutdown` operations for graceful process exit.
 
 Event delivery should fail open: a Lynx outage must not fail the customer request. A high-risk local policy may separately choose fail-closed behavior.
+
+For `REQUIRE_APPROVAL`, create one request with a stable
+`clientRequestId`, poll only until the configured deadline, and execute the
+protected tool only after an `APPROVED` response. Network failures, invalid
+responses, rejection, and expiration must not implicitly allow execution.
 
 ## Common HTTP behavior
 
@@ -97,13 +109,35 @@ Use exponential backoff with jitter for network errors, `429`, and `5xx` respons
 ## Next steps
 
 <CardGroup cols={2}>
+  <Card
+    title="Download the OpenAPI schema"
+    icon="brackets-curly"
+    href="/openapi/schema"
+  >
+    Generate an HTTP client from the public machine-readable contract.
+  </Card>
   <Card title="Record events" icon="wave-pulse" href="/openapi/events">
     Define the event envelope, batching, and retry behavior.
   </Card>
-  <Card title="Load runtime config" icon="sliders" href="/openapi/runtime-config">
+  <Card
+    title="Load runtime config"
+    icon="sliders"
+    href="/openapi/runtime-config"
+  >
     Cache prompt versions and policies for local use.
   </Card>
-  <Card title="Report issue candidates" icon="triangle-exclamation" href="/openapi/issue-records">
+  <Card
+    title="Request firewall approval"
+    icon="user-check"
+    href="/openapi/firewall-approvals"
+  >
+    Pause a protected tool call until an operator decides.
+  </Card>
+  <Card
+    title="Report issue candidates"
+    icon="triangle-exclamation"
+    href="/openapi/issue-records"
+  >
     Submit detections without blocking agent execution.
   </Card>
   <Card title="Read runs" icon="timeline" href="/openapi/runs">

@@ -1,11 +1,11 @@
 import {
-  AppDataSource,
   OrganizationUserEntity,
   WorkspaceEntity,
   WorkspaceMembershipEntity,
 } from "@repo/database";
 import type { UserPermissions } from "@repo/constants";
 import type { WorkspaceAccess } from "../types/access-control.js";
+import { AppDataSource } from "../../provider/database/typeorm-config.js";
 
 /** 조직 및 워크스페이스 멤버십 조회를 한곳에서 제공합니다. */
 export class AccessControlRepository {

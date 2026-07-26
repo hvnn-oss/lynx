@@ -24,7 +24,7 @@ export const issues: Issue[] = [
     reporter: "lynx-sdk",
     assignees: ["Ops Oncall", "Prompt Owner"],
     labels: [
-      { name: "guardrail", color: "rose" },
+      { name: "firewall", color: "rose" },
       { name: "billing", color: "amber" },
       { name: "needs-review", color: "blue" },
     ],
@@ -96,7 +96,7 @@ export const issues: Issue[] = [
         type: "label_added",
         actor: "ops-team",
         timestamp: "2026-07-08T09:20:00+09:00",
-        title: "라벨 guardrail, billing, needs-review를 추가했습니다.",
+        title: "라벨 firewall, billing, needs-review를 추가했습니다.",
       },
       {
         id: "work-refund-assigned",
@@ -232,12 +232,12 @@ export const issues: Issue[] = [
       { name: "model-output", color: "slate" },
       { name: "blocked", color: "emerald" },
     ],
-    tags: ["guardrail", "support-v31", "customer-data"],
+    tags: ["firewall", "support-v31", "customer-data"],
     agentName: "고객 지원 에이전트",
     firstSeenAt: "2026-07-06T11:30:00+09:00",
     lastSeenAt: "2026-07-08T07:03:00+09:00",
     occurrences: 3,
-    fingerprint: "guardrail.pii.output.customer_identifier",
+    fingerprint: "firewall.pii.output.customer_identifier",
     relatedSessions: 3,
     isBlocked: true,
     promptVersion: "support-v31",
@@ -251,17 +251,17 @@ export const issues: Issue[] = [
     reproduction: [
       "고객 계정 조회 context를 포함한 지원 세션을 실행합니다.",
       "계정 이력을 요약하게 합니다.",
-      "guardrail span의 출력 payload를 확인합니다.",
+      "firewall span의 출력 payload를 확인합니다.",
     ],
     events: [
       {
-        id: "evt-pii-guardrail",
+        id: "evt-pii-firewall",
         title: "개인정보 출력 차단",
         summary: "응답 내 고객 식별자 후보가 감지됐습니다.",
         timestamp: "2026-07-08T07:03:00+09:00",
-        type: "GUARDRAIL_ACTIVATED",
+        type: "FIREWALL_ACTIVATED",
         policyResult: "BLOCK: customer identifier detected",
-        spanId: "span_guardrail_pii",
+        spanId: "span_firewall_pii",
       },
     ],
     collaborationTimeline: [
@@ -328,7 +328,7 @@ export const fingerprintGroups: IssueFingerprintGroup[] = [
     lastSeenAt: "2026-07-08T08:44:00+09:00",
   },
   {
-    fingerprint: "guardrail.pii.output.customer_identifier",
+    fingerprint: "firewall.pii.output.customer_identifier",
     title: "고객 식별자 응답 포함",
     severity: "critical",
     occurrences: 3,

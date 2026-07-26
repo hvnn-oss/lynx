@@ -224,16 +224,65 @@ export const sidebarItems: SidebarItemType[] = [
   {
     title: "settings.title",
     icon: <Settings className="size-6" />,
-    defaultHref: "/settings/overview",
+    defaultHref: "/settings/organization/general",
     wildcard: "/settings/**",
     items: [
       {
-        title: "summary",
+        title: "settings.organization.title",
         items: [
           {
-            title: "dashboard.overview",
-            href: "/dashboard/overview",
-            wildcard: "/dashboard/overview/**",
+            title: "settings.organization.general",
+            href: "/settings/organization/general",
+          },
+          {
+            title: "settings.organization.members",
+            href: "/settings/organization/members",
+          },
+          {
+            title: "settings.organization.integrations",
+            href: "/settings/organization/integrations",
+          },
+          {
+            title: "settings.organization.apiKeys",
+            href: "/settings/organization/api-keys",
+          },
+          {
+            title: "settings.organization.security",
+            href: "/settings/organization/security",
+          },
+        ],
+      },
+      {
+        title: "settings.personal.title",
+        items: [
+          {
+            title: "settings.personal.general",
+            href: "/settings/personal/general",
+          },
+          {
+            title: "settings.personal.security",
+            href: "/settings/personal/security",
+          },
+          {
+            title: "settings.personal.preferences",
+            href: "/settings/personal/preferences",
+          },
+        ],
+      },
+      {
+        title: "settings.openapi.title",
+        items: [
+          {
+            title: "settings.openapi.general",
+            href: "/settings/openapi/general",
+          },
+          {
+            title: "settings.openapi.ingestion",
+            href: "/settings/openapi/ingestion",
+          },
+          {
+            title: "settings.openapi.runtimeConfig",
+            href: "/settings/openapi/runtime-config",
           },
         ],
       },

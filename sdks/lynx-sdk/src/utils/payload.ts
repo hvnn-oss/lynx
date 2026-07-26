@@ -83,7 +83,7 @@ const CONTENT_KEYS = new Set([
 const SMART_DETAIL_EVENT_TYPES = new Set<LynxEventType>([
   "ERROR",
   "POLICY_VIOLATION",
-  "GUARDRAIL_ACTIVATED",
+  "FIREWALL_ACTIVATED",
   "LOOP_DETECTED",
 ]);
 

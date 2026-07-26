@@ -3,6 +3,8 @@ import {
   OpenAPIEventRepository,
   openAPIEventRepository,
 } from "./event.repository.js";
+import { firewallNotificationService } from "../../common/services/firewall-notification.service.js";
+import { promptRegressionService } from "../prompt/prompt-regression.service.js";
 
 /** SDK 이벤트 수집과 Run 조회 유스케이스를 처리합니다. */
 export class OpenAPIEventService {
@@ -63,7 +65,46 @@ export class OpenAPIEventService {
           session,
           agent,
         );
-        await this.repository.saveEvent(session, run, trustedEvent);
+        await this.repository.saveEvent(
+          workspaceId,
+          agent,
+          session,
+          run,
+          trustedEvent,
+        );
+        // 회귀 집계 실패가 고객 이벤트 수집 성공 여부에 영향을 주지 않게 분리합니다.
+        void promptRegressionService
+          .detect({
+            workspaceId,
+            environment,
+            event: trustedEvent,
+            resolvedAgentId: agent.id,
+          })
+          .catch(() => undefined);
+        const policyPayload = trustedEvent.payload as Record<string, unknown>;
+        const policyAction = String(policyPayload.action ?? "");
+        if (
+          trustedEvent.eventType === "POLICY_EVALUATION" &&
+          (policyAction === "BLOCK" || policyAction === "REQUIRE_APPROVAL")
+        ) {
+          firewallNotificationService.notify({
+            workspaceId,
+            policyId:
+              typeof policyPayload.policyId === "string"
+                ? policyPayload.policyId
+                : null,
+            type: "firewall.blocked",
+            data: {
+              action: policyAction,
+              toolName: policyPayload.toolName,
+              reason: policyPayload.reason,
+              runId: trustedEvent.runId,
+              sessionId: trustedEvent.sessionId,
+              agentId: trustedEvent.agentId,
+              eventId: trustedEvent.eventId,
+            },
+          });
+        }
         accepted += 1;
       } catch (error) {
         if (event.eventId) {

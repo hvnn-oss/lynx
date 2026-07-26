@@ -3,8 +3,9 @@ import type { Metadata } from "next";
 import "@/styles/globals.css";
 
 export const metadata: Metadata = {
-  title: "Acme AI",
-  description: "Example GPT service instrumented with the Lynx SDK.",
+  title: "Orbit",
+  description:
+    "A focused AI workspace for writing, analysis, and everyday work.",
 };
 
 export default function RootLayout({

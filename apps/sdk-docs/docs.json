@@ -41,7 +41,7 @@
               "sdk/configuration",
               "sdk/tracing",
               "sdk/instrumentation",
-              "sdk/guardrails",
+              "sdk/firewalls",
               "sdk/delivery",
               "sdk/api-reference"
             ]
@@ -49,8 +49,10 @@
           {
             "group": "OpenAPI",
             "pages": [
+              "openapi/schema",
               "openapi/events",
               "openapi/runtime-config",
+              "openapi/firewall-approvals",
               "openapi/issue-records",
               "openapi/runs"
             ]
@@ -75,11 +77,7 @@
         "groups": [
           {
             "group": "시작하기",
-            "pages": [
-              "ko/index",
-              "ko/sdk/quickstart",
-              "ko/openapi/overview"
-            ]
+            "pages": ["ko/index", "ko/sdk/quickstart", "ko/openapi/overview"]
           },
           {
             "group": "TypeScript SDK",
@@ -87,7 +85,7 @@
               "ko/sdk/configuration",
               "ko/sdk/tracing",
               "ko/sdk/instrumentation",
-              "ko/sdk/guardrails",
+              "ko/sdk/firewalls",
               "ko/sdk/delivery",
               "ko/sdk/api-reference"
             ]
@@ -95,8 +93,10 @@
           {
             "group": "OpenAPI",
             "pages": [
+              "ko/openapi/schema",
               "ko/openapi/events",
               "ko/openapi/runtime-config",
+              "ko/openapi/firewall-approvals",
               "ko/openapi/issue-records",
               "ko/openapi/runs"
             ]

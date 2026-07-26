@@ -16,8 +16,8 @@ export * from "./workspace/api-key";
 // session
 export * from "./session/eventType";
 
-// guardrail
-export * from "./guardrail/guardrail";
+// firewall
+export * from "./firewall/firewall";
 
 // issues
 export * from "./issues/issue";

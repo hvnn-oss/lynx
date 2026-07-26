@@ -1,6 +1,12 @@
 import axios from "axios";
 import { ERROR_CODES } from "@repo/constants";
-import { authContract, getAuthEndpointPath } from "@repo/contract";
+import {
+  authContract,
+  getAuthEndpointPath,
+  type ContractEndpoint,
+  type ContractSchemaInput,
+  type ContractSchemaOutput,
+} from "@repo/contract";
 
 const ACCESS_TOKEN_STORAGE_KEY = "_uid";
 const TOKEN_REFRESH_BUFFER_SECONDS = 30;
@@ -44,10 +50,11 @@ export function isAccessTokenExpired(accessToken: string) {
 
 export async function refreshAccessToken() {
   if (!refreshPromise) {
+    const request = authContract.refresh.request.parse({});
     refreshPromise = axios
       .post(
         `/api${getAuthEndpointPath(authContract.refresh)}`,
-        {},
+        request,
         {
           withCredentials: true,
         },
@@ -86,6 +93,7 @@ api.interceptors.response.use(
       | undefined;
     const errorResponse = error.response;
     const errCode =
+      errorResponse?.data?.code ||
       errorResponse?.data?.error_code ||
       (errorResponse?.data?.errors && errorResponse.data.errors[0]?.error_code);
 
@@ -118,34 +126,74 @@ api.interceptors.response.use(
   },
 );
 
-export default api;
+type ContractRequestOptions<TEndpoint extends ContractEndpoint> = {
+  basePath: string;
+  endpoint: TEndpoint;
+} & ([NonNullable<TEndpoint["params"]>] extends [never]
+  ? { params?: never }
+  : {
+      params: ContractSchemaInput<NonNullable<TEndpoint["params"]>>;
+    }) &
+  (TEndpoint["request"] extends null
+    ? { request?: never }
+    : { request: ContractSchemaInput<TEndpoint["request"]> });
 
-export type QueryParams = object;
+export async function requestContract<TEndpoint extends ContractEndpoint>({
+  basePath,
+  endpoint,
+  params,
+  request,
+}: ContractRequestOptions<TEndpoint>): Promise<
+  ContractSchemaOutput<TEndpoint["response"]>
+> {
+  const parsedParams = endpoint.params?.parse(params);
+  const parsedRequest = endpoint.request?.parse(request);
+  const path = buildContractPath(basePath, endpoint.path, parsedParams);
+  const isQueryRequest = endpoint.method === "GET";
+  const response = await api.request<unknown>({
+    method: endpoint.method,
+    url: path,
+    params: isQueryRequest ? cleanParams(parsedRequest) : undefined,
+    data: isQueryRequest ? undefined : parsedRequest,
+  });
 
-export async function getJson<T>(
-  url: string,
-  params?: QueryParams,
-): Promise<T> {
-  const response = await api.get<T>(url, { params: cleanParams(params) });
-  return response.data;
-}
+  if (!endpoint.response) return undefined as ContractSchemaOutput<
+    TEndpoint["response"]
+  >;
 
-export async function postJson<TResponse, TBody>(
-  url: string,
-  body: TBody,
-): Promise<TResponse> {
-  const response = await api.post<TResponse>(url, body);
-  return response.data;
+  return endpoint.response.parse(response.data) as ContractSchemaOutput<
+    TEndpoint["response"]
+  >;
 }
 
 function cleanParams(
-  params?: QueryParams,
+  params?: unknown,
 ): Record<string, unknown> | undefined {
-  if (!params) return undefined;
+  if (!params || typeof params !== "object") return undefined;
 
   return Object.fromEntries(
     Object.entries(params).filter(([, value]) => value !== undefined),
   );
+}
+
+function buildContractPath(
+  basePath: string,
+  pathTemplate: string,
+  params: unknown,
+) {
+  const pathParams =
+    params && typeof params === "object"
+      ? (params as Record<string, unknown>)
+      : {};
+  const path = pathTemplate.replace(/:([A-Za-z0-9_]+)/g, (_, key: string) => {
+    const value = pathParams[key];
+    if (typeof value !== "string" && typeof value !== "number") {
+      throw new Error(`Missing contract path parameter: ${key}`);
+    }
+    return encodeURIComponent(String(value));
+  });
+
+  return `${basePath}${path}`;
 }
 
 function decodeJwtPayload(accessToken: string): { exp?: number } | null {

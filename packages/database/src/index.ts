@@ -21,9 +21,11 @@ export * from "./entities/auth/trial-claim.entity.js";
 // event
 export * from "./entities/event/event.entity.js";
 
-// guardrail
-export * from "./entities/guardrail/policy.entity.js";
-export * from "./entities/guardrail/violation.entity.js";
+// firewall
+export * from "./entities/firewall/policy.entity.js";
+export * from "./entities/firewall/policy-revision.entity.js";
+export * from "./entities/firewall/violation.entity.js";
+export * from "./entities/firewall/approval-request.entity.js";
 
 // issues
 export * from "./entities/issues/issue.entity.js";
@@ -53,6 +55,8 @@ export * from "./entities/workspace/workspace-membership.entity.js";
 export * from "./entities/prompt/prompt-block.entity.js";
 export * from "./entities/prompt/prompt-version.entity.js";
 export * from "./entities/prompt/prompt.entity.js";
+export * from "./entities/prompt/prompt-deployment.entity.js";
+export * from "./entities/prompt/prompt-experiment.entity.js";
 
 // session
 export * from "./entities/session/session.entity.js";

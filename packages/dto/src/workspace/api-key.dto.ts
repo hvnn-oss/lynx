@@ -31,10 +31,33 @@ export const CreatedWorkspaceApiKeySchema = z.object({
   expiresAt: z.iso.datetime().nullable(),
 });
 
+export const WorkspaceApiKeySchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  prefix: z.string(),
+  kind: z.enum(workspaceApiKeyKinds),
+  scopes: z.array(z.enum(apiKeyScopes)),
+  createdAt: z.iso.datetime(),
+  lastUsedAt: z.iso.datetime().nullable(),
+  expiresAt: z.iso.datetime().nullable(),
+  revokedAt: z.iso.datetime().nullable(),
+});
+
+export const WorkspaceApiKeyListResponseSchema = z.object({
+  items: z.array(WorkspaceApiKeySchema),
+});
+
+export const ApiKeyIdParamsSchema = WorkspaceIdParamsSchema.extend({
+  apiKeyId: z.uuid(),
+});
+
 export type CreateWorkspaceApiKeyDto = z.infer<
   typeof CreateWorkspaceApiKeySchema
 >;
 
 export type CreatedWorkspaceApiKeyDto = z.infer<
   typeof CreatedWorkspaceApiKeySchema
+>;
+export type WorkspaceApiKeyListResponseDto = z.infer<
+  typeof WorkspaceApiKeyListResponseSchema
 >;

@@ -44,7 +44,7 @@
     "context_load": "컨텍스트 로드",
     "llm_call": "LLM 호출",
     "tool_call": "도구 호출",
-    "guardrail_check": "정책 판단",
+    "firewall_check": "정책 판단",
     "final_response": "최종 응답"
   },
   "detailTabs": {

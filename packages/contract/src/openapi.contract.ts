@@ -1,21 +1,26 @@
 import {
+  CreateFirewallApprovalSchema,
+  CreateIssueRecordSchema,
+  FirewallApprovalIdParamsSchema,
+  FirewallApprovalStatusResponseSchema,
   IngestEventBatchResponseSchema,
   IngestEventBatchSchema,
-  CreateIssueRecordSchema,
   IssueRecordAcceptedResponseSchema,
-  RuntimeConfigRequestSchema,
-  RuntimeConfigResponseSchema,
   RunDetailResponseSchema,
+  RunEventListQuerySchema,
+  RunEventListResponseSchema,
   RunListQuerySchema,
   RunListResponseSchema,
   RunParamsSchema,
-  RunEventListQuerySchema,
-  RunEventListResponseSchema,
+  RuntimeConfigRequestSchema,
+  RuntimeConfigResponseSchema,
 } from "@repo/dto";
 import { defineEndpoint } from "./util/endpoint.js";
 
+export const OPENAPI_BASE_PATH = "/openapi/v1";
+
 export const openAPIContract = {
-  basePath: "/openapi/v1",
+  basePath: OPENAPI_BASE_PATH,
   ingestEvents: defineEndpoint({
     method: "POST",
     path: "/events/batch",
@@ -28,12 +33,25 @@ export const openAPIContract = {
     request: CreateIssueRecordSchema,
     response: IssueRecordAcceptedResponseSchema,
   }),
-  /** SDK가 현재 프롬프트와 활성 정책을 한 번에 조회하는 계약입니다. */
+  /** Returns prompt versions and active firewall policies for an SDK. */
   getRuntimeConfig: defineEndpoint({
     method: "GET",
     path: "/runtime-config",
     request: RuntimeConfigRequestSchema,
     response: RuntimeConfigResponseSchema,
+  }),
+  createFirewallApproval: defineEndpoint({
+    method: "POST",
+    path: "/firewall-approvals",
+    request: CreateFirewallApprovalSchema,
+    response: FirewallApprovalStatusResponseSchema,
+  }),
+  getFirewallApproval: defineEndpoint({
+    method: "GET",
+    path: "/firewall-approvals/:approvalId",
+    params: FirewallApprovalIdParamsSchema,
+    request: null,
+    response: FirewallApprovalStatusResponseSchema,
   }),
   listRuns: defineEndpoint({
     method: "GET",
@@ -45,7 +63,7 @@ export const openAPIContract = {
     method: "GET",
     path: "/runs/:runId",
     params: RunParamsSchema,
-    request: RunParamsSchema,
+    request: null,
     response: RunDetailResponseSchema,
   }),
   listRunEvents: defineEndpoint({

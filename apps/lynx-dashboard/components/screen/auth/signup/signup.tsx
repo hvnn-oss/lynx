@@ -1,7 +1,7 @@
 "use client";
 
-import api from "@/lib/api";
-import { authContract, getAuthEndpointPath } from "@repo/contract";
+import { requestContract } from "@/lib/api";
+import { authContract } from "@repo/contract";
 import { Button } from "@repo/ui/components/ui/button";
 import { DashRing } from "@repo/ui/components/ui/dash-ring";
 import {
@@ -52,16 +52,21 @@ export default function SignupForm({
         return;
       }
       try {
-        const res = await api.post(
-          getAuthEndpointPath(authContract.verifyEmailToken),
-          request.data,
-        );
-        const data = authContract.verifyEmailToken.response.parse(res.data);
+        const data = await requestContract({
+          basePath: authContract.basePath,
+          endpoint: authContract.verifyEmailToken,
+          request: request.data,
+        });
         setEmail(data.email);
         setLoading(false);
       } catch (error) {
         if (axios.isAxiosError(error)) {
-          setError({ etc: error.response?.data.error_code ?? "UNKNOWN_ERROR" });
+          setError({
+            etc:
+              error.response?.data.code ??
+              error.response?.data.error_code ??
+              "UNKNOWN_ERROR",
+          });
         } else {
           setError({ etc: "UNKNOWN_ERROR" });
         }

@@ -412,7 +412,7 @@ test("setAttributes attaches metadata to subsequent events only", async () => {
   );
 });
 
-test("guardTool supports action decisions and input shortcut", async () => {
+test("firewallTool supports action decisions and input shortcut", async () => {
   const batches = [];
   globalThis.fetch = async (_url, init) => {
     batches.push(JSON.parse(init.body));
@@ -420,7 +420,7 @@ test("guardTool supports action decisions and input shortcut", async () => {
   };
 
   const tracer = createTracer({ captureMode: "full" });
-  const refund = tracer.guardTool(
+  const refund = tracer.firewallTool(
     "refund",
     async ({ amount }) => ({ refunded: amount }),
     {
@@ -548,7 +548,7 @@ test("events captured after shutdown are rejected instead of stranded", async ()
   assert.equal(tracer.getStatus().droppedEvents, 3);
 });
 
-test("guardTool applies failureMode when policy evaluation throws", async () => {
+test("firewallTool applies failureMode when policy evaluation throws", async () => {
   const batches = [];
   globalThis.fetch = async (_url, init) => {
     batches.push(JSON.parse(init.body));
@@ -556,7 +556,7 @@ test("guardTool applies failureMode when policy evaluation throws", async () => 
   };
 
   const tracer = createTracer();
-  const riskyTool = tracer.guardTool(
+  const riskyTool = tracer.firewallTool(
     "wireTransfer",
     async () => ({ ok: true }),
     {
@@ -741,7 +741,7 @@ test("instrumentTool captures tool call metadata and result summary", async () =
   assert.match(result.payload.resultSummary, /order_123/);
 });
 
-test("guardTool records policy events and blocks unsafe calls", async () => {
+test("firewallTool records policy events and blocks unsafe calls", async () => {
   const batches = [];
   globalThis.fetch = async (_url, init) => {
     batches.push(JSON.parse(init.body));
@@ -749,7 +749,7 @@ test("guardTool records policy events and blocks unsafe calls", async () => {
   };
 
   const tracer = createTracer();
-  const refund = tracer.guardTool(
+  const refund = tracer.firewallTool(
     "refund",
     async ({ amount }) => ({ refunded: amount }),
     {
@@ -776,7 +776,7 @@ test("guardTool records policy events and blocks unsafe calls", async () => {
   const events = batches.flat();
   assert.ok(events.some((event) => event.eventType === "POLICY_EVALUATION"));
   assert.ok(events.some((event) => event.eventType === "POLICY_VIOLATION"));
-  assert.ok(events.some((event) => event.eventType === "GUARDRAIL_ACTIVATED"));
+  assert.ok(events.some((event) => event.eventType === "FIREWALL_ACTIVATED"));
   assert.equal(
     events.some((event) => event.eventType === "TOOL_RESULT"),
     false,

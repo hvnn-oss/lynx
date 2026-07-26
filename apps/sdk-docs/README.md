@@ -13,7 +13,7 @@ apps/docs
 │   ├── configuration.mdx
 │   ├── tracing.mdx
 │   ├── instrumentation.mdx
-│   ├── guardrails.mdx
+│   ├── firewalls.mdx
 │   ├── delivery.mdx
 │   └── api-reference.mdx
 └── ko/
@@ -23,7 +23,7 @@ apps/docs
         ├── configuration.mdx
         ├── tracing.mdx
         ├── instrumentation.mdx
-        ├── guardrails.mdx
+        ├── firewalls.mdx
         ├── delivery.mdx
         └── api-reference.mdx
 ```

@@ -94,7 +94,7 @@ describe("auth HTTP handlers", () => {
       expect.stringContaining("HttpOnly"),
     );
     expect(response.headers.get("set-cookie")).toEqual(
-      expect.stringContaining("Path=/auth"),
+      expect.stringContaining("Path=/"),
     );
     expect(mockedLocalAuthService.assertAllowed).toHaveBeenCalledWith(
       expect.anything(),
@@ -111,7 +111,11 @@ describe("auth HTTP handlers", () => {
 
     const response = await createAuthApp().request(authContract.refresh.path, {
       method: "POST",
-      headers: { Cookie: "rid=old-refresh-token" },
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: "rid=old-refresh-token",
+      },
+      body: JSON.stringify({}),
     });
 
     expect(response.status).toBe(200);
@@ -125,6 +129,9 @@ describe("auth HTTP handlers", () => {
     expect(response.headers.get("set-cookie")).toEqual(
       expect.stringContaining("rid=new-refresh-token"),
     );
+    expect(response.headers.get("set-cookie")).toEqual(
+      expect.stringContaining("Path=/"),
+    );
   });
 
   it("revokes the refresh session and expires the cookie on logout", async () => {
@@ -132,7 +139,11 @@ describe("auth HTTP handlers", () => {
 
     const response = await createAuthApp().request(authContract.logout.path, {
       method: "POST",
-      headers: { Cookie: "rid=refresh-token" },
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: "rid=refresh-token",
+      },
+      body: JSON.stringify({}),
     });
 
     expect(response.status).toBe(200);
@@ -143,6 +154,9 @@ describe("auth HTTP handlers", () => {
     );
     expect(response.headers.get("set-cookie")).toEqual(
       expect.stringContaining("Max-Age=0"),
+    );
+    expect(response.headers.get("set-cookie")).toEqual(
+      expect.stringContaining("Path=/"),
     );
   });
 });

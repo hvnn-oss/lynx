@@ -1,4 +1,8 @@
 import type { LynxIssueReportingOptions } from "../core/types.js";
+import {
+  SdkCreateIssueRecordSchema,
+  SdkIssueRecordAcceptedResponseSchema,
+} from "@repo/sdk-types";
 
 /** Wire contract accepted by the Lynx issue-record ingestion endpoint. */
 export interface SdkIssueRecord {
@@ -139,6 +143,8 @@ export class IssueRecordReporter {
     );
     timeout.unref?.();
     try {
+      const request = SdkCreateIssueRecordSchema.safeParse(record);
+      if (!request.success) return false;
       const response = await fetch(
         `${this.connection.endpoint.replace(/\/$/, "")}/openapi/v1/issue-records`,
         {
@@ -148,11 +154,14 @@ export class IssueRecordReporter {
             "X-API-Key": this.connection.apiKey!,
             "X-Lynx-Client-ID": this.connection.clientId,
           },
-          body: JSON.stringify(record),
+          body: JSON.stringify(request.data),
           signal: controller.signal,
         },
       );
-      return response.ok;
+      if (!response.ok) return false;
+      return SdkIssueRecordAcceptedResponseSchema.safeParse(
+        await response.json().catch(() => undefined),
+      ).success;
     } catch {
       return false;
     } finally {

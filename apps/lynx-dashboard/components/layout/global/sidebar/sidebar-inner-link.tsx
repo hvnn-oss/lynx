@@ -4,7 +4,6 @@ import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import picomatch from "picomatch";
-import { useEffect } from "react";
 
 export default function SidebarInnerLink({
   href,
@@ -16,14 +15,10 @@ export default function SidebarInnerLink({
   wildcard?: string | string[];
 }) {
   const pathname = usePathname();
-  const isPathMatched = picomatch(wildcard ?? "");
-  const isActivated = wildcard ? isPathMatched(pathname) : href === pathname;
+  const isActivated = wildcard
+    ? picomatch(wildcard)(pathname)
+    : href === pathname;
   const t = useTranslations("layout.sidebar.items");
-
-  useEffect(() => {
-    console.log(wildcard);
-    console.log(isActivated);
-  }, [isActivated, wildcard]);
 
   return (
     <Link

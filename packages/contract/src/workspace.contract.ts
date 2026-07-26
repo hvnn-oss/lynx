@@ -2,8 +2,12 @@ import {
   CreateWorkspaceSchema,
   CreateWorkspaceApiKeySchema,
   CreatedWorkspaceApiKeySchema,
+  ApiKeyIdParamsSchema,
+  SuccessResponseSchema,
+  WorkspaceApiKeyListResponseSchema,
   WorkspaceIdParamsSchema,
   WorkspaceResponseSchema,
+  WorkspaceListResponseSchema,
   RunListQuerySchema,
   RunListResponseSchema,
   RunParamsSchema,
@@ -15,6 +19,12 @@ const WORKSPACE_BASE_PATH = "/workspace" as const;
 
 export const workspaceContract = {
   basePath: WORKSPACE_BASE_PATH,
+  list: defineEndpoint({
+    method: "GET",
+    path: "/list",
+    request: null,
+    response: WorkspaceListResponseSchema,
+  }),
   create: defineEndpoint({
     method: "POST",
     path: "/create",
@@ -28,6 +38,27 @@ export const workspaceContract = {
     request: CreateWorkspaceApiKeySchema,
     response: CreatedWorkspaceApiKeySchema,
   }),
+  listApiKeys: defineEndpoint({
+    method: "GET",
+    path: "/:workspaceId/api-keys",
+    params: WorkspaceIdParamsSchema,
+    request: null,
+    response: WorkspaceApiKeyListResponseSchema,
+  }),
+  revokeApiKey: defineEndpoint({
+    method: "DELETE",
+    path: "/:workspaceId/api-keys/:apiKeyId",
+    params: ApiKeyIdParamsSchema,
+    request: null,
+    response: SuccessResponseSchema,
+  }),
+  deleteApiKey: defineEndpoint({
+    method: "DELETE",
+    path: "/:workspaceId/api-keys/:apiKeyId/permanent",
+    params: ApiKeyIdParamsSchema,
+    request: null,
+    response: SuccessResponseSchema,
+  }),
   listRuns: defineEndpoint({
     method: "GET",
     path: "/:workspaceId/runs",
@@ -39,7 +70,7 @@ export const workspaceContract = {
     method: "GET",
     path: "/:workspaceId/runs/:runId",
     params: RunParamsSchema.extend(WorkspaceIdParamsSchema.shape),
-    request: RunParamsSchema,
+    request: null,
     response: RunDetailResponseSchema,
   }),
 };

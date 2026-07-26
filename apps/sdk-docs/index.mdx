@@ -16,7 +16,7 @@ Lynx records how an AI agent moves from a user request to LLM calls, tool calls,
 
 ## Choose an integration
 
-Use the TypeScript SDK when you want built-in async context, LLM and tool wrappers, local guardrails, batching, retries, and runtime configuration caching.
+Use the TypeScript SDK when you want built-in async context, LLM and tool wrappers, local firewalls, batching, retries, and runtime configuration caching.
 
 Use the OpenAPI directly when:
 
@@ -44,7 +44,7 @@ Lynx can show inputs, execution steps, LLM and tool calls, errors, retries, late
 
 Event delivery should run in the background. A Lynx API outage should not fail your customer request. Use bounded queues, short timeouts, selective retries, and a circuit breaker.
 
-Guardrail checks run locally before the tool executes. High-risk actions can use fail-closed or approval behavior without depending on a network call.
+Firewall checks run locally before the tool executes. High-risk actions can use fail-closed or approval behavior without depending on a network call.
 
 <Note>
   Prompts, tool arguments, model responses, logs, and payloads can contain

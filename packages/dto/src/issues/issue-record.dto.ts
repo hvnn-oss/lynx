@@ -1,6 +1,10 @@
 import { z } from "zod";
+import {
+  SdkCreateIssueRecordSchema,
+  SdkIssueRecordAcceptedResponseSchema,
+} from "@repo/sdk-types";
 
-export const CreateIssueRecordSchema = z.object({
+const LegacyCreateIssueRecordSchema = z.object({
   sdkInstanceId: z.string().trim().min(1).max(120),
   clientRecordId: z.string().trim().min(1).max(160),
   recordKind: z.enum(["DETECTION", "RECOVERY"]),
@@ -16,11 +20,15 @@ export const CreateIssueRecordSchema = z.object({
   evidence: z.record(z.string(), z.unknown()).optional(),
 });
 
-export const IssueRecordAcceptedResponseSchema = z.object({
+const LegacyIssueRecordAcceptedResponseSchema = z.object({
   recordId: z.string().uuid(),
   status: z.enum(["RECEIVED", "EVALUATING", "DECIDED", "FAILED"]),
   isNew: z.boolean(),
 });
+
+export const CreateIssueRecordSchema = SdkCreateIssueRecordSchema;
+export const IssueRecordAcceptedResponseSchema =
+  SdkIssueRecordAcceptedResponseSchema;
 
 export type CreateIssueRecordDto = z.infer<typeof CreateIssueRecordSchema>;
 export type IssueRecordAcceptedResponseDto = z.infer<

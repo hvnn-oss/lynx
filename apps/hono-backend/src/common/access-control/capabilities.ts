@@ -1,4 +1,5 @@
 export const CAPABILITIES = {
+  ORGANIZATION_READ: "organization:read",
   ORGANIZATION_UPDATE: "organization:update",
   WORKSPACE_CREATE: "workspace:create",
   WORKSPACE_READ: "workspace:read",
@@ -9,5 +10,4 @@ export const CAPABILITIES = {
   WORKSPACE_API_KEY_REVOKE: "workspace-api-key:revoke",
 } as const;
 
-export type Capability =
-  (typeof CAPABILITIES)[keyof typeof CAPABILITIES];
+export type Capability = (typeof CAPABILITIES)[keyof typeof CAPABILITIES];

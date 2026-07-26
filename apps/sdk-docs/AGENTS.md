@@ -11,12 +11,12 @@
 ## Terminology
 
 - Prefer "connect", "record", "track", "inspect", "debug", "session",
-  "trace", "event", "LLM call", "tool call", "guardrail", and "policy".
+  "trace", "event", "LLM call", "tool call", "firewall", and "policy".
 - Avoid heavy wording such as "telemetry", "observability",
   "instrumentation", or "governance" unless the page specifically explains the
   concept.
 - Korean pages should prefer "SDK 연결", "실행 추적", "세션", "실행 단계",
-  "도구 호출", "가드레일", "정책", and "원인 후보".
+  "도구 호출", "방화벽", "정책", and "원인 후보".
 - Do not claim Lynx always finds the exact root cause. Use "root cause
   candidate", "likely cause", "evidence", "원인 후보", or "의심되는 지점".
 

@@ -22,10 +22,16 @@ export class UserEntity {
   @Column()
   name!: string;
 
+  @Column({ type: "varchar", length: 500, nullable: true })
+  profileImageKey!: string | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 
-  @OneToMany(() => UserAccountEntity, (account: UserAccountEntity) => account.user)
+  @OneToMany(
+    () => UserAccountEntity,
+    (account: UserAccountEntity) => account.user,
+  )
   accounts!: UserAccountEntity[];
 
   @OneToMany(

@@ -23,7 +23,7 @@ type SessionEventType =
   | "context_load"
   | "llm_call"
   | "tool_call"
-  | "guardrail_check"
+  | "firewall_check"
   | "final_response";
 
 interface SessionEvent {
@@ -119,7 +119,7 @@ const events: SessionEvent[] = [
   },
   {
     id: "evt-policy",
-    type: "guardrail_check",
+    type: "firewall_check",
     status: "blocked",
     title: "고액 환불 승인 정책 평가",
     timestamp: "2026-07-08T09:17:24+09:00",
@@ -128,7 +128,7 @@ const events: SessionEvent[] = [
     input: "tool=refundInvoice, amount=12800, approvalSpan=false",
     output: "FAIL_CLOSED",
     raw: {
-      eventType: "guardrail_check",
+      eventType: "firewall_check",
       policyId: "pol-refund-approval",
       result: "FAIL_CLOSED",
       matchedCondition: "refundInvoice amount > 5000 && approvalSpan missing",
@@ -462,7 +462,7 @@ function EventIcon({ type }: { type: SessionEventType }) {
   if (type === "context_load") return <Database className="size-4" />;
   if (type === "llm_call") return <Bot className="size-4" />;
   if (type === "tool_call") return <Wrench className="size-4" />;
-  if (type === "guardrail_check") return <ShieldAlert className="size-4" />;
+  if (type === "firewall_check") return <ShieldAlert className="size-4" />;
   if (type === "final_response") return <CheckCircle2 className="size-4" />;
   return <CircleDot className="size-4" />;
 }

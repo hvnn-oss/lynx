@@ -103,19 +103,19 @@ The SDK prioritizes your application over event delivery.
 
 Production-oriented defaults:
 
-| Option | Default |
-| --- | --- |
-| `endpoint` | `https://api.lynxops.co` |
-| `delivery.mode` | `BACKGROUND` |
-| `delivery.timeoutMs` | `1000` |
-| `delivery.flushOnRunEnd` | `false` |
-| `delivery.flushIntervalMs` | `3000` |
-| `delivery.batchSize` | `50` |
-| `delivery.maxQueueSize` | `1000` |
-| `delivery.overflowStrategy` | `DROP_OLDEST` |
-| `circuitBreaker.enabled` | `true` |
-| `circuitBreaker.failureThreshold` | `3` |
-| `circuitBreaker.cooldownMs` | `30000` |
+| Option                            | Default                  |
+| --------------------------------- | ------------------------ |
+| `endpoint`                        | `https://api.lynxops.co` |
+| `delivery.mode`                   | `BACKGROUND`             |
+| `delivery.timeoutMs`              | `1000`                   |
+| `delivery.flushOnRunEnd`          | `false`                  |
+| `delivery.flushIntervalMs`        | `3000`                   |
+| `delivery.batchSize`              | `50`                     |
+| `delivery.maxQueueSize`           | `1000`                   |
+| `delivery.overflowStrategy`       | `DROP_OLDEST`            |
+| `circuitBreaker.enabled`          | `true`                   |
+| `circuitBreaker.failureThreshold` | `3`                      |
+| `circuitBreaker.cooldownMs`       | `30000`                  |
 
 Recommended production configuration:
 
@@ -176,18 +176,18 @@ await lynx.run(
 
 Useful identifiers:
 
-| Field | Purpose |
-| --- | --- |
-| `runId` | Unique execution id for one agent run. Generated automatically unless provided. |
-| `sessionId` | Groups multiple runs or events into a user-visible session. |
-| `workspaceId` | Tenant boundary for Lynx ingestion and dashboards. |
-| `agentId` | Stable agent identifier. |
-| `agentName` | Human-readable agent name shown in debugging views. |
-| `environment` | Runtime environment such as `production`, `staging`, or `local`. |
-| `appVersion` | Application release metadata. |
-| `deploymentId` | Deployment metadata for incident correlation. |
-| `promptVersion` | Prompt version metadata attached to LLM and reasoning events. |
-| `policyVersion` | Guardrail or policy version metadata. |
+| Field           | Purpose                                                                         |
+| --------------- | ------------------------------------------------------------------------------- |
+| `runId`         | Unique execution id for one agent run. Generated automatically unless provided. |
+| `sessionId`     | Groups multiple runs or events into a user-visible session.                     |
+| `workspaceId`   | Tenant boundary for Lynx ingestion and dashboards.                              |
+| `agentId`       | Stable agent identifier.                                                        |
+| `agentName`     | Human-readable agent name shown in debugging views.                             |
+| `environment`   | Runtime environment such as `production`, `staging`, or `local`.                |
+| `appVersion`    | Application release metadata.                                                   |
+| `deploymentId`  | Deployment metadata for incident correlation.                                   |
+| `promptVersion` | Prompt version metadata attached to LLM and reasoning events.                   |
+| `policyVersion` | Firewall or policy version metadata.                                            |
 
 ## Semantic Events
 
@@ -267,15 +267,15 @@ await postSlackMessage({
 });
 ```
 
-## Local Guardrails
+## Local Firewalls
 
-`guardTool()` evaluates your policy locally before a tool runs. Lynx server
+`firewallTool()` evaluates your policy locally before a tool runs. Lynx server
 availability does not decide whether the tool is blocked.
 
 ```ts
 import { LynxPolicyError } from "@lynxops/sdk";
 
-const refund = lynx.guardTool(
+const refund = lynx.firewallTool(
   "refund.create",
   async ({ amount }: { amount: number }) => {
     return { refunded: amount };
@@ -313,30 +313,30 @@ try {
 
 Policy behavior:
 
-| Policy result | Behavior |
-| --- | --- |
-| `ALLOW` | Runs the tool and records policy evaluation metadata. |
-| `WARN` | Runs the tool and records a warning. |
-| `BLOCK` | Blocks the tool and throws `LynxPolicyError`. |
-| `REQUIRE_APPROVAL` | Blocks the tool and throws `LynxPolicyError`. |
+| Policy result      | Behavior                                              |
+| ------------------ | ----------------------------------------------------- |
+| `ALLOW`            | Runs the tool and records policy evaluation metadata. |
+| `WARN`             | Runs the tool and records a warning.                  |
+| `BLOCK`            | Blocks the tool and throws `LynxPolicyError`.         |
+| `REQUIRE_APPROVAL` | Blocks the tool and throws `LynxPolicyError`.         |
 
 If policy evaluation itself throws, `failureMode` decides the fallback:
 
-| Failure mode | Behavior |
-| --- | --- |
-| `FAIL_OPEN` | Allows the tool call and records the policy error. |
-| `FAIL_CLOSED` | Blocks the tool call. |
-| `REQUIRE_APPROVAL` | Blocks with `action: "REQUIRE_APPROVAL"`. |
+| Failure mode       | Behavior                                           |
+| ------------------ | -------------------------------------------------- |
+| `FAIL_OPEN`        | Allows the tool call and records the policy error. |
+| `FAIL_CLOSED`      | Blocks the tool call.                              |
+| `REQUIRE_APPROVAL` | Blocks with `action: "REQUIRE_APPROVAL"`.          |
 
 ## Capture Modes
 
 Lynx does not require you to store full payloads.
 
-| Mode | Behavior |
-| --- | --- |
-| `full` | Captures input and output payloads according to `captureInput` and `captureOutput`. |
-| `metadata-only` | Keeps structure, timing, token usage, cost, status, errors, tool names, and trace metadata without raw content. |
-| `smart` | Captures metadata for normal events and preserves richer detail for failures, policy violations, and abnormal latency. |
+| Mode            | Behavior                                                                                                               |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `full`          | Captures input and output payloads according to `captureInput` and `captureOutput`.                                    |
+| `metadata-only` | Keeps structure, timing, token usage, cost, status, errors, tool names, and trace metadata without raw content.        |
+| `smart`         | Captures metadata for normal events and preserves richer detail for failures, policy violations, and abnormal latency. |
 
 ```ts
 const lynx = new LynxTracer({
@@ -395,6 +395,14 @@ const lynx = new LynxTracer({
   captureMode: "smart",
   maxPayloadLength: 16_000,
   maxPayloadBytes: 64 * 1024,
+  runtimeConfig: {
+    enabled: true,
+    refreshIntervalMs: 60_000,
+    cache: {
+      enabled: true,
+      path: "./.lynxconf",
+    },
+  },
   delivery: {
     mode: "BACKGROUND",
     timeoutMs: 1000,
@@ -412,68 +420,73 @@ const lynx = new LynxTracer({
 });
 ```
 
-| Option | Description |
-| --- | --- |
-| `clientId` | Required service or client identifier. |
-| `endpoint` | Lynx API endpoint. Defaults to `https://api.lynxops.co`. |
-| `workspaceId` | Default workspace id attached to events. |
-| `agentId` | Default agent id attached to events. |
-| `apiKey` | Lynx ingestion API key. Sent as a bearer token. |
-| `appVersion` | Application version metadata. |
-| `deploymentId` | Deployment id metadata. |
-| `environment` | Runtime environment metadata. |
-| `policyVersion` | Default policy version metadata. |
-| `sampleRate` | Trace sampling ratio from `0` to `1`. |
-| `captureInput` | Whether input payloads can be captured. |
-| `captureOutput` | Whether output payloads can be captured. |
-| `captureMode` | `full`, `metadata-only`, or `smart`. |
-| `maxPayloadLength` | Backward-compatible per-string truncation limit. |
-| `maxPayloadBytes` | Maximum UTF-8 JSON size retained for one event payload. |
-| `smartDetailLatencyThresholdMs` | Latency threshold for preserving masked detail in `smart` mode. |
-| `delivery.mode` | `BACKGROUND` or `BLOCKING`. |
-| `delivery.timeoutMs` | Timeout for one event delivery request. |
-| `delivery.flushOnRunEnd` | Whether `run()` tries to flush after the wrapped work finishes. |
-| `delivery.flushIntervalMs` | Background flush interval. |
-| `delivery.batchSize` | Batch size for delivery. |
-| `delivery.maxQueueSize` | Maximum queued events in memory. |
-| `delivery.overflowStrategy` | `DROP_OLDEST` or `DROP_NEWEST`. |
-| `circuitBreaker.enabled` | Enables delivery circuit breaker protection. |
-| `circuitBreaker.failureThreshold` | Consecutive delivery failures before opening the breaker. |
-| `circuitBreaker.cooldownMs` | Cooldown before retrying after the breaker opens. |
+| Option                            | Description                                                            |
+| --------------------------------- | ---------------------------------------------------------------------- |
+| `clientId`                        | Required service or client identifier.                                 |
+| `endpoint`                        | Lynx API endpoint. Defaults to `https://api.lynxops.co`.               |
+| `workspaceId`                     | Default workspace id attached to events.                               |
+| `agentId`                         | Default agent id attached to events.                                   |
+| `apiKey`                          | Lynx ingestion API key. Sent as a bearer token.                        |
+| `appVersion`                      | Application version metadata.                                          |
+| `deploymentId`                    | Deployment id metadata.                                                |
+| `environment`                     | Runtime environment metadata.                                          |
+| `policyVersion`                   | Default policy version metadata.                                       |
+| `sampleRate`                      | Trace sampling ratio from `0` to `1`.                                  |
+| `captureInput`                    | Whether input payloads can be captured.                                |
+| `captureOutput`                   | Whether output payloads can be captured.                               |
+| `captureMode`                     | `full`, `metadata-only`, or `smart`.                                   |
+| `maxPayloadLength`                | Backward-compatible per-string truncation limit.                       |
+| `maxPayloadBytes`                 | Maximum UTF-8 JSON size retained for one event payload.                |
+| `smartDetailLatencyThresholdMs`   | Latency threshold for preserving masked detail in `smart` mode.        |
+| `runtimeConfig.enabled`           | Loads managed prompts and firewall policies before the first run.      |
+| `runtimeConfig.refreshIntervalMs` | Background runtime configuration refresh interval.                     |
+| `runtimeConfig.cache.enabled`     | Persists the last validated bundle. Defaults to `false`.               |
+| `runtimeConfig.cache.path`        | Exact `.lynxconf` path. Uses the OS user cache directory when omitted. |
+| `runtimeConfig.cache.storage`     | Custom byte storage for environments without a writable filesystem.    |
+| `delivery.mode`                   | `BACKGROUND` or `BLOCKING`.                                            |
+| `delivery.timeoutMs`              | Timeout for one event delivery request.                                |
+| `delivery.flushOnRunEnd`          | Whether `run()` tries to flush after the wrapped work finishes.        |
+| `delivery.flushIntervalMs`        | Background flush interval.                                             |
+| `delivery.batchSize`              | Batch size for delivery.                                               |
+| `delivery.maxQueueSize`           | Maximum queued events in memory.                                       |
+| `delivery.overflowStrategy`       | `DROP_OLDEST` or `DROP_NEWEST`.                                        |
+| `circuitBreaker.enabled`          | Enables delivery circuit breaker protection.                           |
+| `circuitBreaker.failureThreshold` | Consecutive delivery failures before opening the breaker.              |
+| `circuitBreaker.cooldownMs`       | Cooldown before retrying after the breaker opens.                      |
 
 ## Environment Variables
 
 The default `lynx` export reads these variables:
 
-| Variable | Description |
-| --- | --- |
-| `LYNX_CLIENT_ID` | Client or service identifier. Defaults to `local_dev_env`. |
-| `LYNX_ENDPOINT` | Optional Lynx API endpoint override. |
-| `LYNX_API_KEY` | Lynx ingestion API key. |
-| `LYNX_WORKSPACE_ID` | Default workspace id. |
-| `LYNX_AGENT_ID` | Default agent id. |
-| `LYNX_SESSION_ID` | Default session id when `run()` does not receive one. |
-| `LYNX_SAMPLE_RATE` | Sampling rate from `0` to `1`. |
-| `LYNX_CAPTURE_INPUT` | `true` or `false`. |
-| `LYNX_CAPTURE_OUTPUT` | `true` or `false`. |
-| `LYNX_CAPTURE_MODE` | `full`, `metadata-only`, or `smart`. |
-| `LYNX_MAX_PAYLOAD_LENGTH` | Maximum payload string length. |
-| `LYNX_MAX_PAYLOAD_BYTES` | Maximum UTF-8 JSON bytes retained per event payload. |
-| `LYNX_SMART_DETAIL_LATENCY_THRESHOLD_MS` | Smart-mode detail retention latency threshold. |
-| `LYNX_APP_VERSION` | Application version metadata. |
-| `LYNX_DEPLOYMENT_ID` | Deployment id metadata. |
-| `LYNX_ENVIRONMENT` | Runtime environment metadata. Falls back to `NODE_ENV`. |
-| `LYNX_POLICY_VERSION` | Default policy version metadata. |
-| `LYNX_DELIVERY_MODE` | `BACKGROUND` or `BLOCKING`. |
-| `LYNX_DELIVERY_TIMEOUT_MS` | Delivery timeout in milliseconds. |
-| `LYNX_DELIVERY_FLUSH_ON_RUN_END` | `true` or `false`. |
-| `LYNX_DELIVERY_FLUSH_INTERVAL_MS` | Flush interval in milliseconds. |
-| `LYNX_DELIVERY_BATCH_SIZE` | Batch size. |
-| `LYNX_DELIVERY_MAX_QUEUE_SIZE` | Maximum queued event count. |
-| `LYNX_DELIVERY_OVERFLOW_STRATEGY` | `DROP_OLDEST` or `DROP_NEWEST`. |
-| `LYNX_CIRCUIT_BREAKER_ENABLED` | `true` or `false`. |
-| `LYNX_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | Consecutive failure count before opening the breaker. |
-| `LYNX_CIRCUIT_BREAKER_COOLDOWN_MS` | Circuit breaker cooldown in milliseconds. |
+| Variable                                 | Description                                                |
+| ---------------------------------------- | ---------------------------------------------------------- |
+| `LYNX_CLIENT_ID`                         | Client or service identifier. Defaults to `local_dev_env`. |
+| `LYNX_ENDPOINT`                          | Optional Lynx API endpoint override.                       |
+| `LYNX_API_KEY`                           | Lynx ingestion API key.                                    |
+| `LYNX_WORKSPACE_ID`                      | Default workspace id.                                      |
+| `LYNX_AGENT_ID`                          | Default agent id.                                          |
+| `LYNX_SESSION_ID`                        | Default session id when `run()` does not receive one.      |
+| `LYNX_SAMPLE_RATE`                       | Sampling rate from `0` to `1`.                             |
+| `LYNX_CAPTURE_INPUT`                     | `true` or `false`.                                         |
+| `LYNX_CAPTURE_OUTPUT`                    | `true` or `false`.                                         |
+| `LYNX_CAPTURE_MODE`                      | `full`, `metadata-only`, or `smart`.                       |
+| `LYNX_MAX_PAYLOAD_LENGTH`                | Maximum payload string length.                             |
+| `LYNX_MAX_PAYLOAD_BYTES`                 | Maximum UTF-8 JSON bytes retained per event payload.       |
+| `LYNX_SMART_DETAIL_LATENCY_THRESHOLD_MS` | Smart-mode detail retention latency threshold.             |
+| `LYNX_APP_VERSION`                       | Application version metadata.                              |
+| `LYNX_DEPLOYMENT_ID`                     | Deployment id metadata.                                    |
+| `LYNX_ENVIRONMENT`                       | Runtime environment metadata. Falls back to `NODE_ENV`.    |
+| `LYNX_POLICY_VERSION`                    | Default policy version metadata.                           |
+| `LYNX_DELIVERY_MODE`                     | `BACKGROUND` or `BLOCKING`.                                |
+| `LYNX_DELIVERY_TIMEOUT_MS`               | Delivery timeout in milliseconds.                          |
+| `LYNX_DELIVERY_FLUSH_ON_RUN_END`         | `true` or `false`.                                         |
+| `LYNX_DELIVERY_FLUSH_INTERVAL_MS`        | Flush interval in milliseconds.                            |
+| `LYNX_DELIVERY_BATCH_SIZE`               | Batch size.                                                |
+| `LYNX_DELIVERY_MAX_QUEUE_SIZE`           | Maximum queued event count.                                |
+| `LYNX_DELIVERY_OVERFLOW_STRATEGY`        | `DROP_OLDEST` or `DROP_NEWEST`.                            |
+| `LYNX_CIRCUIT_BREAKER_ENABLED`           | `true` or `false`.                                         |
+| `LYNX_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | Consecutive failure count before opening the breaker.      |
+| `LYNX_CIRCUIT_BREAKER_COOLDOWN_MS`       | Circuit breaker cooldown in milliseconds.                  |
 
 ## Development
 

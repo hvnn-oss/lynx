@@ -83,7 +83,7 @@ Run
   Tool Span
   Retriever Span
   Memory Span
-  Guardrail Span
+  Firewall Span
   Human Approval Span
 ```
 
@@ -155,7 +155,7 @@ SDK는 고객 서비스 안에서 동작한다. 그래서 기능보다 안전성
 - 공개 SDK 예시는 OSS 패키지명인 `@lynxops/sdk`를 사용한다.
 - 한국어 문서는 `합니다` 톤으로 작성하고, "SDK 연결", "실행 추적", "세션", "도구 호출", "가드레일", "정책", "원인 후보"를 우선 사용한다.
 - 한국어 문서에서는 "계측", "텔레메트리", "관측성", "런타임 거버넌스" 같은 무거운 표현을 피한다. 필요한 경우 짧게 설명하고 사용한다.
-- 영어 문서는 `connect`, `record`, `track`, `inspect`, `debug`, `session`, `trace`, `event`, `tool call`, `LLM call`, `guardrail`, `policy`처럼 짧고 실제적인 단어를 우선한다.
+- 영어 문서는 `connect`, `record`, `track`, `inspect`, `debug`, `session`, `trace`, `event`, `tool call`, `LLM call`, `firewall`, `policy`처럼 짧고 실제적인 단어를 우선한다.
 - 원인 분석 기능은 과장하지 않는다. "정확한 원인"이나 "완전 자동 분석" 대신 "원인 후보", "의심되는 지점", "관련 근거", `root cause candidate`, `evidence`를 사용한다.
 - 프롬프트, 도구 인자, 모델 응답, 로그, payload를 다루는 문서에는 민감정보 전송과 마스킹에 대한 짧은 보안 메모를 포함한다.
 

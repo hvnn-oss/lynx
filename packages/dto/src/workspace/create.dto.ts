@@ -14,3 +14,11 @@ export const WorkspaceResponseSchema = z.object({
 });
 
 export type WorkspaceResponseDto = z.infer<typeof WorkspaceResponseSchema>;
+
+export const WorkspaceListResponseSchema = z.object({
+  items: z.array(WorkspaceResponseSchema),
+});
+
+export type WorkspaceListResponseDto = z.infer<
+  typeof WorkspaceListResponseSchema
+>;
