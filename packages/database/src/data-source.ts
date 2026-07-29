@@ -54,6 +54,37 @@ const databaseUsername =
 const databasePassword =
   process.env.DATABASE_PASSWORD ?? process.env.DB_PASSWORD;
 const databaseName = process.env.DATABASE_NAME ?? process.env.DB_DATABASE;
+const isDatabaseSslEnabled = parseBooleanEnv(
+  process.env.DATABASE_SSL ?? process.env.DB_SSL,
+  false,
+);
+const shouldRejectUnauthorizedDatabaseCertificate = parseBooleanEnv(
+  process.env.DATABASE_SSL_REJECT_UNAUTHORIZED ??
+    process.env.DB_SSL_REJECT_UNAUTHORIZED,
+  true,
+);
+const databaseSslCa =
+  process.env.DATABASE_SSL_CA ?? process.env.DB_SSL_CA;
+
+/**
+ * 환경 변수의 boolean 값을 일관된 규칙으로 변환합니다.
+ */
+function parseBooleanEnv(value: string | undefined, defaultValue: boolean) {
+  if (value === undefined) {
+    return defaultValue;
+  }
+
+  const normalizedValue = value.trim().toLowerCase();
+  if (["true", "1", "yes", "on"].includes(normalizedValue)) {
+    return true;
+  }
+
+  if (["false", "0", "no", "off"].includes(normalizedValue)) {
+    return false;
+  }
+
+  return defaultValue;
+}
 
 function parseTypeOrmLogging(value: string | undefined): LoggerOptions {
   if (!value) {
@@ -106,6 +137,14 @@ export const AppDataSource = new DataSource({
   logging: parseTypeOrmLogging(
     process.env.DATABASE_LOGGING ?? process.env.DB_LOGGING,
   ),
+  ssl: isDatabaseSslEnabled
+    ? {
+        rejectUnauthorized: shouldRejectUnauthorizedDatabaseCertificate,
+        ...(databaseSslCa
+          ? { ca: databaseSslCa.replace(/\\n/g, "\n") }
+          : {}),
+      }
+    : false,
   entities: [
     AdminAuditLogEntity,
     AdminUserEntity,
