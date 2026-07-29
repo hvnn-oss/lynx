@@ -5,15 +5,24 @@ import type { ReadinessResponseDto } from "@repo/dto";
 import { AppDataSource } from "../../provider/database/typeorm-config.js";
 import { coreRedis } from "../../provider/redis/redis-config.js";
 import { env } from "../config/config.js";
+import {
+  operationalHealthService,
+  type OperationalHealthService,
+} from "./operational-health.service.js";
 
 type HealthDatabase = Pick<DataSource, "isInitialized" | "query">;
 type HealthRedis = Pick<Redis, "ping">;
+type PublicOperationalHealth = Pick<
+  OperationalHealthService,
+  "getPublicSummary"
+>;
 
 /** 컨테이너가 요청을 처리할 수 있는지 핵심 의존성까지 확인합니다. */
 export class SystemHealthService {
   constructor(
     private readonly database: HealthDatabase = AppDataSource,
     private readonly redis: HealthRedis = coreRedis,
+    private readonly operations: PublicOperationalHealth = operationalHealthService,
   ) {}
 
   /** PostgreSQL과 Redis를 제한 시간 안에 확인해 readiness 결과를 만듭니다. */
@@ -28,6 +37,19 @@ export class SystemHealthService {
       }),
     ]);
 
+    const operationSummary =
+      database.status === "up" && redis.status === "up"
+        ? await this.operations.getPublicSummary().catch(() => ({
+            status: "unknown" as const,
+            warnings: ["OPERATIONAL_HEALTH_CHECK_FAILED"],
+            checkedAt: new Date().toISOString(),
+          }))
+        : {
+            status: "unknown" as const,
+            warnings: ["DEPENDENCY_UNAVAILABLE"],
+            checkedAt: new Date().toISOString(),
+          };
+
     return {
       status:
         database.status === "up" && redis.status === "up"
@@ -35,6 +57,7 @@ export class SystemHealthService {
           : "unavailable",
       processRole: env.LYNX_PROCESS_ROLE,
       checks: { database, redis },
+      operations: operationSummary,
       retentionEnabled: env.DATA_RETENTION_ENABLED,
       checkedAt: new Date().toISOString(),
     };

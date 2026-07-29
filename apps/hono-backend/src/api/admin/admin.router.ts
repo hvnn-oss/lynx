@@ -28,6 +28,21 @@ adminRouter.on(
   ...handlers.getAuditLog,
 );
 adminRouter.on(
+  adminContract.listApiKeys.method,
+  adminContract.listApiKeys.path,
+  ...handlers.listApiKeys,
+);
+adminRouter.on(
+  adminContract.getOpenApiUsage.method,
+  adminContract.getOpenApiUsage.path,
+  ...handlers.getOpenApiUsage,
+);
+adminRouter.on(
+  adminContract.revokeApiKey.method,
+  adminContract.revokeApiKey.path,
+  ...handlers.revokeApiKey,
+);
+adminRouter.on(
   adminContract.listOrganizations.method,
   adminContract.listOrganizations.path,
   ...handlers.listOrganizations,

@@ -1,5 +1,11 @@
 import { ERROR_CODES, PRODUCT_ACCESS_GRANT_STATUS } from "@repo/constants";
+import {
+  ADMIN_API_KEY_STATUS,
+  ADMIN_OPENAPI_USAGE_PERIOD,
+} from "@repo/dto";
 import type {
+  AdminApiKeyDto,
+  AdminApiKeyQueryDto,
   AdminAuditLogDetailDto,
   AdminAuditLogQueryDto,
   AdminAuditLogSummaryDto,
@@ -7,6 +13,8 @@ import type {
   AdminOrganizationQueryDto,
   AdminOrganizationSummaryDto,
   AdminOverviewResponseDto,
+  AdminOpenApiUsageQueryDto,
+  AdminOpenApiUsageResponseDto,
   AdminPilotParticipantDto,
   AdminPilotParticipantQueryDto,
   AdminPilotParticipantUpdateDto,
@@ -23,6 +31,7 @@ import {
   AdminRepository,
   adminRepository,
   type AdminCursor,
+  type RawAdminApiKey,
   type RawAuditLog,
   type RawOrganization,
   type RawPilotParticipant,
@@ -95,6 +104,171 @@ export class AdminService {
       responseData: metadata.response ?? null,
       metadata: row.metadata,
     };
+  }
+
+  /** API Key의 비밀값을 제외한 운영 메타데이터를 커서 기반으로 반환합니다. */
+  async listApiKeys(input: AdminApiKeyQueryDto) {
+    const rows = await this.repository.listApiKeys({
+      ...input,
+      cursor: input.cursor ? this.decodeCursor(input.cursor) : undefined,
+    });
+    const hasNext = rows.length > input.limit;
+    const items = rows.slice(0, input.limit);
+    return {
+      items: items.map((row) => this.toAdminApiKey(row)),
+      nextCursor:
+        hasNext && items.length > 0
+          ? this.encodeCursor(items[items.length - 1]!)
+          : null,
+    };
+  }
+
+  /** 관리자 필터에 맞는 API Key 상태와 OpenAPI 사용량을 함께 집계합니다. */
+  async getOpenApiUsage(
+    input: AdminOpenApiUsageQueryDto,
+  ): Promise<AdminOpenApiUsageResponseDto> {
+    const to = new Date();
+    const from = new Date(to.getTime() - this.getUsagePeriodMs(input.period));
+    const filters = {
+      from,
+      organizationId: input.organizationId,
+      workspaceId: input.workspaceId,
+      apiKeyId: input.apiKeyId,
+    };
+    const [keyStatus, summary, dailyTrend, endpoints, keys] = await Promise.all([
+      this.repository.getApiKeyStatusCounts(input),
+      this.repository.getOpenApiUsageSummary(filters),
+      this.repository.listOpenApiDailyUsage(filters),
+      this.repository.listOpenApiEndpointUsage(filters),
+      this.repository.listOpenApiKeyUsage(filters),
+    ]);
+    const requestCount = this.toInteger(summary?.requestCount ?? 0);
+    const successCount = this.toInteger(summary?.successCount ?? 0);
+
+    return {
+      range: {
+        from: from.toISOString(),
+        to: to.toISOString(),
+        period: input.period,
+      },
+      keyStatus: {
+        total: this.toInteger(keyStatus?.total ?? 0),
+        active: this.toInteger(keyStatus?.active ?? 0),
+        expired: this.toInteger(keyStatus?.expired ?? 0),
+        revoked: this.toInteger(keyStatus?.revoked ?? 0),
+      },
+      summary: {
+        requestCount,
+        successCount,
+        clientErrorCount: this.toInteger(summary?.clientErrorCount ?? 0),
+        serverErrorCount: this.toInteger(summary?.serverErrorCount ?? 0),
+        rateLimitedCount: this.toInteger(summary?.rateLimitedCount ?? 0),
+        acceptedEventCount: this.toInteger(
+          summary?.acceptedEventCount ?? 0,
+        ),
+        rejectedEventCount: this.toInteger(
+          summary?.rejectedEventCount ?? 0,
+        ),
+        requestBytes: this.toInteger(summary?.requestBytes ?? 0),
+        responseBytes: this.toInteger(summary?.responseBytes ?? 0),
+        averageLatencyMs: this.average(
+          summary?.totalLatencyMs ?? 0,
+          requestCount,
+        ),
+        successRate:
+          requestCount === 0
+            ? 0
+            : this.round((successCount / requestCount) * 100),
+      },
+      dailyTrend: dailyTrend.map((item) => ({
+        date: item.date,
+        requestCount: this.toInteger(item.requestCount),
+        errorCount: this.toInteger(item.errorCount),
+        rateLimitedCount: this.toInteger(item.rateLimitedCount),
+        acceptedEventCount: this.toInteger(item.acceptedEventCount),
+      })),
+      endpoints: endpoints.map((item) => {
+        const endpointRequestCount = this.toInteger(item.requestCount);
+        return {
+          endpoint: item.endpoint,
+          requestCount: endpointRequestCount,
+          errorCount: this.toInteger(item.errorCount),
+          rateLimitedCount: this.toInteger(item.rateLimitedCount),
+          averageLatencyMs: this.average(
+            item.totalLatencyMs,
+            endpointRequestCount,
+          ),
+        };
+      }),
+      keys: keys.map((item) => ({
+        apiKeyId: item.apiKeyId,
+        name: item.name,
+        prefix: item.prefix,
+        workspace: {
+          id: item.workspaceId,
+          name: item.workspaceName,
+        },
+        organization: {
+          id: item.organizationId,
+          name: item.organizationName,
+        },
+        requestCount: this.toInteger(item.requestCount),
+        errorCount: this.toInteger(item.errorCount),
+        rateLimitedCount: this.toInteger(item.rateLimitedCount),
+        acceptedEventCount: this.toInteger(item.acceptedEventCount),
+        lastUsedAt: item.lastUsedAt?.toISOString() ?? null,
+      })),
+    };
+  }
+
+  /** API Key를 즉시 폐기하고 비밀값 없는 변경 기록을 감사 로그에 남깁니다. */
+  async revokeApiKey(
+    actorUserId: string,
+    apiKeyId: string,
+    requestId?: string,
+  ): Promise<AdminApiKeyDto> {
+    const beforeRow = await this.repository.getApiKey(apiKeyId);
+    if (!beforeRow) {
+      throw new HTTPException(404, {
+        message: ERROR_CODES.ADMIN_API_KEY_NOT_FOUND,
+      });
+    }
+    if (beforeRow.revokedAt) return this.toAdminApiKey(beforeRow);
+
+    if (!(await this.repository.revokeApiKey(apiKeyId, new Date()))) {
+      const current = await this.repository.getApiKey(apiKeyId);
+      if (current?.revokedAt) return this.toAdminApiKey(current);
+      throw new HTTPException(404, {
+        message: ERROR_CODES.ADMIN_API_KEY_NOT_FOUND,
+      });
+    }
+
+    const afterRow = await this.repository.getApiKey(apiKeyId);
+    if (!afterRow) {
+      throw new HTTPException(404, {
+        message: ERROR_CODES.ADMIN_API_KEY_NOT_FOUND,
+      });
+    }
+    const before = this.toAdminApiKey(beforeRow);
+    const after = this.toAdminApiKey(afterRow);
+    await this.auditRecorder.record({
+      actorUserId,
+      action: "workspace_api_key.admin_revoke",
+      targetType: "workspace_api_key",
+      targetId: apiKeyId,
+      workspaceId: after.workspace.id,
+      organizationId: after.organization.id,
+      requestId,
+      before,
+      after,
+      metadata: {
+        method: "PATCH",
+        path: `/admin/api-keys/${apiKeyId}/revoke`,
+        statusCode: 200,
+        response: { body: after },
+      },
+    });
+    return after;
   }
 
   async listPlans(): Promise<{ items: AdminPlanDto[] }> {
@@ -437,6 +611,39 @@ export class AdminService {
     };
   }
 
+  /** 저장 모델을 비밀 필드가 없는 관리자 응답으로 변환합니다. */
+  private toAdminApiKey(row: RawAdminApiKey): AdminApiKeyDto {
+    const status = row.revokedAt
+      ? ADMIN_API_KEY_STATUS.REVOKED
+      : row.expiresAt && row.expiresAt.getTime() <= Date.now()
+        ? ADMIN_API_KEY_STATUS.EXPIRED
+        : ADMIN_API_KEY_STATUS.ACTIVE;
+    return {
+      id: row.id,
+      name: row.name,
+      prefix: row.prefix,
+      kind: row.kind,
+      scopes: row.scopes,
+      status,
+      workspace: {
+        id: row.workspaceId,
+        name: row.workspaceName,
+      },
+      organization: {
+        id: row.organizationId,
+        name: row.organizationName,
+      },
+      createdBy: {
+        id: row.createdByUserId,
+        name: row.createdByName,
+      },
+      createdAt: row.createdAt.toISOString(),
+      lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
+      expiresAt: row.expiresAt?.toISOString() ?? null,
+      revokedAt: row.revokedAt?.toISOString() ?? null,
+    };
+  }
+
   private toPlan(row: RawPlan): AdminPlanDto {
     return {
       id: row.id,
@@ -561,6 +768,31 @@ export class AdminService {
 
   private toNumber(value: string | number | null): number {
     return value === null ? 0 : Number(value);
+  }
+
+  /** 기간 선택값을 밀리초로 변환합니다. */
+  private getUsagePeriodMs(
+    period: AdminOpenApiUsageQueryDto["period"],
+  ): number {
+    if (period === ADMIN_OPENAPI_USAGE_PERIOD.LAST_24_HOURS) {
+      return 24 * 60 * 60 * 1_000;
+    }
+    if (period === ADMIN_OPENAPI_USAGE_PERIOD.LAST_30_DAYS) {
+      return 30 * 24 * 60 * 60 * 1_000;
+    }
+    return 7 * 24 * 60 * 60 * 1_000;
+  }
+
+  /** 합계와 건수로 0에 안전한 평균을 계산합니다. */
+  private average(
+    total: string | number,
+    count: number,
+  ): number {
+    return count === 0 ? 0 : this.round(Number(total) / count);
+  }
+
+  private round(value: number): number {
+    return Math.round(value * 100) / 100;
   }
 
   private rethrowPlanConflict(error: unknown): never {

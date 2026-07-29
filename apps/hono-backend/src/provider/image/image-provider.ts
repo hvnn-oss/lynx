@@ -1,6 +1,7 @@
 import { env } from "../../common/config/config.js";
 import { PublicBaseImageUrlProvider } from "./cloudfront-image-url.provider.js";
 import { ImageService } from "./image.service.js";
+import { createImageS3CredentialProvider } from "./aws-credential.provider.js";
 import { S3ImageStorageProvider } from "./s3-image-storage.provider.js";
 
 let imageService: ImageService | null = null;
@@ -18,9 +19,7 @@ export function getImageService(): ImageService {
     region: env.IMAGE_S3_REGION,
     bucket: env.IMAGE_S3_BUCKET,
     endpoint: env.IMAGE_S3_ENDPOINT,
-    accessKeyId: env.IMAGE_S3_ACCESS_KEY_ID,
-    secretAccessKey: env.IMAGE_S3_SECRET_ACCESS_KEY,
-    sessionToken: env.IMAGE_S3_SESSION_TOKEN,
+    credentials: createImageS3CredentialProvider(),
     forcePathStyle: env.IMAGE_S3_FORCE_PATH_STYLE,
   });
   const urls = new PublicBaseImageUrlProvider(env.IMAGE_CDN_BASE_URL);

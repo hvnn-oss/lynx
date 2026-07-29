@@ -22,38 +22,63 @@ export class DataRetentionService {
     if (!env.DATA_RETENTION_ENABLED) {
       return {
         batches: 0,
+        deletedAuditLogs: 0,
         deletedIssueRecords: 0,
+        deletedOpenApiUsageBuckets: 0,
         deletedSessions: 0,
         isEnabled: false,
       };
     }
 
     let batches = 0;
+    let deletedAuditLogs = 0;
     let deletedIssueRecords = 0;
+    let deletedOpenApiUsageBuckets = 0;
     let deletedSessions = 0;
+    const now = Date.now();
+    const cutoffs = {
+      auditLogsBefore: new Date(
+        now - env.AUDIT_LOG_RETENTION_DAYS * 24 * 60 * 60_000,
+      ),
+      openApiUsageBefore: new Date(
+        now - env.OPENAPI_USAGE_RETENTION_DAYS * 24 * 60 * 60_000,
+      ),
+    };
 
     while (batches < env.DATA_RETENTION_MAX_BATCHES_PER_RUN) {
       const batch = await this.repository.purgeBatch(
         env.DATA_RETENTION_BATCH_SIZE,
+        cutoffs,
       );
       batches += 1;
+      deletedAuditLogs += batch.deletedAuditLogs;
       deletedIssueRecords += batch.deletedIssueRecords;
+      deletedOpenApiUsageBuckets += batch.deletedOpenApiUsageBuckets;
       deletedSessions += batch.deletedSessions;
 
       if (
+        batch.deletedAuditLogs < env.DATA_RETENTION_BATCH_SIZE &&
         batch.deletedIssueRecords < env.DATA_RETENTION_BATCH_SIZE &&
+        batch.deletedOpenApiUsageBuckets < env.DATA_RETENTION_BATCH_SIZE &&
         batch.deletedSessions < env.DATA_RETENTION_BATCH_SIZE
       ) {
         break;
       }
     }
 
-    if (deletedIssueRecords > 0 || deletedSessions > 0) {
+    if (
+      deletedAuditLogs > 0 ||
+      deletedIssueRecords > 0 ||
+      deletedOpenApiUsageBuckets > 0 ||
+      deletedSessions > 0
+    ) {
       logger.info(
         {
           event: "data_retention.completed",
           batches,
+          deletedAuditLogs,
           deletedIssueRecords,
+          deletedOpenApiUsageBuckets,
           deletedSessions,
         },
         "expired workspace data removed",
@@ -62,7 +87,9 @@ export class DataRetentionService {
 
     return {
       batches,
+      deletedAuditLogs,
       deletedIssueRecords,
+      deletedOpenApiUsageBuckets,
       deletedSessions,
       isEnabled: true,
     };

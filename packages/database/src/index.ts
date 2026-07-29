@@ -58,6 +58,7 @@ export * from "./entities/organization/filter-policy.entity.js";
 // workspace
 export * from "./entities/workspace/workspace-api-key.entity.js";
 export * from "./entities/workspace/workspace-membership.entity.js";
+export * from "./entities/workspace/openapi-api-key-usage-hourly.entity.js";
 
 // prompt
 export * from "./entities/prompt/prompt-block.entity.js";

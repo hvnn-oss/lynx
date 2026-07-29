@@ -39,7 +39,9 @@ import { SessionEntity } from "./entities/session/session.entity";
 import { RunEntity } from "./entities/run/run.entity";
 import { WorkspaceApiKeyEntity } from "./entities/workspace/workspace-api-key.entity";
 import { WorkspaceMembershipEntity } from "./entities/workspace/workspace-membership.entity";
+import { OpenApiApiKeyUsageHourlyEntity } from "./entities/workspace/openapi-api-key-usage-hourly.entity";
 import { InitialSchema1785054963677 } from "./migrations/1785054963677-initial-schema";
+import { AddOpenApiApiKeyUsage1785312000000 } from "./migrations/1785312000000-add-openapi-api-key-usage";
 import { loadDatabaseEnv } from "./load-env";
 
 loadDatabaseEnv();
@@ -137,6 +139,7 @@ export const AppDataSource = new DataSource({
     WorkspaceEntity,
     WorkspaceApiKeyEntity,
     WorkspaceMembershipEntity,
+    OpenApiApiKeyUsageHourlyEntity,
     PromptBlockEntity,
     PromptVersionEntity,
     PromptEntity,
@@ -146,6 +149,9 @@ export const AppDataSource = new DataSource({
     RunEntity,
     FilterPolicyEntity,
   ],
-  migrations: [InitialSchema1785054963677],
+  migrations: [
+    InitialSchema1785054963677,
+    AddOpenApiApiKeyUsage1785312000000,
+  ],
   subscribers: [],
 });

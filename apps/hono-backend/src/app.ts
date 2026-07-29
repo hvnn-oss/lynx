@@ -71,6 +71,23 @@ app.on(
     const readiness = systemContract.readiness.response.parse(
       await systemHealthService.checkReadiness(),
     );
+    if (readiness.status !== "ok") {
+      c.get("logger").error(
+        {
+          event: "system.readiness.unavailable",
+          checks: readiness.checks,
+        },
+        "system readiness unavailable",
+      );
+    } else if (readiness.operations.status !== "healthy") {
+      c.get("logger").warn(
+        {
+          event: "system.operations.degraded",
+          warnings: readiness.operations.warnings,
+        },
+        "system operations degraded",
+      );
+    }
     return c.json(readiness, readiness.status === "ok" ? 200 : 503);
   },
 );

@@ -5,6 +5,7 @@ import { openAPIContract } from "@repo/contract";
 import type { AppEnv } from "../../common/types/app-env.js";
 import { createWorkspaceApiKeyMiddleware } from "../../common/middleware/workspace-api-key.middleware.js";
 import { openApiRateLimitMiddleware } from "../../common/middleware/openapi-rate-limit.middleware.js";
+import { createOpenApiUsageMiddleware } from "../../common/middleware/openapi-usage.middleware.js";
 import { createOpenAPIEventHandlers } from "./event.handler.js";
 import { issueRecordRouter } from "./issue-record/issue-record.router.js";
 import { runtimeConfigRouter } from "./runtime-config/runtime-config.router.js";
@@ -31,6 +32,7 @@ openAPIRouter.on(
   openAPIContract.ingestEvents.path,
   bodyLimit({ maxSize: 1024 * 1024 }),
   createWorkspaceApiKeyMiddleware([API_KEY_SCOPES.EVENTS_WRITE]),
+  createOpenApiUsageMiddleware(),
   openApiRateLimitMiddleware,
   ...handlers.ingestBatch,
 );
@@ -40,6 +42,7 @@ openAPIRouter.on(
   openAPIContract.listRuns.method,
   openAPIContract.listRuns.path,
   createWorkspaceApiKeyMiddleware([API_KEY_SCOPES.USAGE_READ]),
+  createOpenApiUsageMiddleware(),
   openApiRateLimitMiddleware,
   ...handlers.listRuns,
 );
@@ -49,6 +52,7 @@ openAPIRouter.on(
   openAPIContract.getRun.method,
   openAPIContract.getRun.path,
   createWorkspaceApiKeyMiddleware([API_KEY_SCOPES.USAGE_READ]),
+  createOpenApiUsageMiddleware(),
   openApiRateLimitMiddleware,
   ...handlers.getRun,
 );
@@ -58,6 +62,7 @@ openAPIRouter.on(
   openAPIContract.listRunEvents.method,
   openAPIContract.listRunEvents.path,
   createWorkspaceApiKeyMiddleware([API_KEY_SCOPES.USAGE_READ]),
+  createOpenApiUsageMiddleware(),
   openApiRateLimitMiddleware,
   ...handlers.listRunEvents,
 );

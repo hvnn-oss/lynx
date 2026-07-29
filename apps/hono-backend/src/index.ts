@@ -9,6 +9,7 @@ import { env } from "./common/config/config.js";
 import { issueRecordWorker } from "./common/services/issue-record-worker.js";
 import { webhookDeliveryWorker } from "./common/services/webhook-delivery-worker.js";
 import { dataRetentionWorker } from "./common/services/data-retention-worker.js";
+import { operationalHealthWorker } from "./common/services/operational-health-worker.js";
 
 let server: ServerType | undefined;
 
@@ -25,6 +26,7 @@ async function bootstrap(): Promise<void> {
     issueRecordWorker.start();
     webhookDeliveryWorker.start();
     dataRetentionWorker.start();
+    operationalHealthWorker.start();
   }
 
   logger.info(
@@ -72,10 +74,11 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   );
 
   if (runsWorkers()) {
-    issueRecordWorker.stop();
     await Promise.all([
+      issueRecordWorker.stop(),
       webhookDeliveryWorker.stop(),
       dataRetentionWorker.stop(),
+      operationalHealthWorker.stop(),
     ]);
   }
   server?.close();
@@ -121,10 +124,11 @@ bootstrap().catch(async (error: unknown) => {
   );
 
   if (runsWorkers()) {
-    issueRecordWorker.stop();
     await Promise.all([
+      issueRecordWorker.stop(),
       webhookDeliveryWorker.stop(),
       dataRetentionWorker.stop(),
+      operationalHealthWorker.stop(),
     ]);
   }
   if (AppDataSource.isInitialized) {

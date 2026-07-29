@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { PRODUCT_ACCESS_MODE as PRODUCT_ACCESS_MODES } from "@repo/constants";
 import { z } from "zod";
+import { getProductionConfigIssues } from "./production-config-policy.js";
 
 // 문자열 환경 변수를 엄격한 boolean 값으로 변환합니다.
 const booleanFromEnv = z
@@ -9,6 +10,12 @@ const booleanFromEnv = z
   .toLowerCase()
   .pipe(z.enum(["true", "false"]))
   .transform((value: "true" | "false") => value === "true");
+
+const optionalTrimmedString = z.preprocess(
+  (value) =>
+    typeof value === "string" && value.trim().length === 0 ? undefined : value,
+  z.string().trim().min(1).optional(),
+);
 
 // 서버 시작 전에 필수 환경 변수와 기본값을 한 번에 검증합니다.
 const envSchema = z
@@ -34,7 +41,8 @@ const envSchema = z
 
     CORE_REDIS_HOST: z.string().trim().min(1),
     CORE_REDIS_PORT: z.coerce.number().int().positive(),
-    CORE_REDIS_PASSWORD: z.string().optional(),
+    CORE_REDIS_USERNAME: optionalTrimmedString,
+    CORE_REDIS_PASSWORD: optionalTrimmedString,
     CORE_REDIS_TLS: booleanFromEnv.default(false),
 
     LYNX_PROCESS_ROLE: z.enum(["api", "worker", "all"]).default("all"),
@@ -62,6 +70,51 @@ const envSchema = z
       .min(1)
       .max(100)
       .default(20),
+    AUDIT_LOG_RETENTION_DAYS: z.coerce
+      .number()
+      .int()
+      .min(30)
+      .max(3_650)
+      .default(365),
+    OPENAPI_USAGE_RETENTION_DAYS: z.coerce
+      .number()
+      .int()
+      .min(30)
+      .max(3_650)
+      .default(400),
+    OPERATIONAL_HEALTH_POLL_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .min(10_000)
+      .max(15 * 60_000)
+      .default(60_000),
+    WORKER_HEARTBEAT_REQUIRED: booleanFromEnv.optional(),
+    ISSUE_RECORD_BACKLOG_WARN_COUNT: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(100),
+    ISSUE_RECORD_STALE_WARN_COUNT: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(1),
+    WEBHOOK_FAILED_WARN_COUNT: z.coerce.number().int().positive().default(5),
+    OPENAPI_REJECTION_WARN_MIN_EVENTS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(20),
+    OPENAPI_REJECTION_WARN_PERCENT: z.coerce
+      .number()
+      .min(0)
+      .max(100)
+      .default(10),
+    OPENAPI_SERVER_ERROR_WARN_COUNT: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(5),
 
     JWT_SECRET: z.string().trim().min(32),
     ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive(),
@@ -102,9 +155,9 @@ const envSchema = z
     IMAGE_S3_REGION: z.string().trim().min(1),
     IMAGE_S3_BUCKET: z.string().trim().min(1),
     IMAGE_S3_ENDPOINT: z.url().optional(),
-    IMAGE_S3_ACCESS_KEY_ID: z.string().trim().min(1),
-    IMAGE_S3_SECRET_ACCESS_KEY: z.string().trim().min(1),
-    IMAGE_S3_SESSION_TOKEN: z.string().trim().min(1).optional(),
+    IMAGE_S3_ACCESS_KEY_ID: optionalTrimmedString,
+    IMAGE_S3_SECRET_ACCESS_KEY: optionalTrimmedString,
+    IMAGE_S3_SESSION_TOKEN: optionalTrimmedString,
     IMAGE_S3_FORCE_PATH_STYLE: booleanFromEnv.default(false),
     IMAGE_CDN_BASE_URL: z.url(),
     DEFAULT_USER_PROFILE_IMAGE_URL: z.url().optional(),
@@ -154,6 +207,10 @@ const envSchema = z
     LOG_LEVEL: z
       .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
       .default("info"),
+
+    AWS_CONTAINER_CREDENTIALS_RELATIVE_URI: optionalTrimmedString,
+    AWS_CONTAINER_CREDENTIALS_FULL_URI: z.url().optional(),
+    AWS_CONTAINER_AUTHORIZATION_TOKEN: optionalTrimmedString,
   })
   .superRefine((value, context) => {
     if (
@@ -184,6 +241,13 @@ const envSchema = z
         path: ["FIREWALL_WEBHOOK_SIGNING_SECRET"],
         message:
           "Production requires a firewall webhook signing secret of at least 32 characters.",
+      });
+    }
+    for (const issue of getProductionConfigIssues(value)) {
+      context.addIssue({
+        code: "custom",
+        path: [issue.path],
+        message: issue.message,
       });
     }
   });
@@ -218,4 +282,7 @@ export const env = {
     (parsed.data.NODE_ENV === "production"
       ? PRODUCT_ACCESS_MODES.INVITE_ONLY
       : PRODUCT_ACCESS_MODES.PUBLIC),
+  WORKER_HEARTBEAT_REQUIRED:
+    parsed.data.WORKER_HEARTBEAT_REQUIRED ??
+    parsed.data.NODE_ENV === "production",
 };

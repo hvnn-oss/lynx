@@ -1,6 +1,8 @@
 import { createHmac } from "node:crypto";
 import { lookup } from "node:dns/promises";
-import { isIP } from "node:net";
+import { request as requestHttp } from "node:http";
+import { request as requestHttps } from "node:https";
+import { isIP, type LookupFunction } from "node:net";
 import { env } from "../../common/config/config.js";
 import type {
   FirewallWebhookEvent,
@@ -11,6 +13,23 @@ import type {
 const RETRYABLE_STATUS_CODES = new Set([408, 425, 429]);
 
 type HostResolver = (hostname: string) => Promise<string[]>;
+
+export interface WebhookHttpRequest {
+  destination: URL;
+  resolvedAddress: string;
+  headers: Record<string, string>;
+  body: string;
+  timeoutMs: number;
+}
+
+export interface WebhookHttpResponse {
+  statusCode: number;
+  retryAfter: string | null;
+}
+
+export type WebhookRequestExecutor = (
+  request: WebhookHttpRequest,
+) => Promise<WebhookHttpResponse>;
 
 /** 재시도 여부와 HTTP 상태를 함께 전달하는 Webhook 전송 오류입니다. */
 export class WebhookRequestError extends Error {
@@ -25,20 +44,20 @@ export class WebhookRequestError extends Error {
   }
 }
 
-/** DNS 결과까지 검증한 표준 HTTP POST로 Webhook을 전달합니다. */
+/** DNS 검사 결과와 실제 연결 주소를 일치시켜 Webhook을 전달합니다. */
 export class HttpWebhookService implements WebhookService {
   constructor(
     private readonly hostResolver: HostResolver = resolveWebhookHost,
+    private readonly requestExecutor: WebhookRequestExecutor = executePinnedRequest,
   ) {}
 
-  /** 타임스탬프와 본문을 HMAC으로 서명하고 안정적인 이벤트 ID를 함께 전송합니다. */
+  /** 타임스탬프와 본문을 HMAC으로 서명하고 안정적인 이벤트 ID와 함께 전송합니다. */
   async send(
     url: string,
     event: FirewallWebhookEvent,
   ): Promise<WebhookDeliveryResult> {
     const destination = new URL(url);
-    await this.assertAllowedDestination(destination);
-
+    const resolvedAddress = await this.resolveAllowedDestination(destination);
     const body = JSON.stringify(event);
     const timestamp = String(Date.now());
     const headers: Record<string, string> = {
@@ -57,14 +76,14 @@ export class HttpWebhookService implements WebhookService {
         .digest("hex")}`;
     }
 
-    let response: Response;
+    let response: WebhookHttpResponse;
     try {
-      response = await fetch(destination, {
-        method: "POST",
+      response = await this.requestExecutor({
+        destination,
+        resolvedAddress,
         headers,
         body,
-        redirect: "manual",
-        signal: AbortSignal.timeout(env.FIREWALL_WEBHOOK_TIMEOUT_MS),
+        timeoutMs: env.FIREWALL_WEBHOOK_TIMEOUT_MS,
       });
     } catch (error) {
       throw new WebhookRequestError(
@@ -75,21 +94,22 @@ export class HttpWebhookService implements WebhookService {
       );
     }
 
-    if (!response.ok) {
+    if (response.statusCode < 200 || response.statusCode >= 300) {
       const isRetryable =
-        RETRYABLE_STATUS_CODES.has(response.status) || response.status >= 500;
+        RETRYABLE_STATUS_CODES.has(response.statusCode) ||
+        response.statusCode >= 500;
       throw new WebhookRequestError(
-        `FIREWALL_WEBHOOK_FAILED_${response.status}`,
+        `FIREWALL_WEBHOOK_FAILED_${response.statusCode}`,
         isRetryable,
-        response.status,
-        parseRetryAfter(response.headers.get("Retry-After")),
+        response.statusCode,
+        parseRetryAfter(response.retryAfter),
       );
     }
-    return { statusCode: response.status };
+    return { statusCode: response.statusCode };
   }
 
-  /** 프로토콜, 자격 증명, DNS 결과를 검사해 내부망 우회 요청을 차단합니다. */
-  private async assertAllowedDestination(destination: URL): Promise<void> {
+  /** 프로토콜, 자격 증명, DNS 결과를 검사하고 실제 연결에 사용할 IP를 반환합니다. */
+  private async resolveAllowedDestination(destination: URL): Promise<string> {
     if (
       destination.protocol !== "https:" &&
       !(env.NODE_ENV !== "production" && destination.protocol === "http:")
@@ -102,7 +122,6 @@ export class HttpWebhookService implements WebhookService {
         false,
       );
     }
-    if (env.FIREWALL_WEBHOOK_ALLOW_PRIVATE_NETWORK) return;
 
     const hostname = destination.hostname.replace(/^\[|\]$/g, "");
     const addresses = isIP(hostname)
@@ -115,16 +134,110 @@ export class HttpWebhookService implements WebhookService {
             true,
           );
         });
-    if (addresses.length === 0 || addresses.some(isNonPublicAddress)) {
+    if (addresses.length === 0) {
+      throw new WebhookRequestError("FIREWALL_WEBHOOK_DNS_EMPTY", true);
+    }
+    if (
+      !env.FIREWALL_WEBHOOK_ALLOW_PRIVATE_NETWORK &&
+      addresses.some(isNonPublicAddress)
+    ) {
       throw new WebhookRequestError(
         "FIREWALL_WEBHOOK_PRIVATE_NETWORK_NOT_ALLOWED",
         false,
       );
     }
+    return addresses[0]!;
   }
 }
 
-/** Retry-After의 초 또는 HTTP 날짜 형식을 지연 시간으로 정규화합니다. */
+/**
+ * 검증한 IP를 socket lookup 결과로 고정하면서 TLS 인증서는 원래 hostname으로 검증합니다.
+ */
+export function executePinnedRequest(
+  input: WebhookHttpRequest,
+): Promise<WebhookHttpResponse> {
+  return new Promise((resolve, reject) => {
+    const hostname = input.destination.hostname.replace(/^\[|\]$/g, "");
+    const family = isIP(input.resolvedAddress);
+    if (!family) {
+      reject(new Error("FIREWALL_WEBHOOK_RESOLVED_ADDRESS_INVALID"));
+      return;
+    }
+
+    const pinnedLookup = ((
+      _hostname: string,
+      options:
+        | { all?: boolean }
+        | ((
+            error: NodeJS.ErrnoException | null,
+            address: string,
+            family: number,
+          ) => void),
+      callback?: (
+        error: NodeJS.ErrnoException | null,
+        address: string | Array<{ address: string; family: number }>,
+        family?: number,
+      ) => void,
+    ) => {
+      const done = typeof options === "function" ? options : callback;
+      if (!done) {
+        reject(new Error("FIREWALL_WEBHOOK_LOOKUP_CALLBACK_MISSING"));
+        return;
+      }
+      if (typeof options !== "function" && options.all) {
+        (
+          done as unknown as (
+            error: NodeJS.ErrnoException | null,
+            addresses: Array<{ address: string; family: number }>,
+          ) => void
+        )(null, [{ address: input.resolvedAddress, family }]);
+        return;
+      }
+      (
+        done as (
+          error: NodeJS.ErrnoException | null,
+          address: string,
+          family: number,
+        ) => void
+      )(null, input.resolvedAddress, family);
+    }) as LookupFunction;
+    const request =
+      input.destination.protocol === "https:" ? requestHttps : requestHttp;
+    const outbound = request(
+      {
+        protocol: input.destination.protocol,
+        hostname,
+        port: input.destination.port
+          ? Number(input.destination.port)
+          : undefined,
+        path: `${input.destination.pathname}${input.destination.search}`,
+        method: "POST",
+        headers: input.headers,
+        lookup: pinnedLookup,
+        servername:
+          input.destination.protocol === "https:" && !isIP(hostname)
+            ? hostname
+            : undefined,
+      },
+      (response) => {
+        response.resume();
+        response.once("end", () => {
+          resolve({
+            statusCode: response.statusCode ?? 0,
+            retryAfter: readHeader(response.headers["retry-after"]),
+          });
+        });
+      },
+    );
+    outbound.setTimeout(input.timeoutMs, () => {
+      outbound.destroy(new Error("FIREWALL_WEBHOOK_TIMEOUT"));
+    });
+    outbound.once("error", reject);
+    outbound.end(input.body);
+  });
+}
+
+/** Retry-After의 초 또는 HTTP 날짜 값을 지연 시간으로 정규화합니다. */
 export function parseRetryAfter(value: string | null): number | null {
   if (!value) return null;
   const seconds = Number(value);
@@ -142,7 +255,7 @@ async function resolveWebhookHost(hostname: string): Promise<string[]> {
   return addresses.map((entry) => entry.address);
 }
 
-/** IPv4·IPv6의 로컬, 사설, 링크 로컬, 미지정 주소를 판별합니다. */
+/** IPv4·IPv6의 로컬, 사설, 링크 로컬, 문서용 주소를 판별합니다. */
 function isNonPublicAddress(address: string): boolean {
   const value = address.toLowerCase().replace(/^\[|\]$/g, "");
   if (value === "::" || value === "::1") return true;
@@ -176,4 +289,9 @@ function isNonPublicAddress(address: string): boolean {
     (first === 198 && (second === 18 || second === 19 || second === 51)) ||
     (first === 203 && second === 0 && octets[2] === 113)
   );
+}
+
+function readHeader(value: string | string[] | undefined): string | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
 }

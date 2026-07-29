@@ -10,7 +10,9 @@ describe("DataRetentionRepository", () => {
       .mockResolvedValueOnce([{ issueId: "issue-1" }])
       .mockResolvedValueOnce([{ id: "session-1" }])
       .mockResolvedValueOnce(undefined)
-      .mockResolvedValueOnce([{ id: "record-1" }]);
+      .mockResolvedValueOnce([{ id: "record-1" }])
+      .mockResolvedValueOnce([{ id: "audit-1" }])
+      .mockResolvedValueOnce([{ id: "usage-1" }]);
     const manager = { query } as unknown as EntityManager;
     const transaction = jest
       .fn()
@@ -19,8 +21,15 @@ describe("DataRetentionRepository", () => {
       transaction,
     } as unknown as DataSource);
 
-    await expect(repository.purgeBatch(100)).resolves.toEqual({
+    await expect(
+      repository.purgeBatch(100, {
+        auditLogsBefore: new Date("2025-01-01T00:00:00.000Z"),
+        openApiUsageBefore: new Date("2025-02-01T00:00:00.000Z"),
+      }),
+    ).resolves.toEqual({
+      deletedAuditLogs: 1,
       deletedIssueRecords: 1,
+      deletedOpenApiUsageBuckets: 1,
       deletedSessions: 1,
     });
 
@@ -30,22 +39,35 @@ describe("DataRetentionRepository", () => {
     );
     expect(query.mock.calls[3]?.[0]).toContain('"occurrenceCount"');
     expect(query.mock.calls[4]?.[0]).toContain('DELETE FROM "issue_record"');
+    expect(query.mock.calls[5]?.[0]).toContain('DELETE FROM "admin_audit_log"');
+    expect(query.mock.calls[6]?.[0]).toContain(
+      'DELETE FROM "openapi_api_key_usage_hourly"',
+    );
   });
 
   it("삭제할 Session이 없어도 Issue Record 보존 정책은 적용한다", async () => {
     const query = jest
       .fn()
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ id: "record-1" }, { id: "record-2" }]);
+      .mockResolvedValueOnce([{ id: "record-1" }, { id: "record-2" }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
     const manager = { query } as unknown as EntityManager;
     const repository = new DataRetentionRepository({
       transaction: jest.fn().mockImplementation(async (work) => work(manager)),
     } as unknown as DataSource);
 
-    await expect(repository.purgeBatch(100)).resolves.toEqual({
+    await expect(
+      repository.purgeBatch(100, {
+        auditLogsBefore: new Date(),
+        openApiUsageBefore: new Date(),
+      }),
+    ).resolves.toEqual({
+      deletedAuditLogs: 0,
       deletedIssueRecords: 2,
+      deletedOpenApiUsageBuckets: 0,
       deletedSessions: 0,
     });
-    expect(query).toHaveBeenCalledTimes(2);
+    expect(query).toHaveBeenCalledTimes(4);
   });
 });

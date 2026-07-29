@@ -18,6 +18,12 @@ export type AppEnv = {
     currentApiKeyScopes: ApiKeyScope[];
     /** 현재 Workspace API 키에 연결된 실행 환경입니다. */
     currentApiKeyEnvironment: string;
+    /** 현재 요청이 API Key rate limit에 의해 거절됐는지 나타냅니다. */
+    openApiRateLimited?: boolean;
+    /** 이벤트 수집 요청에서 정상 접수된 이벤트 수입니다. */
+    openApiAcceptedEventCount?: number;
+    /** 이벤트 수집 요청에서 거절되거나 재시도할 이벤트 수입니다. */
+    openApiRejectedEventCount?: number;
   };
 };
 

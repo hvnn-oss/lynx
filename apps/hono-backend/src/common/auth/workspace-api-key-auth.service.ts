@@ -10,6 +10,8 @@ import {
   workspaceApiKeyAuthRepository,
 } from "./workspace-api-key-auth.repository.js";
 
+const LAST_USED_TOUCH_INTERVAL_MS = 5 * 60 * 1_000;
+
 /** 검증된 Workspace API 키에서 요청 context에 전달할 정보입니다. */
 export type AuthenticatedWorkspaceApiKey = {
   /** API 키 record의 공개 식별자입니다. */
@@ -24,6 +26,8 @@ export type AuthenticatedWorkspaceApiKey = {
 
 /** Workspace API 키의 형식, 상태, 해시와 필수 권한을 검증합니다. */
 export class WorkspaceApiKeyAuthService {
+  private readonly lastTouchedAtByApiKeyId = new Map<string, number>();
+
   /** 테스트에서 저장소를 교체할 수 있도록 의존성을 주입받습니다. */
   constructor(
     private readonly repository: WorkspaceApiKeyAuthRepository = workspaceApiKeyAuthRepository,
@@ -58,12 +62,33 @@ export class WorkspaceApiKeyAuthService {
       throw new ForbiddenErrorException(ERROR_CODES.API_KEY_SCOPE_REQUIRED);
     }
 
+    this.touchLastUsed(apiKey.id);
+
     return {
       apiKeyId: apiKey.id,
       workspaceId: apiKey.workspaceId,
       environment: parsed.environment,
       scopes: apiKey.scopes,
     };
+  }
+
+  /** 요청마다 DB를 쓰지 않도록 인스턴스별로 최근 갱신 시각을 제한합니다. */
+  private touchLastUsed(apiKeyId: string): void {
+    const now = Date.now();
+    const lastTouchedAt = this.lastTouchedAtByApiKeyId.get(apiKeyId) ?? 0;
+    if (now - lastTouchedAt < LAST_USED_TOUCH_INTERVAL_MS) return;
+
+    this.lastTouchedAtByApiKeyId.set(apiKeyId, now);
+    void this.repository
+      .touchLastUsed(
+        apiKeyId,
+        new Date(now),
+        new Date(now - LAST_USED_TOUCH_INTERVAL_MS),
+      )
+      .catch(() => {
+        // 인증 성공을 사용 시각 기록 실패와 결합하지 않습니다.
+        this.lastTouchedAtByApiKeyId.delete(apiKeyId);
+      });
   }
 
   /** 키 문자열을 분해하고 공개 식별자가 UUID인지 확인합니다. */

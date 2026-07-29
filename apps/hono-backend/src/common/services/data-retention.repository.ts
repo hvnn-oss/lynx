@@ -3,8 +3,15 @@ import type { DataSource, EntityManager } from "typeorm";
 import { AppDataSource } from "../../provider/database/typeorm-config.js";
 
 export interface DataRetentionBatchResult {
+  deletedAuditLogs: number;
   deletedIssueRecords: number;
+  deletedOpenApiUsageBuckets: number;
   deletedSessions: number;
+}
+
+export interface DataRetentionCutoffs {
+  auditLogsBefore: Date;
+  openApiUsageBefore: Date;
 }
 
 /**
@@ -16,15 +23,34 @@ export class DataRetentionRepository {
   /**
    * 오래된 Session과 Issue Record를 삭제하고 남은 Issue 집계값을 다시 맞춥니다.
    */
-  async purgeBatch(limit: number): Promise<DataRetentionBatchResult> {
+  async purgeBatch(
+    limit: number,
+    cutoffs: DataRetentionCutoffs,
+  ): Promise<DataRetentionBatchResult> {
     return this.dataSource.transaction(async (manager) => {
       const deletedSessions = await this.deleteExpiredSessions(manager, limit);
       const deletedIssueRecords = await this.deleteExpiredIssueRecords(
         manager,
         limit,
       );
+      const deletedAuditLogs = await this.deleteExpiredAuditLogs(
+        manager,
+        limit,
+        cutoffs.auditLogsBefore,
+      );
+      const deletedOpenApiUsageBuckets =
+        await this.deleteExpiredOpenApiUsageBuckets(
+          manager,
+          limit,
+          cutoffs.openApiUsageBefore,
+        );
 
-      return { deletedIssueRecords, deletedSessions };
+      return {
+        deletedAuditLogs,
+        deletedIssueRecords,
+        deletedOpenApiUsageBuckets,
+        deletedSessions,
+      };
     });
   }
 
@@ -108,6 +134,58 @@ export class DataRetentionRepository {
       [limit],
     );
 
+    return deleted.length;
+  }
+
+  /** 감사 기록은 운영 정책의 전역 보존 기간이 지난 행부터 작은 배치로 삭제합니다. */
+  private async deleteExpiredAuditLogs(
+    manager: EntityManager,
+    limit: number,
+    cutoff: Date,
+  ): Promise<number> {
+    const deleted = await manager.query<Array<{ id: string }>>(
+      `
+        WITH expired_audit_logs AS (
+          SELECT audit.id
+          FROM "admin_audit_log" audit
+          WHERE audit."createdAt" < $2
+          ORDER BY audit."createdAt" ASC, audit.id ASC
+          LIMIT $1
+          FOR UPDATE OF audit SKIP LOCKED
+        )
+        DELETE FROM "admin_audit_log" audit
+        USING expired_audit_logs
+        WHERE audit.id = expired_audit_logs.id
+        RETURNING audit.id
+      `,
+      [limit, cutoff],
+    );
+    return deleted.length;
+  }
+
+  /** 과금·운영 집계는 원문 이벤트와 별도의 보존 기간을 적용합니다. */
+  private async deleteExpiredOpenApiUsageBuckets(
+    manager: EntityManager,
+    limit: number,
+    cutoff: Date,
+  ): Promise<number> {
+    const deleted = await manager.query<Array<{ id: string }>>(
+      `
+        WITH expired_usage AS (
+          SELECT usage.id
+          FROM "openapi_api_key_usage_hourly" usage
+          WHERE usage."bucketStartedAt" < $2
+          ORDER BY usage."bucketStartedAt" ASC, usage.id ASC
+          LIMIT $1
+          FOR UPDATE OF usage SKIP LOCKED
+        )
+        DELETE FROM "openapi_api_key_usage_hourly" usage
+        USING expired_usage
+        WHERE usage.id = expired_usage.id
+        RETURNING usage.id
+      `,
+      [limit, cutoff],
+    );
     return deleted.length;
   }
 

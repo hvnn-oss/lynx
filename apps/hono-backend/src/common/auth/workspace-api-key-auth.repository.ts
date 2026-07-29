@@ -9,6 +9,24 @@ export class WorkspaceApiKeyAuthRepository {
       id: apiKeyId,
     });
   }
+
+  /** 최근 사용 시각을 갱신하되 짧은 간격의 중복 쓰기는 건너뜁니다. */
+  async touchLastUsed(
+    apiKeyId: string,
+    usedAt: Date,
+    staleBefore: Date,
+  ): Promise<void> {
+    await AppDataSource.getRepository(WorkspaceApiKeyEntity)
+      .createQueryBuilder()
+      .update()
+      .set({ lastUsedAt: usedAt })
+      .where("id = :apiKeyId", { apiKeyId })
+      .andWhere(
+        '("lastUsedAt" IS NULL OR "lastUsedAt" < :staleBefore)',
+        { staleBefore },
+      )
+      .execute();
+  }
 }
 
 /** 애플리케이션에서 공유하는 Workspace API 키 인증 저장소입니다. */

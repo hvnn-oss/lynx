@@ -21,6 +21,7 @@ describe("WorkspaceApiKeyAuthService", () => {
     } as WorkspaceApiKeyEntity;
     const repository = {
       findById: jest.fn().mockResolvedValue(apiKey),
+      touchLastUsed: jest.fn().mockResolvedValue(undefined),
     } as unknown as WorkspaceApiKeyAuthRepository;
     return { repository, service: new WorkspaceApiKeyAuthService(repository) };
   }

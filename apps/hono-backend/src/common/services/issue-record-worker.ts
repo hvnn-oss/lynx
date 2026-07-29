@@ -18,9 +18,14 @@ export class IssueRecordWorker {
   }
 
   /** 새 평가 예약을 중단하고 현재 처리 중인 작업은 자연스럽게 끝냅니다. */
-  stop(): void {
+  async stop(): Promise<void> {
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
+
+    const deadline = Date.now() + 30_000;
+    while (this.isProcessing && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
   }
 
   /** 한 번에 하나씩 처리해 단일 프로세스의 DB 부하를 제한합니다. */

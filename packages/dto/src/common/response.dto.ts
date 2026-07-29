@@ -22,6 +22,11 @@ export const ReadinessResponseSchema = z.object({
     database: DependencyHealthSchema,
     redis: DependencyHealthSchema,
   }),
+  operations: z.object({
+    status: z.enum(["healthy", "degraded", "unknown"]),
+    warnings: z.array(z.string()),
+    checkedAt: z.string().datetime(),
+  }),
   retentionEnabled: z.boolean(),
   checkedAt: z.string().datetime(),
 });

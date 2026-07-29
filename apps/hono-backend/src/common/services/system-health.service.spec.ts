@@ -11,6 +11,13 @@ describe("SystemHealthService", () => {
       {
         ping: jest.fn().mockResolvedValue("PONG"),
       },
+      {
+        getPublicSummary: jest.fn().mockResolvedValue({
+          status: "healthy",
+          warnings: [],
+          checkedAt: new Date().toISOString(),
+        }),
+      },
     );
 
     const result = await service.checkReadiness();
@@ -19,6 +26,7 @@ describe("SystemHealthService", () => {
     expect(result.processRole).toBe(env.LYNX_PROCESS_ROLE);
     expect(result.checks.database.status).toBe("up");
     expect(result.checks.redis.status).toBe("up");
+    expect(result.operations.status).toBe("healthy");
   });
 
   it("의존성 하나라도 실패하면 unavailable 상태를 반환한다", async () => {
@@ -30,6 +38,9 @@ describe("SystemHealthService", () => {
       {
         ping: jest.fn().mockResolvedValue("PONG"),
       },
+      {
+        getPublicSummary: jest.fn(),
+      },
     );
 
     const result = await service.checkReadiness();
@@ -37,5 +48,6 @@ describe("SystemHealthService", () => {
     expect(result.status).toBe("unavailable");
     expect(result.checks.database.status).toBe("down");
     expect(result.checks.redis.status).toBe("up");
+    expect(result.operations.status).toBe("unknown");
   });
 });

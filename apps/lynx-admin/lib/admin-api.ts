@@ -1,5 +1,7 @@
 import type {
   AdminOverview,
+  AdminApiKey,
+  AdminApiKeyList,
   AdminPlan,
   AccessInvitation,
   AccessInvitationList,
@@ -7,6 +9,7 @@ import type {
   AuditLogList,
   OrganizationDetail,
   OrganizationList,
+  OpenApiUsage,
   PilotParticipant,
   PilotParticipantList,
   PilotParticipantStatus,
@@ -62,6 +65,25 @@ export function listAuditLogs(query: Record<string, string | undefined>) {
 export function getAuditLog(auditLogId: string) {
   return adminRequest<AuditLogDetail>(
     `/admin/audit-logs/${encodeURIComponent(auditLogId)}`,
+  );
+}
+
+export function listAdminApiKeys(
+  query: Record<string, string | undefined>,
+): Promise<AdminApiKeyList> {
+  return adminRequest(`/admin/api-keys${toQuery(query)}`);
+}
+
+export function getOpenApiUsage(
+  query: Record<string, string | undefined>,
+): Promise<OpenApiUsage> {
+  return adminRequest(`/admin/openapi-usage${toQuery(query)}`);
+}
+
+export function revokeAdminApiKey(apiKeyId: string): Promise<AdminApiKey> {
+  return adminRequest(
+    `/admin/api-keys/${encodeURIComponent(apiKeyId)}/revoke`,
+    { method: "PATCH" },
   );
 }
 
@@ -222,6 +244,7 @@ function getAdminErrorMessage(code: string, fallback?: string): string {
   const messages: Record<string, string> = {
     ADMIN_ACCESS_REQUIRED: "이 계정에는 Lynx 관리자 권한이 없습니다.",
     ADMIN_AUDIT_LOG_NOT_FOUND: "감사 기록을 찾을 수 없습니다.",
+    ADMIN_API_KEY_NOT_FOUND: "API Key를 찾을 수 없습니다.",
     ADMIN_PLAN_NOT_FOUND: "요금제를 찾을 수 없습니다.",
     ADMIN_PLAN_CODE_EXISTS: "이미 사용 중인 요금제 코드입니다.",
     ADMIN_PLAN_INACTIVE: "비활성 요금제는 조직에 새로 할당할 수 없습니다.",

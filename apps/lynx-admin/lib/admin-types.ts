@@ -4,6 +4,84 @@ export interface AuditActor {
   email: string | null;
 }
 
+export type AdminApiKeyStatus = "ACTIVE" | "EXPIRED" | "REVOKED";
+export type AdminApiKeyKind = "INGEST" | "SDK" | "AUTOMATION";
+export type OpenApiUsagePeriod = "24h" | "7d" | "30d";
+
+export interface AdminApiKey {
+  id: string;
+  name: string;
+  prefix: string;
+  kind: AdminApiKeyKind;
+  scopes: string[];
+  status: AdminApiKeyStatus;
+  workspace: { id: string; name: string };
+  organization: { id: string; name: string };
+  createdBy: { id: string | null; name: string | null };
+  createdAt: string;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  revokedAt: string | null;
+}
+
+export interface AdminApiKeyList {
+  items: AdminApiKey[];
+  nextCursor: string | null;
+}
+
+export interface OpenApiUsage {
+  range: {
+    from: string;
+    to: string;
+    period: OpenApiUsagePeriod;
+  };
+  keyStatus: {
+    total: number;
+    active: number;
+    expired: number;
+    revoked: number;
+  };
+  summary: {
+    requestCount: number;
+    successCount: number;
+    clientErrorCount: number;
+    serverErrorCount: number;
+    rateLimitedCount: number;
+    acceptedEventCount: number;
+    rejectedEventCount: number;
+    requestBytes: number;
+    responseBytes: number;
+    averageLatencyMs: number;
+    successRate: number;
+  };
+  dailyTrend: Array<{
+    date: string;
+    requestCount: number;
+    errorCount: number;
+    rateLimitedCount: number;
+    acceptedEventCount: number;
+  }>;
+  endpoints: Array<{
+    endpoint: string;
+    requestCount: number;
+    errorCount: number;
+    rateLimitedCount: number;
+    averageLatencyMs: number;
+  }>;
+  keys: Array<{
+    apiKeyId: string;
+    name: string;
+    prefix: string;
+    workspace: { id: string; name: string };
+    organization: { id: string; name: string };
+    requestCount: number;
+    errorCount: number;
+    rateLimitedCount: number;
+    acceptedEventCount: number;
+    lastUsedAt: string | null;
+  }>;
+}
+
 export interface AuditLogSummary {
   id: string;
   actor: AuditActor;

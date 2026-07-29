@@ -16,17 +16,19 @@ export function createOpenAPIEventHandlers() {
   /** 검증된 SDK 이벤트 배치를 현재 API 키의 워크스페이스에 저장합니다. */
   const ingestBatch = factory.createHandlers(
     zValidator("json", openAPIContract.ingestEvents.request),
-    async (c) =>
-      c.json(
-        openAPIContract.ingestEvents.response.parse(
-          await openAPIEventService.ingestBatch(
-            c.get("currentWorkspaceId"),
-            c.get("currentApiKeyEnvironment"),
-            c.req.valid("json"),
-          ),
-        ),
-        200,
-      ),
+    async (c) => {
+      const result = await openAPIEventService.ingestBatch(
+        c.get("currentWorkspaceId"),
+        c.get("currentApiKeyEnvironment"),
+        c.req.valid("json"),
+      );
+      c.set("openApiAcceptedEventCount", result.accepted);
+      c.set(
+        "openApiRejectedEventCount",
+        result.retryableEventIds.length + result.rejectedEventIds.length,
+      );
+      return c.json(openAPIContract.ingestEvents.response.parse(result), 200);
+    },
   );
 
   /** 현재 워크스페이스의 최근 Run을 커서 기반으로 조회합니다. */

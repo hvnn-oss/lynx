@@ -9,8 +9,10 @@ describe("S3ImageStorageProvider", () => {
       {
         region: "ap-northeast-2",
         bucket: "lynx-images",
-        accessKeyId: "access-key",
-        secretAccessKey: "secret-key",
+        credentials: async () => ({
+          accessKeyId: "access-key",
+          secretAccessKey: "secret-key",
+        }),
       },
       request,
     );
@@ -45,8 +47,10 @@ describe("S3ImageStorageProvider", () => {
         region: "us-east-1",
         bucket: "lynx-images",
         endpoint: "http://minio.internal:9000",
-        accessKeyId: "minio-access",
-        secretAccessKey: "minio-secret",
+        credentials: async () => ({
+          accessKeyId: "minio-access",
+          secretAccessKey: "minio-secret",
+        }),
         forcePathStyle: true,
       },
       request,
@@ -58,5 +62,32 @@ describe("S3ImageStorageProvider", () => {
       "http://minio.internal:9000/lynx-images/profile-images/user-1/image.webp",
     );
     expect(request.mock.calls[0]![1]?.method).toBe("DELETE");
+  });
+
+  it("Task Role의 session token을 서명 헤더에 포함한다", async () => {
+    const request = jest
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(null, { status: 200 }));
+    const provider = new S3ImageStorageProvider(
+      {
+        region: "ap-northeast-2",
+        bucket: "lynx-images",
+        credentials: async () => ({
+          accessKeyId: "temporary-access",
+          secretAccessKey: "temporary-secret",
+          sessionToken: "temporary-session-token",
+        }),
+      },
+      request,
+    );
+
+    await provider.deleteObject("profile-images/user-1/old.png");
+
+    expect(request.mock.calls[0]![1]?.headers).toEqual(
+      expect.objectContaining({
+        "x-amz-security-token": "temporary-session-token",
+        authorization: expect.stringContaining("Credential=temporary-access/"),
+      }),
+    );
   });
 });

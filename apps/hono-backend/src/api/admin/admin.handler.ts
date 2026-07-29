@@ -36,6 +36,40 @@ export function createAdminHandlers() {
       ),
   );
 
+  const listApiKeys = factory.createHandlers(
+    zValidator("query", adminContract.listApiKeys.request),
+    async (context) =>
+      context.json(
+        adminContract.listApiKeys.response.parse(
+          await adminService.listApiKeys(context.req.valid("query")),
+        ),
+      ),
+  );
+
+  const getOpenApiUsage = factory.createHandlers(
+    zValidator("query", adminContract.getOpenApiUsage.request),
+    async (context) =>
+      context.json(
+        adminContract.getOpenApiUsage.response.parse(
+          await adminService.getOpenApiUsage(context.req.valid("query")),
+        ),
+      ),
+  );
+
+  const revokeApiKey = factory.createHandlers(
+    zValidator("param", adminContract.revokeApiKey.params!),
+    async (context) =>
+      context.json(
+        adminContract.revokeApiKey.response.parse(
+          await adminService.revokeApiKey(
+            context.get("currentUserId"),
+            context.req.valid("param").apiKeyId,
+            context.get("requestId"),
+          ),
+        ),
+      ),
+  );
+
   const listOrganizations = factory.createHandlers(
     zValidator("query", adminContract.listOrganizations.request),
     async (context) =>
@@ -141,6 +175,9 @@ export function createAdminHandlers() {
     overview,
     listAuditLogs,
     getAuditLog,
+    listApiKeys,
+    getOpenApiUsage,
+    revokeApiKey,
     listOrganizations,
     getOrganization,
     updateOrganizationPlan,

@@ -2,6 +2,7 @@ import { ERROR_CODES } from "@repo/constants";
 import type { AuditLogRecorder } from "../../common/services/audit-log.service.js";
 import {
   AdminRepository,
+  type RawAdminApiKey,
   type RawAuditLog,
   type RawOrganization,
   type RawPilotParticipant,
@@ -101,6 +102,29 @@ function participantRow(
   };
 }
 
+function apiKeyRow(
+  overrides: Partial<RawAdminApiKey> = {},
+): RawAdminApiKey {
+  return {
+    id: "00000000-0000-4000-8000-000000000007",
+    name: "Production SDK",
+    prefix: "lynx_production",
+    kind: "SDK",
+    scopes: ["events:write"],
+    workspaceId: "00000000-0000-4000-8000-000000000008",
+    workspaceName: "Production",
+    organizationId: "00000000-0000-4000-8000-000000000004",
+    organizationName: "Acme",
+    createdByUserId: actorId,
+    createdByName: "Owner",
+    createdAt: new Date("2026-07-29T00:00:00.000Z"),
+    lastUsedAt: new Date("2026-07-29T01:00:00.000Z"),
+    expiresAt: null,
+    revokedAt: null,
+    ...overrides,
+  };
+}
+
 function createService() {
   const repository = {
     getCurrentAdmin: jest.fn(),
@@ -108,6 +132,14 @@ function createService() {
     getPlanDistribution: jest.fn(),
     listAuditLogs: jest.fn(),
     getAuditLog: jest.fn(),
+    listApiKeys: jest.fn(),
+    getApiKey: jest.fn(),
+    revokeApiKey: jest.fn(),
+    getApiKeyStatusCounts: jest.fn(),
+    getOpenApiUsageSummary: jest.fn(),
+    listOpenApiDailyUsage: jest.fn(),
+    listOpenApiEndpointUsage: jest.fn(),
+    listOpenApiKeyUsage: jest.fn(),
     listPlans: jest.fn(),
     getPlan: jest.fn(),
     createPlan: jest.fn(),
@@ -139,6 +171,128 @@ function createService() {
 }
 
 describe("AdminService", () => {
+  it("API Key 목록에서 비밀값 없이 상태와 소유 범위를 반환한다", async () => {
+    const { service, repository } = createService();
+    repository.listApiKeys.mockResolvedValue([apiKeyRow()]);
+
+    const result = await service.listApiKeys({ limit: 25 });
+
+    expect(result).toEqual({
+      items: [
+        expect.objectContaining({
+          name: "Production SDK",
+          prefix: "lynx_production",
+          status: "ACTIVE",
+          workspace: expect.objectContaining({ name: "Production" }),
+          organization: expect.objectContaining({ name: "Acme" }),
+        }),
+      ],
+      nextCursor: null,
+    });
+    expect(result.items[0]).not.toHaveProperty("keyHash");
+  });
+
+  it("OpenAPI 사용량 문자열 집계를 안전한 숫자와 평균으로 변환한다", async () => {
+    const { service, repository } = createService();
+    repository.getApiKeyStatusCounts.mockResolvedValue({
+      total: "3",
+      active: "2",
+      expired: "0",
+      revoked: "1",
+    });
+    repository.getOpenApiUsageSummary.mockResolvedValue({
+      requestCount: "10",
+      successCount: "8",
+      clientErrorCount: "1",
+      serverErrorCount: "1",
+      rateLimitedCount: "1",
+      acceptedEventCount: "22",
+      rejectedEventCount: "2",
+      requestBytes: "1024",
+      responseBytes: "2048",
+      totalLatencyMs: "125",
+    });
+    repository.listOpenApiDailyUsage.mockResolvedValue([
+      {
+        date: "2026-07-29",
+        requestCount: "10",
+        errorCount: "2",
+        rateLimitedCount: "1",
+        acceptedEventCount: "22",
+      },
+    ]);
+    repository.listOpenApiEndpointUsage.mockResolvedValue([
+      {
+        endpoint: "POST /openapi/v1/events",
+        requestCount: "10",
+        errorCount: "2",
+        rateLimitedCount: "1",
+        totalLatencyMs: "125",
+      },
+    ]);
+    repository.listOpenApiKeyUsage.mockResolvedValue([
+      {
+        apiKeyId: apiKeyRow().id,
+        name: "Production SDK",
+        prefix: "lynx_production",
+        workspaceId: apiKeyRow().workspaceId,
+        workspaceName: "Production",
+        organizationId: apiKeyRow().organizationId,
+        organizationName: "Acme",
+        requestCount: "10",
+        errorCount: "2",
+        rateLimitedCount: "1",
+        acceptedEventCount: "22",
+        lastUsedAt: new Date("2026-07-29T01:00:00.000Z"),
+      },
+    ]);
+
+    const result = await service.getOpenApiUsage({ period: "7d" });
+
+    expect(result.summary).toEqual(
+      expect.objectContaining({
+        requestCount: 10,
+        acceptedEventCount: 22,
+        averageLatencyMs: 12.5,
+        successRate: 80,
+      }),
+    );
+    expect(result.keyStatus).toEqual({
+      total: 3,
+      active: 2,
+      expired: 0,
+      revoked: 1,
+    });
+    expect(result.endpoints[0]?.averageLatencyMs).toBe(12.5);
+  });
+
+  it("API Key를 폐기하고 키 원문이 없는 감사 기록을 남긴다", async () => {
+    const { service, repository, recorder } = createService();
+    repository.getApiKey
+      .mockResolvedValueOnce(apiKeyRow())
+      .mockResolvedValueOnce(apiKeyRow({ revokedAt: new Date() }));
+    repository.revokeApiKey.mockResolvedValue(true);
+
+    const result = await service.revokeApiKey(
+      actorId,
+      apiKeyRow().id,
+      "request-1",
+    );
+
+    expect(result.status).toBe("REVOKED");
+    expect(recorder.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "workspace_api_key.admin_revoke",
+        targetId: apiKeyRow().id,
+        workspaceId: apiKeyRow().workspaceId,
+        organizationId: apiKeyRow().organizationId,
+      }),
+    );
+    expect(recorder.record).not.toHaveBeenCalledWith(
+      expect.objectContaining({ keyHash: expect.anything() }),
+    );
+  });
+
   it("요약 화면에 관리자와 최근 감사 기록을 사람이 읽을 수 있는 형태로 반환한다", async () => {
     const { service, repository } = createService();
     repository.getCurrentAdmin.mockResolvedValue({

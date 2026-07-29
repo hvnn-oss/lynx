@@ -1,8 +1,144 @@
-import { PRODUCT_ACCESS_GRANT_STATUS } from "@repo/constants";
+import {
+  API_KEY_SCOPES,
+  PRODUCT_ACCESS_GRANT_STATUS,
+  WORKSPACE_API_KEY_KINDS,
+} from "@repo/constants";
 import { z } from "zod";
 
 const NullablePositiveIntegerSchema = z.number().int().positive().nullable();
 const AuditObjectSchema = z.record(z.string(), z.unknown()).nullable();
+
+export const ADMIN_API_KEY_STATUS = {
+  ACTIVE: "ACTIVE",
+  EXPIRED: "EXPIRED",
+  REVOKED: "REVOKED",
+} as const;
+
+export const ADMIN_OPENAPI_USAGE_PERIOD = {
+  LAST_24_HOURS: "24h",
+  LAST_7_DAYS: "7d",
+  LAST_30_DAYS: "30d",
+} as const;
+
+export const AdminApiKeyQuerySchema = z.object({
+  search: z.string().trim().max(120).optional(),
+  organizationId: z.uuid().optional(),
+  workspaceId: z.uuid().optional(),
+  status: z.enum(ADMIN_API_KEY_STATUS).optional(),
+  kind: z.enum(WORKSPACE_API_KEY_KINDS).optional(),
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+});
+
+export const AdminApiKeyParamsSchema = z.object({
+  apiKeyId: z.uuid(),
+});
+
+export const AdminApiKeySchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  prefix: z.string(),
+  kind: z.enum(WORKSPACE_API_KEY_KINDS),
+  scopes: z.array(z.enum(API_KEY_SCOPES)),
+  status: z.enum(ADMIN_API_KEY_STATUS),
+  workspace: z.object({
+    id: z.uuid(),
+    name: z.string(),
+  }),
+  organization: z.object({
+    id: z.uuid(),
+    name: z.string(),
+  }),
+  createdBy: z.object({
+    id: z.uuid().nullable(),
+    name: z.string().nullable(),
+  }),
+  createdAt: z.iso.datetime(),
+  lastUsedAt: z.iso.datetime().nullable(),
+  expiresAt: z.iso.datetime().nullable(),
+  revokedAt: z.iso.datetime().nullable(),
+});
+
+export const AdminApiKeyListResponseSchema = z.object({
+  items: z.array(AdminApiKeySchema),
+  nextCursor: z.string().nullable(),
+});
+
+export const AdminOpenApiUsageQuerySchema = z.object({
+  organizationId: z.uuid().optional(),
+  workspaceId: z.uuid().optional(),
+  apiKeyId: z.uuid().optional(),
+  period: z.enum(ADMIN_OPENAPI_USAGE_PERIOD).default(
+    ADMIN_OPENAPI_USAGE_PERIOD.LAST_7_DAYS,
+  ),
+});
+
+const AdminOpenApiUsageCountSchema = z.number().int().nonnegative();
+
+export const AdminOpenApiUsageResponseSchema = z.object({
+  range: z.object({
+    from: z.iso.datetime(),
+    to: z.iso.datetime(),
+    period: z.enum(ADMIN_OPENAPI_USAGE_PERIOD),
+  }),
+  keyStatus: z.object({
+    total: AdminOpenApiUsageCountSchema,
+    active: AdminOpenApiUsageCountSchema,
+    expired: AdminOpenApiUsageCountSchema,
+    revoked: AdminOpenApiUsageCountSchema,
+  }),
+  summary: z.object({
+    requestCount: AdminOpenApiUsageCountSchema,
+    successCount: AdminOpenApiUsageCountSchema,
+    clientErrorCount: AdminOpenApiUsageCountSchema,
+    serverErrorCount: AdminOpenApiUsageCountSchema,
+    rateLimitedCount: AdminOpenApiUsageCountSchema,
+    acceptedEventCount: AdminOpenApiUsageCountSchema,
+    rejectedEventCount: AdminOpenApiUsageCountSchema,
+    requestBytes: AdminOpenApiUsageCountSchema,
+    responseBytes: AdminOpenApiUsageCountSchema,
+    averageLatencyMs: z.number().nonnegative(),
+    successRate: z.number().min(0).max(100),
+  }),
+  dailyTrend: z.array(
+    z.object({
+      date: z.iso.date(),
+      requestCount: AdminOpenApiUsageCountSchema,
+      errorCount: AdminOpenApiUsageCountSchema,
+      rateLimitedCount: AdminOpenApiUsageCountSchema,
+      acceptedEventCount: AdminOpenApiUsageCountSchema,
+    }),
+  ),
+  endpoints: z.array(
+    z.object({
+      endpoint: z.string(),
+      requestCount: AdminOpenApiUsageCountSchema,
+      errorCount: AdminOpenApiUsageCountSchema,
+      rateLimitedCount: AdminOpenApiUsageCountSchema,
+      averageLatencyMs: z.number().nonnegative(),
+    }),
+  ),
+  keys: z.array(
+    z.object({
+      apiKeyId: z.uuid(),
+      name: z.string(),
+      prefix: z.string(),
+      workspace: z.object({
+        id: z.uuid(),
+        name: z.string(),
+      }),
+      organization: z.object({
+        id: z.uuid(),
+        name: z.string(),
+      }),
+      requestCount: AdminOpenApiUsageCountSchema,
+      errorCount: AdminOpenApiUsageCountSchema,
+      rateLimitedCount: AdminOpenApiUsageCountSchema,
+      acceptedEventCount: AdminOpenApiUsageCountSchema,
+      lastUsedAt: z.iso.datetime().nullable(),
+    }),
+  ),
+});
 
 export const AdminAuditLogQuerySchema = z.object({
   search: z.string().trim().max(120).optional(),
@@ -281,6 +417,14 @@ export const AdminOverviewResponseSchema = z.object({
 });
 
 export type AdminAuditLogQueryDto = z.infer<typeof AdminAuditLogQuerySchema>;
+export type AdminApiKeyQueryDto = z.infer<typeof AdminApiKeyQuerySchema>;
+export type AdminApiKeyDto = z.infer<typeof AdminApiKeySchema>;
+export type AdminOpenApiUsageQueryDto = z.infer<
+  typeof AdminOpenApiUsageQuerySchema
+>;
+export type AdminOpenApiUsageResponseDto = z.infer<
+  typeof AdminOpenApiUsageResponseSchema
+>;
 export type AdminAuditLogSummaryDto = z.infer<
   typeof AdminAuditLogSummarySchema
 >;

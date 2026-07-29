@@ -19,6 +19,7 @@ export const openApiRateLimitMiddleware = createMiddleware<AppEnv>(
       c.header("X-RateLimit-Limit", String(env.OPENAPI_RATE_LIMIT_MAX));
       c.header("X-RateLimit-Remaining", String(remaining));
       if (count > env.OPENAPI_RATE_LIMIT_MAX) {
+        c.set("openApiRateLimited", true);
         c.header("Retry-After", String(windowSeconds));
         return c.json(
           PublicErrorResponseSchema.parse({

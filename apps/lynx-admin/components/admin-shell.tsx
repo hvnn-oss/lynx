@@ -11,6 +11,11 @@ const navigation = [
   { href: "/", label: "운영 요약", description: "전체 상태" },
   { href: "/audit-logs", label: "감사 기록", description: "변경과 데이터" },
   { href: "/organizations", label: "조직 관리", description: "고객과 사용량" },
+  {
+    href: "/api-keys",
+    label: "API Key",
+    description: "키 상태와 OpenAPI 사용량",
+  },
   { href: "/pilot", label: "파일럿 관리", description: "초대와 접근 권한" },
   { href: "/plans", label: "요금제 관리", description: "한도와 기능" },
 ];

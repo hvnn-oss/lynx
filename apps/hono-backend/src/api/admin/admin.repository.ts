@@ -3,7 +3,9 @@ import {
   PRODUCT_ACCESS_CAPABILITY,
   PRODUCT_ACCESS_GRANT_STATUS,
   PRODUCT_ACCESS_SUBJECT_TYPE,
+  type ApiKeyScope,
   type ProductAccessGrantStatus,
+  type WorkspaceApiKeyKind,
 } from "@repo/constants";
 import {
   AdminAuditLogEntity,
@@ -15,12 +17,14 @@ import {
   OrganizationEntity,
   OrganizationPlanEntity,
   OrganizationUserEntity,
+  OpenApiApiKeyUsageHourlyEntity,
   ProductAccessGrantEntity,
   PromptEntity,
   RunEntity,
   SessionEntity,
   UserEntity,
   WorkspaceEntity,
+  WorkspaceApiKeyEntity,
 } from "@repo/database";
 import { Brackets, type DataSource, type SelectQueryBuilder } from "typeorm";
 import { AppDataSource } from "../../provider/database/typeorm-config.js";
@@ -49,6 +53,92 @@ export interface OrganizationFilters {
   planId?: string;
   cursor?: AdminCursor;
   limit: number;
+}
+
+export interface ApiKeyFilters {
+  search?: string;
+  organizationId?: string;
+  workspaceId?: string;
+  status?: "ACTIVE" | "EXPIRED" | "REVOKED";
+  kind?: WorkspaceApiKeyKind;
+  cursor?: AdminCursor;
+  limit: number;
+}
+
+export interface OpenApiUsageFilters {
+  from: Date;
+  organizationId?: string;
+  workspaceId?: string;
+  apiKeyId?: string;
+}
+
+export interface RawAdminApiKey {
+  id: string;
+  name: string;
+  prefix: string;
+  kind: WorkspaceApiKeyKind;
+  scopes: ApiKeyScope[];
+  workspaceId: string;
+  workspaceName: string;
+  organizationId: string;
+  organizationName: string;
+  createdByUserId: string | null;
+  createdByName: string | null;
+  createdAt: Date;
+  lastUsedAt: Date | null;
+  expiresAt: Date | null;
+  revokedAt: Date | null;
+}
+
+export interface RawApiKeyStatusCounts {
+  total: string | number;
+  active: string | number;
+  expired: string | number;
+  revoked: string | number;
+}
+
+export interface RawOpenApiUsageSummary {
+  requestCount: string | number;
+  successCount: string | number;
+  clientErrorCount: string | number;
+  serverErrorCount: string | number;
+  rateLimitedCount: string | number;
+  acceptedEventCount: string | number;
+  rejectedEventCount: string | number;
+  requestBytes: string | number;
+  responseBytes: string | number;
+  totalLatencyMs: string | number;
+}
+
+export interface RawOpenApiDailyUsage {
+  date: string;
+  requestCount: string | number;
+  errorCount: string | number;
+  rateLimitedCount: string | number;
+  acceptedEventCount: string | number;
+}
+
+export interface RawOpenApiEndpointUsage {
+  endpoint: string;
+  requestCount: string | number;
+  errorCount: string | number;
+  rateLimitedCount: string | number;
+  totalLatencyMs: string | number;
+}
+
+export interface RawOpenApiKeyUsage {
+  apiKeyId: string;
+  name: string;
+  prefix: string;
+  workspaceId: string;
+  workspaceName: string;
+  organizationId: string;
+  organizationName: string;
+  requestCount: string | number;
+  errorCount: string | number;
+  rateLimitedCount: string | number;
+  acceptedEventCount: string | number;
+  lastUsedAt: Date | null;
 }
 
 export interface RawAuditLog {
@@ -213,6 +303,176 @@ export class AdminRepository {
     return this.createAuditQuery()
       .andWhere("audit.id = :auditLogId", { auditLogId })
       .getRawOne<RawAuditLog>();
+  }
+
+  /** 관리자 화면에서 노출 가능한 API Key 메타데이터만 조회합니다. */
+  listApiKeys(filters: ApiKeyFilters): Promise<RawAdminApiKey[]> {
+    const query = this.createApiKeyQuery().take(filters.limit + 1);
+    this.applyApiKeyFilters(query, filters);
+    return query.getRawMany<RawAdminApiKey>();
+  }
+
+  /** 폐기 전후 감사 기록에 사용할 API Key 메타데이터를 조회합니다. */
+  getApiKey(apiKeyId: string): Promise<RawAdminApiKey | undefined> {
+    return this.createApiKeyQuery()
+      .andWhere("apiKey.id = :apiKeyId", { apiKeyId })
+      .getRawOne<RawAdminApiKey>();
+  }
+
+  /** 이미 폐기된 키를 다시 변경하지 않도록 조건부로 폐기합니다. */
+  async revokeApiKey(apiKeyId: string, revokedAt: Date): Promise<boolean> {
+    const result = await this.dataSource
+      .getRepository(WorkspaceApiKeyEntity)
+      .createQueryBuilder()
+      .update()
+      .set({ revokedAt })
+      .where("id = :apiKeyId", { apiKeyId })
+      .andWhere('"revokedAt" IS NULL')
+      .execute();
+    return (result.affected ?? 0) > 0;
+  }
+
+  /** 필터 범위에 포함되는 API Key 상태 수를 집계합니다. */
+  getApiKeyStatusCounts(
+    filters: Omit<OpenApiUsageFilters, "from">,
+  ): Promise<RawApiKeyStatusCounts | undefined> {
+    const query = this.dataSource
+      .getRepository(WorkspaceApiKeyEntity)
+      .createQueryBuilder("apiKey")
+      .innerJoin(WorkspaceEntity, "workspace", "workspace.id = apiKey.workspaceId")
+      .innerJoin("workspace.organization", "organization")
+      .select("COUNT(apiKey.id)", "total")
+      .addSelect(
+        `COUNT(apiKey.id) FILTER (
+          WHERE apiKey."revokedAt" IS NULL
+            AND (apiKey."expiresAt" IS NULL OR apiKey."expiresAt" > NOW())
+        )`,
+        "active",
+      )
+      .addSelect(
+        `COUNT(apiKey.id) FILTER (
+          WHERE apiKey."revokedAt" IS NULL
+            AND apiKey."expiresAt" IS NOT NULL
+            AND apiKey."expiresAt" <= NOW()
+        )`,
+        "expired",
+      )
+      .addSelect(
+        `COUNT(apiKey.id) FILTER (WHERE apiKey."revokedAt" IS NOT NULL)`,
+        "revoked",
+      );
+    this.applyApiKeyScopeFilters(query, filters);
+    return query.getRawOne<RawApiKeyStatusCounts>();
+  }
+
+  /** 선택한 기간의 OpenAPI 전체 사용량을 합산합니다. */
+  getOpenApiUsageSummary(
+    filters: OpenApiUsageFilters,
+  ): Promise<RawOpenApiUsageSummary | undefined> {
+    const query = this.createOpenApiUsageQuery()
+      .select('COALESCE(SUM(usage."requestCount"), 0)', "requestCount")
+      .addSelect('COALESCE(SUM(usage."successCount"), 0)', "successCount")
+      .addSelect(
+        'COALESCE(SUM(usage."clientErrorCount"), 0)',
+        "clientErrorCount",
+      )
+      .addSelect(
+        'COALESCE(SUM(usage."serverErrorCount"), 0)',
+        "serverErrorCount",
+      )
+      .addSelect(
+        'COALESCE(SUM(usage."rateLimitedCount"), 0)',
+        "rateLimitedCount",
+      )
+      .addSelect(
+        'COALESCE(SUM(usage."acceptedEventCount"), 0)',
+        "acceptedEventCount",
+      )
+      .addSelect(
+        'COALESCE(SUM(usage."rejectedEventCount"), 0)',
+        "rejectedEventCount",
+      )
+      .addSelect('COALESCE(SUM(usage."requestBytes"), 0)', "requestBytes")
+      .addSelect('COALESCE(SUM(usage."responseBytes"), 0)', "responseBytes")
+      .addSelect(
+        'COALESCE(SUM(usage."totalLatencyMs"), 0)',
+        "totalLatencyMs",
+      );
+    this.applyOpenApiUsageFilters(query, filters);
+    return query.getRawOne<RawOpenApiUsageSummary>();
+  }
+
+  /** OpenAPI 요청량을 일 단위로 묶어 추이를 반환합니다. */
+  listOpenApiDailyUsage(
+    filters: OpenApiUsageFilters,
+  ): Promise<RawOpenApiDailyUsage[]> {
+    const query = this.createOpenApiUsageQuery()
+      .select(
+        `TO_CHAR(DATE_TRUNC('day', usage."bucketStartedAt"), 'YYYY-MM-DD')`,
+        "date",
+      )
+      .addSelect('SUM(usage."requestCount")', "requestCount")
+      .addSelect(
+        'SUM(usage."clientErrorCount" + usage."serverErrorCount")',
+        "errorCount",
+      )
+      .addSelect('SUM(usage."rateLimitedCount")', "rateLimitedCount")
+      .addSelect('SUM(usage."acceptedEventCount")', "acceptedEventCount")
+      .groupBy(`DATE_TRUNC('day', usage."bucketStartedAt")`)
+      .orderBy(`DATE_TRUNC('day', usage."bucketStartedAt")`, "ASC");
+    this.applyOpenApiUsageFilters(query, filters);
+    return query.getRawMany<RawOpenApiDailyUsage>();
+  }
+
+  /** 요청량이 많은 OpenAPI 엔드포인트를 최대 10개 반환합니다. */
+  listOpenApiEndpointUsage(
+    filters: OpenApiUsageFilters,
+  ): Promise<RawOpenApiEndpointUsage[]> {
+    const query = this.createOpenApiUsageQuery()
+      .select("usage.endpoint", "endpoint")
+      .addSelect('SUM(usage."requestCount")', "requestCount")
+      .addSelect(
+        'SUM(usage."clientErrorCount" + usage."serverErrorCount")',
+        "errorCount",
+      )
+      .addSelect('SUM(usage."rateLimitedCount")', "rateLimitedCount")
+      .addSelect('SUM(usage."totalLatencyMs")', "totalLatencyMs")
+      .groupBy("usage.endpoint")
+      .orderBy('SUM(usage."requestCount")', "DESC")
+      .addOrderBy("usage.endpoint", "ASC")
+      .limit(10);
+    this.applyOpenApiUsageFilters(query, filters);
+    return query.getRawMany<RawOpenApiEndpointUsage>();
+  }
+
+  /** 요청량이 많은 API Key를 안전한 메타데이터와 함께 반환합니다. */
+  listOpenApiKeyUsage(
+    filters: OpenApiUsageFilters,
+  ): Promise<RawOpenApiKeyUsage[]> {
+    const query = this.createOpenApiUsageQuery()
+      .select("apiKey.id", "apiKeyId")
+      .addSelect("apiKey.name", "name")
+      .addSelect("apiKey.prefix", "prefix")
+      .addSelect("workspace.id", "workspaceId")
+      .addSelect("workspace.name", "workspaceName")
+      .addSelect("organization.id", "organizationId")
+      .addSelect("organization.name", "organizationName")
+      .addSelect('SUM(usage."requestCount")', "requestCount")
+      .addSelect(
+        'SUM(usage."clientErrorCount" + usage."serverErrorCount")',
+        "errorCount",
+      )
+      .addSelect('SUM(usage."rateLimitedCount")', "rateLimitedCount")
+      .addSelect('SUM(usage."acceptedEventCount")', "acceptedEventCount")
+      .addSelect('apiKey."lastUsedAt"', "lastUsedAt")
+      .groupBy("apiKey.id")
+      .addGroupBy("workspace.id")
+      .addGroupBy("organization.id")
+      .orderBy('SUM(usage."requestCount")', "DESC")
+      .addOrderBy("apiKey.name", "ASC")
+      .limit(10);
+    this.applyOpenApiUsageFilters(query, filters);
+    return query.getRawMany<RawOpenApiKeyUsage>();
   }
 
   async getCurrentAdmin(userId: string) {
@@ -844,6 +1104,158 @@ export class AdminRepository {
       await repository.save(organization);
       return true;
     });
+  }
+
+  /** API Key 원문과 해시는 선택하지 않고 운영 메타데이터만 구성합니다. */
+  private createApiKeyQuery(): SelectQueryBuilder<WorkspaceApiKeyEntity> {
+    return this.dataSource
+      .getRepository(WorkspaceApiKeyEntity)
+      .createQueryBuilder("apiKey")
+      .innerJoin(WorkspaceEntity, "workspace", "workspace.id = apiKey.workspaceId")
+      .innerJoin("workspace.organization", "organization")
+      .leftJoin(UserEntity, "createdBy", "createdBy.id = apiKey.createdByUserId")
+      .select("apiKey.id", "id")
+      .addSelect("apiKey.name", "name")
+      .addSelect("apiKey.prefix", "prefix")
+      .addSelect("apiKey.kind", "kind")
+      .addSelect("apiKey.scopes", "scopes")
+      .addSelect("workspace.id", "workspaceId")
+      .addSelect("workspace.name", "workspaceName")
+      .addSelect("organization.id", "organizationId")
+      .addSelect("organization.name", "organizationName")
+      .addSelect("apiKey.createdByUserId", "createdByUserId")
+      .addSelect(
+        'COALESCE(createdBy.name, apiKey."createdByName")',
+        "createdByName",
+      )
+      .addSelect("apiKey.createdAt", "createdAt")
+      .addSelect("apiKey.lastUsedAt", "lastUsedAt")
+      .addSelect("apiKey.expiresAt", "expiresAt")
+      .addSelect("apiKey.revokedAt", "revokedAt")
+      .orderBy("apiKey.createdAt", "DESC")
+      .addOrderBy("apiKey.id", "DESC");
+  }
+
+  /** API Key 목록의 검색, 범위, 상태와 커서 조건을 적용합니다. */
+  private applyApiKeyFilters(
+    query: SelectQueryBuilder<WorkspaceApiKeyEntity>,
+    filters: ApiKeyFilters,
+  ): void {
+    if (filters.search) {
+      query.andWhere(
+        new Brackets((builder) => {
+          builder
+            .where("apiKey.name ILIKE :apiKeySearch", {
+              apiKeySearch: `%${filters.search}%`,
+            })
+            .orWhere("apiKey.prefix ILIKE :apiKeySearch", {
+              apiKeySearch: `%${filters.search}%`,
+            })
+            .orWhere("workspace.name ILIKE :apiKeySearch", {
+              apiKeySearch: `%${filters.search}%`,
+            })
+            .orWhere("organization.name ILIKE :apiKeySearch", {
+              apiKeySearch: `%${filters.search}%`,
+            });
+        }),
+      );
+    }
+    this.applyApiKeyScopeFilters(query, filters);
+    if (filters.kind) {
+      query.andWhere("apiKey.kind = :apiKeyKind", {
+        apiKeyKind: filters.kind,
+      });
+    }
+    if (filters.status === "ACTIVE") {
+      query
+        .andWhere('apiKey."revokedAt" IS NULL')
+        .andWhere(
+          '(apiKey."expiresAt" IS NULL OR apiKey."expiresAt" > NOW())',
+        );
+    }
+    if (filters.status === "EXPIRED") {
+      query
+        .andWhere('apiKey."revokedAt" IS NULL')
+        .andWhere('apiKey."expiresAt" IS NOT NULL')
+        .andWhere('apiKey."expiresAt" <= NOW()');
+    }
+    if (filters.status === "REVOKED") {
+      query.andWhere('apiKey."revokedAt" IS NOT NULL');
+    }
+    if (filters.cursor) {
+      query.andWhere(
+        `(apiKey."createdAt", apiKey.id) < (:apiKeyCreatedAt, :apiKeyCursorId)`,
+        {
+          apiKeyCreatedAt: filters.cursor.createdAt,
+          apiKeyCursorId: filters.cursor.id,
+        },
+      );
+    }
+  }
+
+  /** API Key가 속한 조직과 워크스페이스 범위를 제한합니다. */
+  private applyApiKeyScopeFilters(
+    query: SelectQueryBuilder<WorkspaceApiKeyEntity>,
+    filters: {
+      organizationId?: string;
+      workspaceId?: string;
+      apiKeyId?: string;
+    },
+  ): void {
+    if (filters.organizationId) {
+      query.andWhere("organization.id = :apiKeyOrganizationId", {
+        apiKeyOrganizationId: filters.organizationId,
+      });
+    }
+    if (filters.workspaceId) {
+      query.andWhere("workspace.id = :apiKeyWorkspaceId", {
+        apiKeyWorkspaceId: filters.workspaceId,
+      });
+    }
+    if (filters.apiKeyId) {
+      query.andWhere("apiKey.id = :filteredApiKeyId", {
+        filteredApiKeyId: filters.apiKeyId,
+      });
+    }
+  }
+
+  /** 사용량 집계와 키·워크스페이스·조직을 연결한 기본 쿼리를 생성합니다. */
+  private createOpenApiUsageQuery(): SelectQueryBuilder<OpenApiApiKeyUsageHourlyEntity> {
+    return this.dataSource
+      .getRepository(OpenApiApiKeyUsageHourlyEntity)
+      .createQueryBuilder("usage")
+      .innerJoin(
+        WorkspaceApiKeyEntity,
+        "apiKey",
+        "apiKey.id = usage.apiKeyId",
+      )
+      .innerJoin(WorkspaceEntity, "workspace", "workspace.id = usage.workspaceId")
+      .innerJoin("workspace.organization", "organization");
+  }
+
+  /** 모든 사용량 조회에 동일한 기간과 소유 범위 필터를 적용합니다. */
+  private applyOpenApiUsageFilters(
+    query: SelectQueryBuilder<OpenApiApiKeyUsageHourlyEntity>,
+    filters: OpenApiUsageFilters,
+  ): void {
+    query.andWhere('usage."bucketStartedAt" >= :usageFrom', {
+      usageFrom: filters.from,
+    });
+    if (filters.organizationId) {
+      query.andWhere("organization.id = :usageOrganizationId", {
+        usageOrganizationId: filters.organizationId,
+      });
+    }
+    if (filters.workspaceId) {
+      query.andWhere("workspace.id = :usageWorkspaceId", {
+        usageWorkspaceId: filters.workspaceId,
+      });
+    }
+    if (filters.apiKeyId) {
+      query.andWhere("apiKey.id = :usageApiKeyId", {
+        usageApiKeyId: filters.apiKeyId,
+      });
+    }
   }
 
   private createAuditQuery(): SelectQueryBuilder<AdminAuditLogEntity> {

@@ -3,14 +3,13 @@ import type {
   ImageStorageProvider,
   PutImageObjectInput,
 } from "./image-storage.provider.js";
+import type { AwsCredentialProvider } from "./aws-credential.provider.js";
 
 export interface S3ImageStorageConfig {
   region: string;
   bucket: string;
   endpoint?: string;
-  accessKeyId: string;
-  secretAccessKey: string;
-  sessionToken?: string;
+  credentials: AwsCredentialProvider;
   forcePathStyle?: boolean;
 }
 
@@ -33,7 +32,7 @@ export class S3ImageStorageProvider implements ImageStorageProvider {
   /** 새 이미지를 저장하거나 같은 키의 이미지를 덮어씁니다. */
   async putObject(input: PutImageObjectInput): Promise<void> {
     const body = Buffer.from(input.bytes);
-    const signed = this.createSignedRequest(
+    const signed = await this.createSignedRequest(
       "PUT",
       input.storageKey,
       body,
@@ -51,7 +50,7 @@ export class S3ImageStorageProvider implements ImageStorageProvider {
 
   /** 더 이상 사용하지 않는 이미지 객체를 삭제합니다. */
   async deleteObject(storageKey: string): Promise<void> {
-    const signed = this.createSignedRequest(
+    const signed = await this.createSignedRequest(
       "DELETE",
       storageKey,
       Buffer.alloc(0),
@@ -65,13 +64,14 @@ export class S3ImageStorageProvider implements ImageStorageProvider {
   }
 
   /** S3 요청 URL과 Signature V4 인증 헤더를 생성합니다. */
-  private createSignedRequest(
+  private async createSignedRequest(
     method: "PUT" | "DELETE",
     storageKey: string,
     body: Buffer,
     contentType?: string,
     cacheControl?: string,
-  ): SignedRequest {
+  ): Promise<SignedRequest> {
+    const credentials = await this.config.credentials();
     const now = new Date();
     const amzDate = toAmzDate(now);
     const dateStamp = amzDate.slice(0, 8);
@@ -85,8 +85,8 @@ export class S3ImageStorageProvider implements ImageStorageProvider {
 
     if (contentType) headers["content-type"] = contentType;
     if (cacheControl) headers["cache-control"] = cacheControl;
-    if (this.config.sessionToken) {
-      headers["x-amz-security-token"] = this.config.sessionToken;
+    if (credentials.sessionToken) {
+      headers["x-amz-security-token"] = credentials.sessionToken;
     }
 
     const sortedHeaderNames = Object.keys(headers).sort();
@@ -110,14 +110,14 @@ export class S3ImageStorageProvider implements ImageStorageProvider {
       sha256(canonicalRequest),
     ].join("\n");
     const signingKey = createSigningKey(
-      this.config.secretAccessKey,
+      credentials.secretAccessKey,
       dateStamp,
       this.config.region,
     );
     const signature = hmac(signingKey, stringToSign).toString("hex");
 
     headers.authorization =
-      `AWS4-HMAC-SHA256 Credential=${this.config.accessKeyId}/${credentialScope}, ` +
+      `AWS4-HMAC-SHA256 Credential=${credentials.accessKeyId}/${credentialScope}, ` +
       `SignedHeaders=${signedHeaders}, Signature=${signature}`;
     delete headers.host;
 

@@ -1,0 +1,113 @@
+name: Build and Publish Lynx Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/hono-backend/**"
+      - "packages/constants/**"
+      - "packages/contract/**"
+      - "packages/database/**"
+      - "packages/dto/**"
+      - "packages/sdk-types/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "turbo.json"
+      - ".github/workflows/deploy-backend.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-backend-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: ap-northeast-2
+  AWS_DEPLOY_ROLE_ARN: arn:aws:iam::451978386033:role/LynxGitHubDeployRole
+  ECR_REPOSITORY: lynx/backend
+
+jobs:
+  publish:
+    name: Verify and publish backend image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build backend
+        run: pnpm --filter hono-backend build
+
+      - name: Test backend
+        run: pnpm --filter hono-backend test
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: "451978386033"
+          role-session-name: lynx-backend-${{ github.run_id }}
+
+      - name: Sign in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image reference
+        id: image
+        shell: bash
+        run: |
+          IMAGE_URI="${{ steps.ecr.outputs.registry }}/${ECR_REPOSITORY}:${GITHUB_SHA}"
+          echo "uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether image already exists
+        id: existing-image
+        shell: bash
+        run: |
+          if docker manifest inspect "${{ steps.image.outputs.uri }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Docker Buildx
+        if: steps.existing-image.outputs.exists != 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push backend image
+        if: steps.existing-image.outputs.exists != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/hono-backend/Dockerfile
+          push: true
+          tags: ${{ steps.image.outputs.uri }}
+          cache-from: type=gha,scope=lynx-backend
+          cache-to: type=gha,mode=max,scope=lynx-backend
+
+      - name: Publish deployment summary
+        shell: bash
+        run: |
+          {
+            echo "## Lynx backend image"
+            echo
+            echo "\`${{ steps.image.outputs.uri }}\`"
+            echo
+            echo "Existing immutable image reused: \`${{ steps.existing-image.outputs.exists }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

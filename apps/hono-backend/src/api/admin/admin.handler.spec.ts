@@ -9,6 +9,9 @@ jest.mock("./admin.service.js", () => ({
     getOverview: jest.fn(),
     listAuditLogs: jest.fn(),
     getAuditLog: jest.fn(),
+    listApiKeys: jest.fn(),
+    getOpenApiUsage: jest.fn(),
+    revokeApiKey: jest.fn(),
     listOrganizations: jest.fn(),
     getOrganization: jest.fn(),
     updateOrganizationPlan: jest.fn(),
@@ -36,6 +39,21 @@ function createApp() {
     adminContract.listAuditLogs.method,
     adminContract.listAuditLogs.path,
     ...handlers.listAuditLogs,
+  );
+  app.on(
+    adminContract.listApiKeys.method,
+    adminContract.listApiKeys.path,
+    ...handlers.listApiKeys,
+  );
+  app.on(
+    adminContract.getOpenApiUsage.method,
+    adminContract.getOpenApiUsage.path,
+    ...handlers.getOpenApiUsage,
+  );
+  app.on(
+    adminContract.revokeApiKey.method,
+    adminContract.revokeApiKey.path,
+    ...handlers.revokeApiKey,
   );
   app.on(
     adminContract.createPlan.method,
@@ -144,9 +162,75 @@ function responseOrganization() {
   };
 }
 
+function responseApiKey() {
+  return {
+    id: "00000000-0000-4000-8000-000000000007",
+    name: "Production SDK",
+    prefix: "lynx_production",
+    kind: "SDK" as const,
+    scopes: ["events:write" as const],
+    status: "ACTIVE" as const,
+    workspace: {
+      id: "00000000-0000-4000-8000-000000000008",
+      name: "Production",
+    },
+    organization: {
+      id: organizationId,
+      name: "Acme",
+    },
+    createdBy: {
+      id: null,
+      name: "Owner",
+    },
+    createdAt: "2026-07-29T00:00:00.000Z",
+    lastUsedAt: null,
+    expiresAt: null,
+    revokedAt: null,
+  };
+}
+
 describe("admin HTTP handlers", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it("API Key 목록 필터를 검증해 서비스에 전달한다", async () => {
+    mockedService.listApiKeys.mockResolvedValue({
+      items: [responseApiKey()],
+      nextCursor: null,
+    });
+
+    const response = await createApp().request(
+      "/api-keys?status=ACTIVE&kind=SDK",
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockedService.listApiKeys).toHaveBeenCalledWith({
+      status: "ACTIVE",
+      kind: "SDK",
+      limit: 25,
+    });
+  });
+
+  it("API Key 폐기 요청에 관리자와 요청 ID를 전달한다", async () => {
+    const apiKey = responseApiKey();
+    mockedService.revokeApiKey.mockResolvedValue({
+      ...apiKey,
+      status: "REVOKED",
+      revokedAt: "2026-07-29T01:00:00.000Z",
+    });
+
+    const response = await createApp().request(
+      `/api-keys/${apiKey.id}/revoke`,
+      { method: "PATCH" },
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockedService.revokeApiKey).toHaveBeenCalledWith(
+      "admin-user-1",
+      apiKey.id,
+      "request-1",
+    );
   });
 
   it("감사 기록 query의 기본 limit을 검증해 서비스에 전달한다", async () => {
