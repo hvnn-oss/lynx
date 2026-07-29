@@ -23,21 +23,28 @@ permissions:
   id-token: write
 
 concurrency:
-  group: publish-backend-${{ github.ref }}
-  cancel-in-progress: true
+  group: deploy-backend-${{ github.ref }}
+  # 마이그레이션과 서비스 갱신 도중 새 실행이 이전 배포를 취소하지 않도록 직렬화합니다.
+  cancel-in-progress: false
 
 env:
   AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
   AWS_REGION: ${{ vars.AWS_REGION }}
   AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
   BACKEND_ECR_REPOSITORY: ${{ vars.BACKEND_ECR_REPOSITORY }}
+  ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+  ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+  ECS_TASK_DEFINITION: ${{ vars.ECS_TASK_DEFINITION }}
+  ECS_CONTAINER_NAME: ${{ vars.ECS_CONTAINER_NAME }}
+  ECS_PRIVATE_SUBNET_IDS: ${{ vars.ECS_PRIVATE_SUBNET_IDS }}
+  ECS_BACKEND_SECURITY_GROUP_ID: ${{ vars.ECS_BACKEND_SECURITY_GROUP_ID }}
 
 jobs:
   publish:
-    name: Verify and publish backend image
+    name: Verify, publish, and deploy backend
     runs-on: ubuntu-latest
     environment: backend-deploy-prod
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository
@@ -51,6 +58,12 @@ jobs:
             AWS_REGION
             AWS_DEPLOY_ROLE_ARN
             BACKEND_ECR_REPOSITORY
+            ECS_CLUSTER
+            ECS_SERVICE
+            ECS_TASK_DEFINITION
+            ECS_CONTAINER_NAME
+            ECS_PRIVATE_SUBNET_IDS
+            ECS_BACKEND_SECURITY_GROUP_ID
           )
 
           for variable_name in "${required_variables[@]}"; do
@@ -59,6 +72,16 @@ jobs:
               exit 1
             fi
           done
+
+          if [[ ! "${ECS_PRIVATE_SUBNET_IDS}" =~ ^subnet-[[:alnum:]]+(,subnet-[[:alnum:]]+)*$ ]]; then
+            echo "::error::ECS_PRIVATE_SUBNET_IDS must be a comma-separated list of subnet IDs without spaces."
+            exit 1
+          fi
+
+          if [[ ! "${ECS_BACKEND_SECURITY_GROUP_ID}" =~ ^sg-[[:alnum:]]+$ ]]; then
+            echo "::error::ECS_BACKEND_SECURITY_GROUP_ID must be a security group ID."
+            exit 1
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -121,13 +144,82 @@ jobs:
           cache-from: type=gha,scope=lynx-backend
           cache-to: type=gha,mode=max,scope=lynx-backend
 
+      - name: Resolve current service task definition
+        id: current-task-definition
+        shell: bash
+        run: |
+          CURRENT_TASK_DEFINITION="$(
+            aws ecs describe-services \
+              --cluster "${ECS_CLUSTER}" \
+              --services "${ECS_SERVICE}" \
+              --query "services[0].taskDefinition" \
+              --output text
+          )"
+
+          if [[ "${CURRENT_TASK_DEFINITION}" != *":task-definition/${ECS_TASK_DEFINITION}:"* ]]; then
+            echo "::error::ECS service uses unexpected task definition: ${CURRENT_TASK_DEFINITION}"
+            exit 1
+          fi
+
+          echo "arn=${CURRENT_TASK_DEFINITION}" >> "$GITHUB_OUTPUT"
+
+      - name: Render ECS task definition
+        id: task-definition
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition-arn: ${{ steps.current-task-definition.outputs.arn }}
+          container-name: ${{ env.ECS_CONTAINER_NAME }}
+          image: ${{ steps.image.outputs.uri }}
+
+      - name: Run migrations and deploy ECS service
+        id: deploy
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.task-definition.outputs.task-definition }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          service: ${{ env.ECS_SERVICE }}
+          wait-for-service-stability: true
+          wait-for-minutes: 30
+          wait-max-delay-seconds: 15
+          run-task: true
+          run-task-container-overrides: >-
+            [{"name":"${{ env.ECS_CONTAINER_NAME }}","command":["node","node_modules/typeorm/cli.js","migration:run","-d","node_modules/@repo/database/dist/data-source.js"]}]
+          run-task-launch-type: FARGATE
+          run-task-subnets: ${{ env.ECS_PRIVATE_SUBNET_IDS }}
+          run-task-security-groups: ${{ env.ECS_BACKEND_SECURITY_GROUP_ID }}
+          run-task-assign-public-IP: DISABLED
+          run-task-started-by: github-${{ github.run_id }}
+          wait-for-task-stopped: true
+          enable-ecs-managed-tags: true
+          propagate-tags: SERVICE
+
+      - name: Verify deployed task definition
+        shell: bash
+        env:
+          EXPECTED_TASK_DEFINITION: ${{ steps.deploy.outputs.task-definition-arn }}
+        run: |
+          ACTIVE_TASK_DEFINITION="$(
+            aws ecs describe-services \
+              --cluster "${ECS_CLUSTER}" \
+              --services "${ECS_SERVICE}" \
+              --query "services[0].taskDefinition" \
+              --output text
+          )"
+
+          if [ "${ACTIVE_TASK_DEFINITION}" != "${EXPECTED_TASK_DEFINITION}" ]; then
+            echo "::error::ECS service is using ${ACTIVE_TASK_DEFINITION}, expected ${EXPECTED_TASK_DEFINITION}. The deployment may have rolled back."
+            exit 1
+          fi
+
       - name: Publish deployment summary
         shell: bash
         run: |
           {
-            echo "## Lynx backend image"
+            echo "## Lynx backend deployment"
             echo
-            echo "\`${{ steps.image.outputs.uri }}\`"
+            echo "- Image: \`${{ steps.image.outputs.uri }}\`"
+            echo "- Task definition: \`${{ steps.deploy.outputs.task-definition-arn }}\`"
+            echo "- ECS service: \`${ECS_CLUSTER}/${ECS_SERVICE}\`"
             echo
             echo "Existing immutable image reused: \`${{ steps.existing-image.outputs.exists }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
