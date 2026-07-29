@@ -181,6 +181,7 @@ jobs:
 
       - name: Run migrations and deploy ECS service
         id: deploy
+        continue-on-error: true
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.task-definition.outputs.task-definition }}
@@ -200,6 +201,90 @@ jobs:
           wait-for-task-stopped: true
           enable-ecs-managed-tags: true
           propagate-tags: SERVICE
+
+      - name: Diagnose failed ECS deployment
+        if: steps.deploy.outcome == 'failure'
+        shell: bash
+        env:
+          RUN_TASK_ARNS: ${{ steps.deploy.outputs.run-task-arn }}
+          RENDERED_TASK_DEFINITION: ${{ steps.task-definition.outputs.task-definition }}
+        run: |
+          set +e
+
+          echo "::group::Migration task result"
+          TASK_ARN="$(
+            jq -r \
+              'if type == "array" then (.[0] // "") else "" end' \
+              <<< "${RUN_TASK_ARNS:-[]}" 2>/dev/null
+          )"
+
+          if [ -z "${TASK_ARN}" ]; then
+            TASK_ARN="$(
+              aws ecs list-tasks \
+                --cluster "${ECS_CLUSTER}" \
+                --desired-status STOPPED \
+                --started-by "github-${GITHUB_RUN_ID}" \
+                --query "taskArns[0]" \
+                --output text
+            )"
+          fi
+
+          if [ -z "${TASK_ARN}" ] || [ "${TASK_ARN}" = "None" ]; then
+            echo "::warning::No migration task ARN was found for github-${GITHUB_RUN_ID}."
+          else
+            echo "Task: ${TASK_ARN}"
+            aws ecs describe-tasks \
+              --cluster "${ECS_CLUSTER}" \
+              --tasks "${TASK_ARN}" \
+              --query "tasks[0].{stopCode:stopCode,stoppedReason:stoppedReason,containers:containers[].{name:name,lastStatus:lastStatus,exitCode:exitCode,reason:reason}}" \
+              --output yaml
+
+            TASK_ID="${TASK_ARN##*/}"
+            LOG_GROUP="$(
+              jq -r \
+                --arg container_name "${ECS_CONTAINER_NAME}" \
+                '.containerDefinitions[]
+                  | select(.name == $container_name)
+                  | .logConfiguration.options["awslogs-group"] // ""' \
+                "${RENDERED_TASK_DEFINITION}"
+            )"
+            LOG_STREAM_PREFIX="$(
+              jq -r \
+                --arg container_name "${ECS_CONTAINER_NAME}" \
+                '.containerDefinitions[]
+                  | select(.name == $container_name)
+                  | .logConfiguration.options["awslogs-stream-prefix"] // ""' \
+                "${RENDERED_TASK_DEFINITION}"
+            )"
+
+            if [ -n "${LOG_GROUP}" ] && [ -n "${LOG_STREAM_PREFIX}" ]; then
+              LOG_STREAM="${LOG_STREAM_PREFIX}/${ECS_CONTAINER_NAME}/${TASK_ID}"
+              echo
+              echo "CloudWatch Logs: ${LOG_GROUP} / ${LOG_STREAM}"
+              aws logs get-log-events \
+                --log-group-name "${LOG_GROUP}" \
+                --log-stream-name "${LOG_STREAM}" \
+                --start-from-head \
+                --query "events[].message" \
+                --output text ||
+                echo "::warning::Could not read the migration log stream. Check the deploy role's logs:GetLogEvents permission."
+            else
+              echo "::warning::The task definition has no awslogs group or stream prefix for ${ECS_CONTAINER_NAME}."
+            fi
+          fi
+          echo "::endgroup::"
+
+          echo "::group::Latest ECS service events"
+          aws ecs describe-services \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --query "services[0].events[0:10].{createdAt:createdAt,message:message}" \
+            --output table ||
+            echo "::warning::Could not read ECS service events."
+          echo "::endgroup::"
+
+          echo "::error::Migration or ECS service deployment failed. The service was not verified as updated."
+          exit 1
 
       - name: Verify deployed task definition
         shell: bash
