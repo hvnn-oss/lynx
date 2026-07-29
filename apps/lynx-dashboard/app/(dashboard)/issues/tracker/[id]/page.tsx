@@ -1,4 +1,4 @@
-import { IssueDetailOperationsScreen } from "@/components/screen/issues/operations";
+import { redirect } from "next/navigation";
 
 export default async function IssueItemPage({
   params,
@@ -7,9 +7,5 @@ export default async function IssueItemPage({
 }) {
   const { id } = await params;
 
-  return (
-    <main className="min-h-full p-5">
-      <IssueDetailOperationsScreen issueId={id} />
-    </main>
-  );
+  redirect(`/issues/${id}`);
 }

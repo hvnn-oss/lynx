@@ -74,10 +74,12 @@ describe("RefreshTokenStore", () => {
         "a".repeat(64),
         JSON.stringify(replacement),
         1_209_600,
+        expect.any(Number),
+        10,
       );
     });
 
-    it.each([0, -1, -2])(
+    it.each([0, -1, -2, -3])(
       "누락 또는 재사용된 토큰을 거부한다",
       async (result: number) => {
         const replacement: RefreshSession = {
@@ -96,6 +98,32 @@ describe("RefreshTokenStore", () => {
         });
       },
     );
+
+    it("유예 구간의 직전 토큰 요청은 세션을 삭제하지 않는 스크립트를 사용한다", async () => {
+      const replacement: RefreshSession = {
+        createdAt: 1_700_000_000,
+        previousSecretHash: "a".repeat(64),
+        rotatedAt: 1_700_000_100,
+        secretHash: "b".repeat(64),
+        sessionId: randomUUID(),
+        userId: randomUUID(),
+      };
+      redis.eval.mockResolvedValue(-2);
+
+      await expect(
+        store.rotateRefresh("a".repeat(64), replacement),
+      ).rejects.toMatchObject({
+        message: ERROR_CODES.INVALID_REFRESH_TOKEN,
+      });
+
+      const script = String(redis.eval.mock.calls[0]?.[0]);
+      expect(script).toContain(
+        "if rotatedAt > 0 and now - rotatedAt <= grace then",
+      );
+      expect(script.indexOf("return -2")).toBeLessThan(
+        script.indexOf('redis.call("DEL", KEYS[1])'),
+      );
+    });
   });
 
   describe("revokeRefresh", () => {

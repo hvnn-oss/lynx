@@ -1,0 +1,108 @@
+{
+  "sidebar": {
+    "items": {
+      "dashboard": {
+        "title": "Dashboard",
+        "summary": {
+          "title": "Summary",
+          "overview": "Operations overview",
+          "status": "Collection status",
+          "cost": "Cost analysis",
+          "reports": "Operations reports"
+        },
+        "sessions": {
+          "title": "Sessions",
+          "overview": "Session overview",
+          "completed": "Successful sessions",
+          "failed": "Failed sessions"
+        },
+        "agents": {
+          "title": "Agents",
+          "overview": "Agent overview",
+          "active": "Active agents",
+          "inactive": "Inactive agents"
+        }
+      },
+      "issues": {
+        "title": "Issues",
+        "work": {
+          "title": "Work queue",
+          "overview": "Issue status",
+          "review": "Needs review",
+          "investigating": "Investigating",
+          "recovery": "Recovery review"
+        },
+        "analysis": {
+          "title": "Cause analysis",
+          "patterns": "Repeated patterns",
+          "changeImpact": "Change impact"
+        },
+        "records": {
+          "title": "History and status",
+          "history": "Resolution history",
+          "intake": "Detection processing"
+        }
+      },
+      "firewall": {
+        "title": "Firewall",
+        "summary": {
+          "title": "Firewall",
+          "overview": "Operations",
+          "policies": "Policies",
+          "approvals": "Approval requests",
+          "records": "Detection and blocks",
+          "lab": "Policy test lab"
+        }
+      },
+      "prompts": {
+        "title": "Prompts",
+        "management": {
+          "title": "Prompt management",
+          "library": "Prompt library",
+          "deployments": "Deployments"
+        },
+        "optimization": {
+          "title": "Optimization",
+          "experiments": "Experiments",
+          "performance": "Performance and issues"
+        },
+        "summary": {
+          "title": "Versions",
+          "overview": "Prompt list",
+          "changes": "Change history",
+          "regressions": "Regression alerts",
+          "compare": "Compare versions",
+          "deployments": "Deployment status"
+        }
+      },
+      "settings": {
+        "title": "Settings",
+        "organization": {
+          "title": "Organization",
+          "general": "General",
+          "members": "Members",
+          "integrations": "Integrations",
+          "apiKeys": "API keys",
+          "security": "Security"
+        },
+        "personal": {
+          "title": "Personal",
+          "general": "General",
+          "security": "Password and security",
+          "preferences": "Preferences"
+        },
+        "openapi": {
+          "title": "OpenAPI",
+          "general": "Overview",
+          "ingestion": "Event ingestion",
+          "runtimeConfig": "Runtime config"
+        }
+      }
+    },
+    "avatar": {
+      "account_settings": "Account settings",
+      "product_feedback": "Product feedback",
+      "logout": "Log out"
+    }
+  }
+}

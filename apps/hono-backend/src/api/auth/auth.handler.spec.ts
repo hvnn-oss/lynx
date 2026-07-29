@@ -11,6 +11,7 @@ jest.mock("./auth.service.js", () => ({
     buildCompleteLoginInput: jest.fn(),
     complete: jest.fn(),
     createEmailVerification: jest.fn(),
+    getSignupPolicy: jest.fn(),
     logout: jest.fn(),
     refresh: jest.fn(),
     register: jest.fn(),
@@ -33,6 +34,11 @@ function createAuthApp() {
   const app = new Hono<AppEnv>();
 
   app.on(
+    authContract.signupPolicy.method,
+    authContract.signupPolicy.path,
+    ...handlers.signupPolicy,
+  );
+  app.on(
     authContract.login.method,
     authContract.login.path,
     ...handlers.login,
@@ -54,6 +60,23 @@ function createAuthApp() {
 describe("auth HTTP handlers", () => {
   beforeEach(() => {
     mockedLocalAuthService.assertAllowed.mockResolvedValue(undefined);
+  });
+
+  it("returns the current signup policy without authentication", async () => {
+    mockedAuthService.getSignupPolicy.mockReturnValue({
+      mode: "INVITE_ONLY",
+      requiresInvitation: true,
+    });
+
+    const response = await createAuthApp().request(
+      authContract.signupPolicy.path,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      mode: "INVITE_ONLY",
+      requiresInvitation: true,
+    });
   });
 
   it("returns an access token and keeps the refresh token in an HttpOnly cookie", async () => {

@@ -19,6 +19,45 @@ export function createFirewallPolicyHandlers() {
     },
   );
 
+  const detail = factory.createHandlers(
+    zValidator("param", firewallPolicyContract.detail.params!),
+    async (c) => {
+      const params = c.req.valid("param");
+      const result = await firewallPolicyService.detail(
+        c.get("currentUserId"),
+        params.workspaceId,
+        params.policyId,
+      );
+      return c.json(firewallPolicyContract.detail.response.parse(result));
+    },
+  );
+
+  const revisions = factory.createHandlers(
+    zValidator("param", firewallPolicyContract.revisions.params!),
+    async (c) => {
+      const params = c.req.valid("param");
+      const result = await firewallPolicyService.revisions(
+        c.get("currentUserId"),
+        params.workspaceId,
+        params.policyId,
+      );
+      return c.json(firewallPolicyContract.revisions.response.parse(result));
+    },
+  );
+
+  const targetOptions = factory.createHandlers(
+    zValidator("param", firewallPolicyContract.targetOptions.params!),
+    async (c) => {
+      const result = await firewallPolicyService.targetOptions(
+        c.get("currentUserId"),
+        c.req.valid("param").workspaceId,
+      );
+      return c.json(
+        firewallPolicyContract.targetOptions.response.parse(result),
+      );
+    },
+  );
+
   const create = factory.createHandlers(
     zValidator("param", firewallPolicyContract.create.params!),
     zValidator("json", firewallPolicyContract.create.request),
@@ -128,8 +167,70 @@ export function createFirewallPolicyHandlers() {
     },
   );
 
+  const records = factory.createHandlers(
+    zValidator("param", firewallPolicyContract.records.params!),
+    zValidator("query", firewallPolicyContract.records.request),
+    async (c) => {
+      const result = await firewallPolicyService.records(
+        c.get("currentUserId"),
+        c.req.valid("param").workspaceId,
+        c.req.valid("query"),
+      );
+      return c.json(firewallPolicyContract.records.response.parse(result));
+    },
+  );
+
+  const webhookDeliveries = factory.createHandlers(
+    zValidator("param", firewallPolicyContract.webhookDeliveries.params!),
+    zValidator("query", firewallPolicyContract.webhookDeliveries.request),
+    async (c) => {
+      const params = c.req.valid("param");
+      const result = await firewallPolicyService.webhookDeliveries(
+        c.get("currentUserId"),
+        params.workspaceId,
+        params.policyId,
+        c.req.valid("query"),
+      );
+      return c.json(
+        firewallPolicyContract.webhookDeliveries.response.parse(result),
+      );
+    },
+  );
+
+  const testWebhook = factory.createHandlers(
+    zValidator("param", firewallPolicyContract.testWebhook.params!),
+    async (c) => {
+      const params = c.req.valid("param");
+      const result = await firewallPolicyService.testWebhook(
+        c.get("currentUserId"),
+        params.workspaceId,
+        params.policyId,
+      );
+      return c.json(firewallPolicyContract.testWebhook.response.parse(result));
+    },
+  );
+
+  const retryWebhookDelivery = factory.createHandlers(
+    zValidator("param", firewallPolicyContract.retryWebhookDelivery.params!),
+    async (c) => {
+      const params = c.req.valid("param");
+      const result = await firewallPolicyService.retryWebhookDelivery(
+        c.get("currentUserId"),
+        params.workspaceId,
+        params.policyId,
+        params.deliveryId,
+      );
+      return c.json(
+        firewallPolicyContract.retryWebhookDelivery.response.parse(result),
+      );
+    },
+  );
+
   return {
     list,
+    detail,
+    revisions,
+    targetOptions,
     create,
     update,
     activate,
@@ -138,5 +239,9 @@ export function createFirewallPolicyHandlers() {
     rollback,
     simulate,
     deletePolicy,
+    records,
+    webhookDeliveries,
+    testWebhook,
+    retryWebhookDelivery,
   };
 }

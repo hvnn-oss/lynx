@@ -1,7 +1,9 @@
 import { zValidator } from "@hono/zod-validator";
-import { createFactory } from "hono/factory";
 import { openAPIContract } from "@repo/contract";
+import { createFactory } from "hono/factory";
+import { BadRequestErrorException } from "../../../common/exceptions/bad-request.js";
 import type { AppEnv } from "../../../common/types/app-env.js";
+import { AgentIdentifierSchema } from "../../../common/util/agent-identifier.js";
 import { runtimeConfigService } from "./runtime-config.service.js";
 
 const factory = createFactory<AppEnv>();
@@ -11,21 +13,30 @@ export function createRuntimeConfigHandlers() {
   const get = factory.createHandlers(
     zValidator("query", openAPIContract.getRuntimeConfig.request),
     async (c) => {
-    const config = await runtimeConfigService.get(
-      c.get("currentWorkspaceId"),
-      c.get("currentApiKeyEnvironment"),
-      c.req.header("X-Lynx-Agent-ID"),
-      c.req.header("X-Lynx-Client-ID") ?? "anonymous",
-    );
-    const etag = `"${config.revision}"`;
-    c.header("Cache-Control", "private, no-cache");
-    // SDK 캐시가 최신이면 응답 본문 전송을 생략합니다.
-    if (c.req.header("If-None-Match") === etag) {
-      return c.body(null, 304);
-    }
+      const rawAgentId = c.req.header("X-Lynx-Agent-ID");
+      const parsedAgentId =
+        rawAgentId === undefined
+          ? undefined
+          : AgentIdentifierSchema.safeParse(rawAgentId);
+      if (parsedAgentId && !parsedAgentId.success) {
+        throw new BadRequestErrorException("INVALID_AGENT_ID");
+      }
 
-    c.header("ETag", etag);
-    return c.json(openAPIContract.getRuntimeConfig.response.parse(config));
+      const config = await runtimeConfigService.get(
+        c.get("currentWorkspaceId"),
+        c.get("currentApiKeyEnvironment"),
+        parsedAgentId?.data,
+        c.req.header("X-Lynx-Client-ID") ?? "anonymous",
+      );
+      const etag = `"${config.revision}"`;
+      c.header("Cache-Control", "private, no-cache");
+      // SDK 캐시가 최신이면 응답 본문 전송을 생략합니다.
+      if (c.req.header("If-None-Match") === etag) {
+        return c.body(null, 304);
+      }
+
+      c.header("ETag", etag);
+      return c.json(openAPIContract.getRuntimeConfig.response.parse(config));
     },
   );
 

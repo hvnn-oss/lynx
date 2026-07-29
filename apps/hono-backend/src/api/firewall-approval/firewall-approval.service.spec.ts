@@ -4,7 +4,7 @@ import type { FirewallApprovalRepository } from "./firewall-approval.repository.
 import { FirewallApprovalService } from "./firewall-approval.service.js";
 
 jest.mock("../../common/services/firewall-notification.service.js", () => ({
-  firewallNotificationService: { notify: jest.fn() },
+  firewallNotificationService: { enqueueConfigured: jest.fn() },
 }));
 
 describe("FirewallApprovalService", () => {

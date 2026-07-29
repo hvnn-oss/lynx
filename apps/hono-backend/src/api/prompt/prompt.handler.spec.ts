@@ -6,6 +6,7 @@ import { promptService } from "./prompt.service.js";
 
 jest.mock("./prompt.service.js", () => ({
   promptService: {
+    list: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
   },
@@ -22,6 +23,11 @@ function createApp() {
     await next();
   });
   app.on(
+    promptContract.list.method,
+    promptContract.list.path,
+    ...handlers.list,
+  );
+  app.on(
     promptContract.create.method,
     promptContract.create.path,
     ...handlers.create,
@@ -35,6 +41,34 @@ function createApp() {
 }
 
 describe("prompt HTTP handlers", () => {
+  it("applies prompt list query defaults and returns deployment summaries", async () => {
+    mockedService.list.mockResolvedValue({
+      items: [
+        {
+          id: "c1821bc3-bf1e-46ef-b210-b9376a41cd0c",
+          name: "support-agent",
+          description: "",
+          draftContent: "Be concise.",
+          draftRevision: 1,
+          createdAt: "2026-07-25T00:00:00.000Z",
+          updatedAt: "2026-07-25T00:00:00.000Z",
+          latestVersion: null,
+          activeDeployments: [],
+        },
+      ],
+      nextCursor: null,
+    });
+
+    const response = await createApp().request(`/${workspaceId}/prompts`);
+
+    expect(response.status).toBe(200);
+    expect(mockedService.list).toHaveBeenCalledWith(
+      expect.any(String),
+      workspaceId,
+      expect.objectContaining({ deployment: "ALL", limit: 25 }),
+    );
+  });
+
   it("validates and creates a prompt draft", async () => {
     const prompt = {
       id: "c1821bc3-bf1e-46ef-b210-b9376a41cd0c",

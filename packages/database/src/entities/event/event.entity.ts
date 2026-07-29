@@ -3,6 +3,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   ManyToOne,
   PrimaryGeneratedColumn,
 } from "typeorm";
@@ -26,6 +27,13 @@ export interface LynxEventPayloadDto {
   parentStepId?: string;
   usage?: TokenUsage;
   cost?: number;
+  costSource?:
+    | "PROVIDER_REPORTED"
+    | "CLIENT_REPORTED"
+    | "CLIENT_ESTIMATED"
+    | "SERVER_ESTIMATED"
+    | "UNPRICED";
+  pricingVersion?: string;
   loopDetected?: boolean;
   loopCount?: number;
   repeatedLabel?: string;
@@ -35,6 +43,15 @@ export interface LynxEventPayloadDto {
 }
 
 @Entity("event")
+@Index("UQ_event_run_client_event", { synchronize: false })
+@Index("IDX_event_run_timestamp", { synchronize: false })
+@Index("IDX_event_session_timestamp", { synchronize: false })
+@Index("IDX_event_type_timestamp", { synchronize: false })
+@Index("IDX_event_timestamp", { synchronize: false })
+@Index("IDX_event_created_at", { synchronize: false })
+@Index("IDX_event_payload_span_id", { synchronize: false })
+@Index("IDX_event_payload_parent_span_id", { synchronize: false })
+@Index("IDX_event_prompt_version_ids", { synchronize: false })
 export class EventEntity {
   @PrimaryGeneratedColumn("uuid")
   id!: string;
@@ -63,7 +80,7 @@ export class EventEntity {
   @Column({ type: "int", nullable: true })
   latency?: number;
 
-  @Column({ type: "numeric", precision: 10, scale: 6, nullable: true })
+  @Column({ type: "numeric", precision: 20, scale: 12, nullable: true })
   cost?: number;
 
   @Column()

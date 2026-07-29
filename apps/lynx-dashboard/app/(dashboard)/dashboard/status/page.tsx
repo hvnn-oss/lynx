@@ -1,5 +1,5 @@
-import { DashboardOperationalPage } from "@/components/screen/dashboard/operational-page";
+import { DashboardStatusScreen } from "@/components/screen/dashboard/status";
 
 export default function DashboardStatusPage() {
-  return <DashboardOperationalPage kind="status" />;
+  return <DashboardStatusScreen />;
 }

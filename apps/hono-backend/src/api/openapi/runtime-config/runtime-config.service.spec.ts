@@ -6,6 +6,7 @@ import { env } from "../../../common/config/config.js";
 describe("RuntimeConfigService", () => {
   it("returns current prompt versions and activated policies as one revision", async () => {
     const repository = {
+      resolveAgentId: jest.fn().mockResolvedValue(undefined),
       listPromptDeployments: jest.fn().mockResolvedValue([
         {
           promptId: "72adbb57-96ad-4d3d-a2dc-8faf071673e5",
@@ -70,6 +71,7 @@ it("signs the exact runtime bundle with the configured Ed25519 key", async () =>
   });
   env.RUNTIME_CONFIG_SIGNING_KEY_ID = "test-key";
   const repository = {
+    resolveAgentId: jest.fn().mockResolvedValue(undefined),
     listPromptDeployments: jest.fn().mockResolvedValue([]),
     listActiveExperiments: jest.fn().mockResolvedValue([]),
     listPromptVersions: jest.fn().mockResolvedValue([]),
@@ -102,6 +104,7 @@ it("signs the exact runtime bundle with the configured Ed25519 key", async () =>
 
 it("prioritizes Agent deployments and assigns an A/B variant deterministically", async () => {
   const promptId = "72adbb57-96ad-4d3d-a2dc-8faf071673e5";
+  const internalAgentId = "34640358-38db-4bc7-a700-6d61d1536298";
   const defaultVersion = {
     id: "c1821bc3-bf1e-46ef-b210-b9376a41cd0c",
     version: "v1",
@@ -121,6 +124,7 @@ it("prioritizes Agent deployments and assigns an A/B variant deterministically",
     contentHash: null,
   };
   const repository = {
+    resolveAgentId: jest.fn().mockResolvedValue(internalAgentId),
     listPromptDeployments: jest.fn().mockResolvedValue([
       {
         promptId,
@@ -130,7 +134,7 @@ it("prioritizes Agent deployments and assigns an A/B variant deterministically",
       },
       {
         promptId,
-        agentId: "agent-1",
+        agentId: internalAgentId,
         prompt: { name: "support-agent" },
         version: agentVersion,
       },
@@ -139,7 +143,7 @@ it("prioritizes Agent deployments and assigns an A/B variant deterministically",
       {
         id: "experiment-1",
         promptId,
-        agentId: "agent-1",
+        agentId: internalAgentId,
         assignmentSalt: "stable-salt",
         variants: [{ versionId: experimentVersion.id, weight: 100 }],
       },
@@ -152,13 +156,13 @@ it("prioritizes Agent deployments and assigns an A/B variant deterministically",
   const first = await service.get(
     "workspace-1",
     "staging",
-    "agent-1",
+    "orbit-assistant",
     "client-1",
   );
   const second = await service.get(
     "workspace-1",
     "staging",
-    "agent-1",
+    "orbit-assistant",
     "client-1",
   );
 
@@ -173,6 +177,10 @@ it("prioritizes Agent deployments and assigns an A/B variant deterministically",
   expect(repository.listPromptDeployments).toHaveBeenCalledWith(
     "workspace-1",
     "staging",
-    "agent-1",
+    internalAgentId,
+  );
+  expect(repository.resolveAgentId).toHaveBeenCalledWith(
+    "workspace-1",
+    "orbit-assistant",
   );
 });

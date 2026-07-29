@@ -289,6 +289,14 @@ export interface TokenUsage {
   totalTokens: number;
 }
 
+/** Describes whether an LLM call cost was reported or estimated. */
+export type LynxCostSource =
+  | "PROVIDER_REPORTED"
+  | "CLIENT_REPORTED"
+  | "CLIENT_ESTIMATED"
+  | "SERVER_ESTIMATED"
+  | "UNPRICED";
+
 export type LynxSessionStatus = "COMPLETED" | "FAILED" | "CANCELLED";
 export type LynxBusinessStatus = "SUCCEEDED" | "FAILED" | "PARTIAL" | "UNKNOWN";
 export type LynxRiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
@@ -354,6 +362,15 @@ export interface LynxFirewallToolOptions<
     args: TArgs;
     metadata?: LynxToolMetadata;
   }) => LynxPolicyDecision | Promise<LynxPolicyDecision>;
+}
+
+export interface LynxFirewallContentOptions {
+  /** Event label used to identify the protected content boundary. */
+  label?: string;
+  /** Risk used to select the fallback behavior when local evaluation fails. */
+  riskLevel?: LynxRiskLevel;
+  /** Behavior used when managed policy evaluation is unavailable. */
+  failureMode?: LynxFirewallFailureMode;
 }
 
 /** @deprecated Use `LynxFirewallToolOptions`. */
@@ -449,6 +466,8 @@ export interface LynxEventPayloadDto {
   latency?: number;
   usage?: TokenUsage;
   cost?: number;
+  costSource?: LynxCostSource;
+  pricingVersion?: string;
 
   // Runtime metadata for replay and root-cause analysis
   provider?: string;

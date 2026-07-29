@@ -220,7 +220,83 @@ test("firewallTool blocks a call that matches a cached managed policy", async ()
   assert.equal(issueRecords[0].detectionType, "FIREWALL_BLOCK");
   assert.equal(issueRecords[0].policyId, "17");
   assert.equal(issueRecords[0].payload.toolName, "delete-account");
+  assert.equal(issueRecords[0].payload.policyName, "Block critical tools");
+  assert.equal(
+    issueRecords[0].payload.condition,
+    "tool.riskLevel == 'CRITICAL'",
+  );
   assert.equal(issueRecords[0].payload.input, undefined);
+});
+
+test("managed policies block matching LLM input and output content", async () => {
+  const telemetry = [];
+  globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith("/runtime-config")) {
+      return new Response(
+        JSON.stringify({
+          revision: "content-policy-revision-1",
+          prompts: [],
+          policies: [
+            {
+              policyId: "input-policy",
+              name: "Block greeting input",
+              description: null,
+              version: "v1",
+              condition: "input.value contains '안녕'",
+              severity: "HIGH",
+              action: "BLOCK",
+            },
+            {
+              policyId: "output-policy",
+              name: "Block unsafe output",
+              description: null,
+              version: "v1",
+              condition: "output.value contains '차단'",
+              severity: "HIGH",
+              action: "BLOCK",
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    }
+    if (String(url).endsWith("/issue-records")) {
+      return new Response(
+        JSON.stringify({
+          recordId: "4acb9bfb-36c7-49bc-bd69-13a930cff155",
+          status: "RECEIVED",
+          isNew: true,
+        }),
+        { status: 202 },
+      );
+    }
+    telemetry.push(...JSON.parse(init.body));
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+  const tracer = createTracer({ runtimeConfig: { enabled: true } });
+
+  await tracer.run("SupportAgent", () => {
+    assert.throws(
+      () => tracer.firewallInput("안녕하세요"),
+      (error) =>
+        error instanceof LynxPolicyError && error.policyId === "input-policy",
+    );
+    assert.throws(
+      () => tracer.firewallOutput("이 답변은 차단 대상입니다."),
+      (error) =>
+        error instanceof LynxPolicyError && error.policyId === "output-policy",
+    );
+  });
+  await tracer.shutdown();
+
+  const evaluations = telemetry.filter(
+    (event) => event.eventType === "POLICY_EVALUATION",
+  );
+  assert.equal(evaluations.length, 2);
+  assert.deepEqual(
+    evaluations.map((event) => event.payload.phase),
+    ["INPUT", "OUTPUT"],
+  );
 });
 
 test("managed policies can match nested tool input without evaluating JavaScript", async () => {

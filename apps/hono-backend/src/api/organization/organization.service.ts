@@ -27,8 +27,13 @@ import type { ImageUploadBody } from "../../common/util/read-image-upload.js";
 import { getImageService } from "../../provider/image/image-provider.js";
 import type { ImageService } from "../../provider/image/image.service.js";
 import { BadRequestErrorException } from "../../common/exceptions/bad-request.js";
+import { env } from "../../common/config/config.js";
 
 type ImageServiceFactory = () => ImageService;
+type DefaultProfileImages = {
+  user: string | null;
+  organization: string | null;
+};
 
 /** 사용자 권한과 생성 횟수를 적용해 조직 생성을 조정합니다. */
 export class OrganizationService {
@@ -36,7 +41,26 @@ export class OrganizationService {
     private readonly repository: OrganizationRepository = orgRepository,
     private readonly accessControl: AccessControlService = accessControlService,
     private readonly images: ImageServiceFactory = getImageService,
+    private readonly defaultProfileImages: DefaultProfileImages = {
+      user: env.DEFAULT_USER_PROFILE_IMAGE_URL ?? null,
+      organization: env.DEFAULT_ORGANIZATION_PROFILE_IMAGE_URL ?? null,
+    },
   ) {}
+
+  /** 현재 사용자가 멤버로 참여 중인 조직 목록을 반환합니다. */
+  async listOrganizations(userId: string) {
+    return {
+      items: (await this.repository.listForUser(userId)).map(
+        ({ profileImageKey, ...organization }) => ({
+          ...organization,
+          profileImageUrl: this.resolveProfileImageUrl(
+            profileImageKey,
+            this.defaultProfileImages.organization,
+          ),
+        }),
+      ),
+    };
+  }
 
   /** 조직 멤버에게 조직 프로필과 자신의 조직 역할을 반환합니다. */
   async getProfile(input: {
@@ -63,6 +87,10 @@ export class OrganizationService {
           userId: membership.user.id,
           name: membership.user.name,
           email: membership.user.email,
+          profileImageUrl: this.resolveProfileImageUrl(
+            membership.user.profileImageKey,
+            this.defaultProfileImages.user,
+          ),
           role: membership.role,
           joinedAt: membership.joinedAt.toISOString(),
         }),
@@ -216,11 +244,20 @@ export class OrganizationService {
     return {
       id: profile.organization.id,
       name: profile.organization.name,
-      profileImageUrl: profile.organization.profileImageKey
-        ? this.images().getUrl(profile.organization.profileImageKey)
-        : null,
+      profileImageUrl: this.resolveProfileImageUrl(
+        profile.organization.profileImageKey,
+        this.defaultProfileImages.organization,
+      ),
       role: profile.role,
     };
+  }
+
+  /** 저장된 키를 공개 URL로 바꾸고, 키가 없으면 설정된 기본 URL을 사용합니다. */
+  private resolveProfileImageUrl(
+    storageKey: string | null,
+    defaultUrl: string | null,
+  ): string | null {
+    return storageKey ? this.images().getUrl(storageKey) : defaultUrl;
   }
 
   /** 접근 권한 확인 이후에도 사라진 조직은 404로 처리합니다. */

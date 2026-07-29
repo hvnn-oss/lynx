@@ -1,0 +1,26 @@
+{
+  "inviteMember": "Invite member",
+  "email": "Email",
+  "role": "Role",
+  "send": "Send invitation",
+  "sending": "Sending...",
+  "cancel": "Cancel",
+  "done": "Done",
+  "linkReady": "Invitation link created",
+  "linkDescription": "The invitation was also sent by email. Copy this link now if you want to share it another way.",
+  "copyLink": "Copy invitation link",
+  "invitationHistory": "Invitation history",
+  "expires": "Expires {date}",
+  "revoke": "Revoke invitation",
+  "roles": {
+    "ADMIN": "Admin",
+    "MEMBER": "Member",
+    "VIEWER": "Viewer"
+  },
+  "status": {
+    "PENDING": "Pending",
+    "ACCEPTED": "Accepted",
+    "EXPIRED": "Expired",
+    "REVOKED": "Revoked"
+  }
+}

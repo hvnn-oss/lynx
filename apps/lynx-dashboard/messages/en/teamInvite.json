@@ -1,0 +1,14 @@
+{
+  "title": "Join {organization}",
+  "description": "This invitation is for {email} with the {role} role.",
+  "organization": "Organization",
+  "role": "Role",
+  "accept": "Accept invitation",
+  "accepting": "Joining...",
+  "createAccount": "Create an account and join",
+  "signIn": "Sign in and join",
+  "acceptFailed": "The invitation could not be accepted. Sign in with the invited email or request a new invitation.",
+  "invalidTitle": "Invitation unavailable",
+  "invalid": "This invitation is invalid, expired, revoked, or already accepted.",
+  "goToLogin": "Go to sign in"
+}

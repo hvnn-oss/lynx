@@ -35,12 +35,7 @@ export function DashboardPanel({
   className?: string;
 }) {
   return (
-    <div
-      className={cn(
-        "rounded-lg border border-border/60 bg-background p-4",
-        className,
-      )}
-    >
+    <div className={cn("rounded-lg bg-background p-4", className)}>
       {children}
     </div>
   );

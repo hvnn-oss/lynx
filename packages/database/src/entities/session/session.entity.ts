@@ -2,6 +2,7 @@
 import {
   Column,
   Entity,
+  Index,
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
@@ -13,6 +14,9 @@ import { PromptEntity } from "../prompt/prompt.entity";
 import { FirewallViolationEntity } from "../firewall/violation.entity";
 
 @Entity("session")
+@Index("IDX_session_workspace_name", { synchronize: false })
+@Index("IDX_session_workspace_status_started_at", { synchronize: false })
+@Index("IDX_session_agent_started_at", { synchronize: false })
 export class SessionEntity {
   @PrimaryGeneratedColumn("uuid")
   id!: string;
@@ -48,7 +52,7 @@ export class SessionEntity {
   @Column()
   totalTokens!: number;
 
-  @Column()
+  @Column({ type: "numeric", precision: 20, scale: 12, default: 0 })
   totalCost!: number;
 
   @ManyToOne(

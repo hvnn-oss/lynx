@@ -17,6 +17,10 @@ export * from "./entities/admin/admin-user.entity.js";
 export * from "./entities/auth/oidc-account.entity.js";
 export * from "./entities/auth/user-account.entity.js";
 export * from "./entities/auth/trial-claim.entity.js";
+export * from "./entities/auth/access-invitation.entity.js";
+export * from "./entities/auth/product-access-grant.entity.js";
+export * from "./entities/auth/access-invitation.entity.js";
+export * from "./entities/auth/product-access-grant.entity.js";
 
 // event
 export * from "./entities/event/event.entity.js";
@@ -26,6 +30,10 @@ export * from "./entities/firewall/policy.entity.js";
 export * from "./entities/firewall/policy-revision.entity.js";
 export * from "./entities/firewall/violation.entity.js";
 export * from "./entities/firewall/approval-request.entity.js";
+export * from "./entities/firewall/webhook-delivery.entity.js";
+
+// integration
+export * from "./entities/integration/slack-integration.entity.js";
 
 // issues
 export * from "./entities/issues/issue.entity.js";

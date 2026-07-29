@@ -43,6 +43,11 @@ import {
   orgService,
   type OrganizationService,
 } from "../organization/organization.service.js";
+import {
+  accessInvitationService,
+  type AccessInvitationService,
+} from "../access-invitation/access-invitation.service.js";
+import { productAccessService } from "../../common/access-control/product-access.service.js";
 
 const BCRYPT_SALT_ROUNDS = 12;
 
@@ -57,7 +62,20 @@ export class AuthService {
     private readonly organizationService: OrganizationService = orgService,
     private readonly mailer: SignupMailer = smtpTransporter,
     private readonly dataSource: AuthDataSource = AppDataSource,
+    private readonly accessInvitations: Pick<
+      AccessInvitationService,
+      | "acceptSignupInvitation"
+      | "activateBootstrapAdmin"
+      | "isBootstrapAdminEmail"
+      | "resolveSignupInvitation"
+      | "resolveTeamSignupInvitation"
+    > = accessInvitationService,
   ) {}
+
+  /** 프론트엔드가 초대 전용 또는 공개 가입 화면을 선택할 수 있게 합니다. */
+  getSignupPolicy() {
+    return productAccessService.getSignupPolicy();
+  }
 
   /**
    * 가입 단계를 만들고 사용자에게 이메일 확인 링크를 전송합니다.
@@ -72,13 +90,33 @@ export class AuthService {
 
     await this.assertUserDoesNotExist(email);
     await this.assertDomainAllowsLocalAuth(domain);
+    const teamInvitation = input.team_invitation_code
+      ? await this.accessInvitations.resolveTeamSignupInvitation(
+          email,
+          input.team_invitation_code,
+        )
+      : null;
+    const isBootstrapAdmin =
+      !teamInvitation && this.accessInvitations.isBootstrapAdminEmail(email);
+    const accessInvitationId =
+      teamInvitation?.invitationId ??
+      (isBootstrapAdmin
+        ? null
+        : await this.accessInvitations.resolveSignupInvitation(
+            email,
+            input.invitation_token,
+          ));
 
     const token = randomUUID();
     const stage: SignupStage = {
       email,
       domain,
       email_verified: false,
-      invited_organization: input.invited_organization_id,
+      invited_organization: teamInvitation?.organizationId,
+      invited_organization_role: teamInvitation?.role,
+      access_invitation_id: accessInvitationId ?? undefined,
+      bootstrap_admin: isBootstrapAdmin || undefined,
+      redirect_path: input.redirects,
     };
     await this.stageStore.save(token, stage);
 
@@ -87,7 +125,7 @@ export class AuthService {
         from: env.SMTP_FROM_EMAIL,
         to: email,
         subject: "Verify your Lynx email",
-        html: this.createVerificationEmailHtml(token),
+        html: this.createVerificationEmailHtml(token, input.redirects),
       });
     } catch {
       // 전송되지 않은 링크의 가입 단계가 Redis에 남지 않게 정리합니다.
@@ -105,10 +143,20 @@ export class AuthService {
    * @param token 이메일 확인 링크에 포함된 가입 토큰입니다.
    * @returns 확인된 이메일과 성공 여부입니다.
    */
-  async verifyEmail(token: string): Promise<{ success: true; email: string }> {
+  async verifyEmail(token: string): Promise<{
+    success: true;
+    email: string;
+    redirects: string | null;
+    requiresOrganization: boolean;
+  }> {
     const stage = await this.getSignupStageOrThrow(token);
     await this.stageStore.markEmailVerified(token, stage);
-    return { success: true, email: stage.email };
+    return {
+      success: true,
+      email: stage.email,
+      redirects: stage.redirect_path ?? null,
+      requiresOrganization: !stage.invited_organization,
+    };
   }
 
   /**
@@ -131,12 +179,24 @@ export class AuthService {
         input.name,
         passwordHash,
       );
+      if (stage.access_invitation_id) {
+        await this.accessInvitations.acceptSignupInvitation(
+          manager,
+          stage.access_invitation_id,
+          stage.email,
+          user.id,
+        );
+      }
+      if (stage.bootstrap_admin) {
+        await this.accessInvitations.activateBootstrapAdmin(manager, user.id);
+      }
 
       if (stage.invited_organization) {
         await this.joinInvitedOrganization(
           manager,
           user,
           stage.invited_organization,
+          stage.invited_organization_role ?? USER_PERMISSIONS.MEMBER,
         );
         return;
       }
@@ -388,6 +448,7 @@ export class AuthService {
     manager: EntityManager,
     user: UserEntity,
     organizationId: string,
+    role: (typeof USER_PERMISSIONS)[keyof typeof USER_PERMISSIONS],
   ): Promise<void> {
     const organization = await manager
       .getRepository(OrganizationEntity)
@@ -399,7 +460,7 @@ export class AuthService {
     const membership = manager.getRepository(OrganizationUserEntity).create({
       organization,
       user,
-      role: USER_PERMISSIONS.MEMBER,
+      role,
       joinedAt: new Date(),
     });
     await manager.getRepository(OrganizationUserEntity).save(membership);
@@ -411,9 +472,14 @@ export class AuthService {
   }
 
   /** 가입 확인 링크를 포함한 최소 HTML 메일 본문을 생성합니다. */
-  private createVerificationEmailHtml(token: string): string {
+  private createVerificationEmailHtml(
+    token: string,
+    redirectPath?: string,
+  ): string {
     const frontendUrl = env.FRONTEND_URL.replace(/\/$/, "");
-    const verificationUrl = `${frontendUrl}/signup/verify?token=${encodeURIComponent(token)}`;
+    const query = new URLSearchParams({ token });
+    if (redirectPath) query.set("redirects", redirectPath);
+    const verificationUrl = `${frontendUrl}/signup/verify?${query.toString()}`;
     return [
       "<p>Lynx 가입을 완료하려면 아래 링크에서 이메일을 확인해 주세요.</p>",
       `<p><a href="${verificationUrl}">이메일 확인하기</a></p>`,
@@ -436,6 +502,7 @@ export class AuthService {
       userId,
       secretHash,
       previousSecretHash,
+      rotatedAt: previousSecretHash ? getJwtNumericDate() : undefined,
       sessionId,
       createdAt,
       ipAddress,

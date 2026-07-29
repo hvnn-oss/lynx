@@ -5,13 +5,13 @@ import type {
   PromptVersionEntity,
 } from "@repo/database";
 import type { RuntimeConfigResponseDto } from "@repo/dto";
+import { RUNTIME_CONFIG_SERVER_CACHE_TTL_MS } from "../../../common/prompt/runtime-config.constants.js";
 import {
   RuntimeConfigRepository,
   runtimeConfigRepository,
 } from "./runtime-config.repository.js";
 import { env } from "../../../common/config/config.js";
 
-const RUNTIME_CONFIG_CACHE_TTL_MS = 30_000;
 const MAX_CACHED_TARGETS = 1_000;
 
 /** 런타임 설정을 SDK가 소비하는 서명된 번들로 변환합니다. */
@@ -48,13 +48,32 @@ export class RuntimeConfigService {
     if (cached && cached.expiresAt > Date.now()) return cached.config;
     if (cached) this.cache.delete(cacheKey);
 
+    // SDK 식별자를 UUID 컬럼에 직접 넣지 않고 내부 Agent ID로 먼저 변환합니다.
+    const resolvedAgentId = await this.repository.resolveAgentId(
+      workspaceId,
+      agentId,
+    );
     const [deployments, experiments, policyEntities] = await Promise.all([
-      this.repository.listPromptDeployments(workspaceId, environment, agentId),
-      this.repository.listActiveExperiments(workspaceId, environment, agentId),
-      this.repository.listPolicies(workspaceId),
+      this.repository.listPromptDeployments(
+        workspaceId,
+        environment,
+        resolvedAgentId,
+      ),
+      this.repository.listActiveExperiments(
+        workspaceId,
+        environment,
+        resolvedAgentId,
+      ),
+      this.repository.listPolicies(workspaceId, environment, resolvedAgentId),
     ]);
-    const selectedDeployments = this.selectScopedRecords(deployments, agentId);
-    const selectedExperiments = this.selectScopedRecords(experiments, agentId);
+    const selectedDeployments = this.selectScopedRecords(
+      deployments,
+      resolvedAgentId,
+    );
+    const selectedExperiments = this.selectScopedRecords(
+      experiments,
+      resolvedAgentId,
+    );
     const experimentVersionIds = [
       ...new Set(
         selectedExperiments.flatMap((experiment) =>
@@ -131,7 +150,7 @@ export class RuntimeConfigService {
       if (typeof oldestCacheKey === "string") this.cache.delete(oldestCacheKey);
     }
     this.cache.set(cacheKey, {
-      expiresAt: Date.now() + RUNTIME_CONFIG_CACHE_TTL_MS,
+      expiresAt: Date.now() + RUNTIME_CONFIG_SERVER_CACHE_TTL_MS,
       config,
     });
     return config;

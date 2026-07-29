@@ -1,0 +1,62 @@
+{
+  "pages": {
+    "overview": {
+      "title": "Agent overview",
+      "description": "Inspect recent run activity and failures for registered agents."
+    },
+    "active": {
+      "title": "Active agents",
+      "description": "Inspect agents that started at least one run during the last 24 hours."
+    },
+    "inactive": {
+      "title": "Inactive agents",
+      "description": "Inspect agents with no runs started during the last 24 hours."
+    }
+  },
+  "metrics": {
+    "agents": {
+      "label": "Agents",
+      "description": "Registered agents in the selected scope"
+    },
+    "active": {
+      "label": "Active",
+      "description": "Has runs during the last {hours} hours"
+    },
+    "inactive": {
+      "label": "Inactive",
+      "description": "No runs during the last {hours} hours"
+    },
+    "running": {
+      "label": "Running runs",
+      "description": "Recent runs currently in progress"
+    },
+    "failed": {
+      "label": "Failed runs",
+      "description": "Recent runs marked as failed"
+    }
+  },
+  "list": {
+    "title": "Agent status",
+    "description": "{model} · {runs} runs · last run {lastRunAt} · {cost}",
+    "never": "No run history",
+    "empty": "No agents are available in the selected scope.",
+    "status": {
+      "ACTIVE": "Active",
+      "INACTIVE": "Inactive"
+    }
+  },
+  "volume": {
+    "title": "Runs by agent",
+    "description": "Runs started by each agent during the last {hours} hours.",
+    "empty": "No runs are available for this chart."
+  },
+  "empty": {
+    "workspaceTitle": "No workspace is available",
+    "workspaceDescription": "Create a workspace and connect the SDK to inspect agent data."
+  },
+  "error": {
+    "title": "Could not load agent data",
+    "description": "Check the agent dashboard API and workspace permissions.",
+    "action": "Try again"
+  }
+}

@@ -9,6 +9,7 @@ import { authContract } from "@repo/contract";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useUserStore } from "@/stores/userStore";
 
 export function SidebarUserAvatar() {
   const [isOpen, setOpen] = useState(false);
@@ -16,6 +17,9 @@ export function SidebarUserAvatar() {
   const avatarRef = useRef<HTMLButtonElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const t = useTranslations("layout.sidebar");
+  const user = useUserStore((state) => state.user);
+  const resetUserStore = useUserStore((state) => state.reset);
+  const fallback = getInitials(user?.name);
 
   const handleLogout = async () => {
     try {
@@ -25,6 +29,7 @@ export function SidebarUserAvatar() {
         request: {},
       });
     } finally {
+      resetUserStore();
       clearStoredAccessToken();
       window.location.href = "/login";
     }
@@ -61,8 +66,10 @@ export function SidebarUserAvatar() {
         onClick={() => setOpen(!isOpen)}
       >
         <Avatar size="lg">
-          <AvatarImage src="https://github.com/shadcn.png" alt="@shadcn" />
-          <AvatarFallback>CN</AvatarFallback>
+          {user?.profileImageUrl ? (
+            <AvatarImage src={user.profileImageUrl} alt={user.name} />
+          ) : null}
+          <AvatarFallback>{fallback}</AvatarFallback>
         </Avatar>
       </button>
       {isOpen && (
@@ -72,10 +79,19 @@ export function SidebarUserAvatar() {
         >
           <div className="flex gap-3 items-center p-3">
             <Avatar>
-              <AvatarImage src="https://github.com/shadcn.png" alt="@shadcn" />
-              <AvatarFallback>CN</AvatarFallback>
+              {user?.profileImageUrl ? (
+                <AvatarImage src={user.profileImageUrl} alt={user.name} />
+              ) : null}
+              <AvatarFallback>{fallback}</AvatarFallback>
             </Avatar>
-            <p className="font-semibold">Dan Lee</p>
+            <div className="min-w-0">
+              <p className="truncate font-semibold">{user?.name ?? "Lynx"}</p>
+              {user?.email ? (
+                <p className="truncate text-xs text-muted-foreground">
+                  {user.email}
+                </p>
+              ) : null}
+            </div>
           </div>
           <div className="w-full h-px bg-border mb-1.5"></div>
           <Link
@@ -98,4 +114,14 @@ export function SidebarUserAvatar() {
       )}
     </div>
   );
+}
+
+function getInitials(name?: string) {
+  if (!name) return "LY";
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
 }

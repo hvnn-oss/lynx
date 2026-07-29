@@ -13,8 +13,9 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
 import { authContract, getAuthEndpointPath } from "@repo/contract";
+import { withRedirect } from "@/lib/safe-redirect";
 
-export default function SSOLoginForm() {
+export default function SSOLoginForm({ redirectTo }: { redirectTo: string }) {
   const t = useTranslations("auth");
   const [email, setEmail] = useState("");
 
@@ -51,7 +52,7 @@ export default function SSOLoginForm() {
             <div className="flex-1 h-px bg-foreground/30"></div>
           </div>
           <Link
-            href={"/login"}
+            href={withRedirect("/login", redirectTo)}
             className={cn(
               buttonVariants({ size: "lg", variant: "secondary" }),
               "mb-3",
@@ -62,7 +63,9 @@ export default function SSOLoginForm() {
           </Link>
           <FieldDescription className="text-center">
             {t("common.dontHaveAccount")}{" "}
-            <Link href="/signup">{t("common.signupLink")}</Link>
+            <Link href={withRedirect("/signup", redirectTo)}>
+              {t("common.signupLink")}
+            </Link>
           </FieldDescription>
         </Field>
       </FieldGroup>

@@ -10,6 +10,10 @@ import {
   promptContract,
   workspaceContract,
   systemContract,
+  bootstrapContract,
+  integrationContract,
+  accessContract,
+  teamInvitationContract,
 } from "@repo/contract";
 import { Hono } from "hono";
 import { requestId } from "hono/request-id";
@@ -29,6 +33,10 @@ import { promptRouter } from "./api/prompt/prompt.router.js";
 import { openAPIDocument } from "./api/openapi/openapi-document.js";
 import { dashboardRouter } from "./api/dashboard/dashboard.router.js";
 import { PublicErrorResponseSchema } from "@repo/dto";
+import { bootstrapRouter } from "./api/bootstrap/bootstrap.router.js";
+import { slackIntegrationRouter } from "./api/slack-integration/slack-integration.router.js";
+import { accessInvitationRouter } from "./api/access-invitation/access-invitation.router.js";
+import { teamInvitationRouter } from "./api/access-invitation/team-invitation.router.js";
 
 /**
  * 공통 미들웨어와 기능별 라우터를 연결한 Hono 애플리케이션입니다.
@@ -52,7 +60,7 @@ app.on(
   systemContract.openApiDocument.method,
   systemContract.openApiDocument.path,
   (c) => {
-  c.header("Cache-Control", "public, max-age=300");
+    c.header("Cache-Control", "public, max-age=300");
     return c.json(
       systemContract.openApiDocument.response.parse(openAPIDocument),
     );
@@ -61,9 +69,13 @@ app.on(
 
 // 각 도메인 라우터는 공유 계약에 정의된 기본 경로에 연결합니다.
 app.route(authContract.basePath, authRoute);
+app.route(accessContract.basePath, accessInvitationRouter);
+app.route(teamInvitationContract.basePath, teamInvitationRouter);
 app.route(organizationContract.basePath, orgRouter);
 app.route(profileContract.basePath, profileRouter);
+app.route(bootstrapContract.basePath, bootstrapRouter);
 app.route(workspaceContract.basePath, workspaceRouter);
+app.route(integrationContract.basePath, slackIntegrationRouter);
 app.route(dashboardContract.basePath, dashboardRouter);
 app.route(openAPIContract.basePath, openAPIRouter);
 app.route(issuesContract.basePath, issuesRouter);

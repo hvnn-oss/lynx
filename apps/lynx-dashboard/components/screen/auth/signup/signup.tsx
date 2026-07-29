@@ -17,11 +17,17 @@ import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { getSafeRedirect, withRedirect } from "@/lib/safe-redirect";
 
 export default function SignupForm({
   onComplete,
 }: {
-  onComplete: (e: { name: string; pw: string }) => void;
+  onComplete: (e: {
+    name: string;
+    pw: string;
+    requiresOrganization: boolean;
+    redirects: string;
+  }) => void;
 }) {
   const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState<{
@@ -35,6 +41,8 @@ export default function SignupForm({
   const [name, setName] = useState("");
   const [pw, setPw] = useState("");
   const [pwRepeat, setPwRepeat] = useState("");
+  const [requiresOrganization, setRequiresOrganization] = useState(true);
+  const [redirects, setRedirects] = useState("/dashboard");
   const params = useSearchParams();
   const t = useTranslations("auth");
 
@@ -58,6 +66,8 @@ export default function SignupForm({
           request: request.data,
         });
         setEmail(data.email);
+        setRequiresOrganization(data.requiresOrganization);
+        setRedirects(getSafeRedirect(data.redirects));
         setLoading(false);
       } catch (error) {
         if (axios.isAxiosError(error)) {
@@ -152,7 +162,7 @@ export default function SignupForm({
             type="submit"
             size={"lg"}
             onClick={() => {
-              onComplete({ name, pw });
+              onComplete({ name, pw, requiresOrganization, redirects });
             }}
             disabled={
               name === "" || pw !== pwRepeat || pw === "" || pwRepeat === ""
@@ -162,7 +172,9 @@ export default function SignupForm({
           </Button>
           <FieldDescription className="text-center">
             {t("common.alreadyHaveAccount")}{" "}
-            <Link href="/login">{t("common.loginLink")}</Link>
+            <Link href={withRedirect("/login", redirects)}>
+              {t("common.loginLink")}
+            </Link>
           </FieldDescription>
         </Field>
       </FieldGroup>

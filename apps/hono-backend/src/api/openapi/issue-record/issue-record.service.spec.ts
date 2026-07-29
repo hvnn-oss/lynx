@@ -127,6 +127,9 @@ describe("IssueRecordService", () => {
         sessionId: "7b65c0a0-2fe0-41fa-ab2b-f66ba51490ae",
         recordId: record.id,
         clientOccurrenceId: record.id,
+        message: expect.objectContaining({
+          titleKey: "issue.loop.detected.title",
+        }),
       }),
     );
     expect(repository.completeDecision).toHaveBeenCalledWith(

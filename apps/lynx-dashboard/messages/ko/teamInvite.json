@@ -1,0 +1,14 @@
+{
+  "title": "{organization} 조직에 참여하기",
+  "description": "{email} 계정에 {role} 역할로 발급된 초대입니다.",
+  "organization": "조직",
+  "role": "역할",
+  "accept": "초대 수락",
+  "accepting": "참여하는 중...",
+  "createAccount": "회원가입하고 참여",
+  "signIn": "로그인하고 참여",
+  "acceptFailed": "초대를 수락하지 못했습니다. 초대받은 이메일로 로그인했는지 확인하거나 새 초대를 요청해 주세요.",
+  "invalidTitle": "사용할 수 없는 초대",
+  "invalid": "잘못되었거나 만료·취소·수락된 초대입니다.",
+  "goToLogin": "로그인으로 이동"
+}

@@ -59,6 +59,17 @@ export class FirewallPolicyEntity {
   @Column({ type: "varchar", length: 2048, nullable: true })
   webhookUrl!: string | null;
 
+  /**
+   * 비어 있으면 모든 실행 환경에 적용합니다.
+   * 배포 시 리비전에도 함께 복사되어 배포 범위를 고정합니다.
+   */
+  @Column({ type: "text", array: true, default: () => "'{}'" })
+  environments!: string[];
+
+  /** 비어 있으면 워크스페이스의 모든 Agent에 적용합니다. */
+  @Column({ type: "uuid", array: true, default: () => "'{}'" })
+  agentIds!: string[];
+
   @ManyToOne(() => WorkspaceEntity, (workspace: WorkspaceEntity) => workspace)
   workspace!: WorkspaceEntity;
 

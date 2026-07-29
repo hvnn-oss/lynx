@@ -1,0 +1,25 @@
+{
+  "signup": {
+    "invitationRequiredTitle": "Lynx is currently invite-only",
+    "invitationRequiredDescription": "Join the Lynx pilot using the invitation link sent to your email. If you already have an account, sign in instead.",
+    "invalidInvitation": "This invitation has expired or does not match the email. Request a new invitation.",
+    "goToLogin": "Go to sign in"
+  },
+  "pending": {
+    "title": "Your product access is pending",
+    "description": "{email} is authenticated, but access to Lynx has not been activated yet.",
+    "mode": "Signup mode",
+    "status": "Access status",
+    "refresh": "Check access again"
+  },
+  "mode": {
+    "INVITE_ONLY": "Invite only",
+    "PUBLIC": "Public"
+  },
+  "status": {
+    "ACTIVE": "Active",
+    "PENDING": "Pending",
+    "SUSPENDED": "Suspended",
+    "EXPIRED": "Expired"
+  }
+}

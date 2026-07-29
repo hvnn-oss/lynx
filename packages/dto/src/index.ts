@@ -9,3 +9,6 @@ export * from "./firewall/index.js";
 export * from "./dashboard/index.js";
 export * from "./prompt/index.js";
 export * from "./common/index.js";
+export * from "./bootstrap/index.js";
+export * from "./integration/index.js";
+export * from "./access/index.js";

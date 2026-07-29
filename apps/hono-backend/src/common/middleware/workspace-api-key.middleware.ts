@@ -7,6 +7,10 @@ import {
 } from "../auth/workspace-api-key-auth.service.js";
 import { UnauthorizedErrorException } from "../exceptions/unauthorized.js";
 import type { AppEnv } from "../types/app-env.js";
+import {
+  ProductAccessService,
+  productAccessService,
+} from "../access-control/product-access.service.js";
 
 /**
  * `X-API-Key` 헤더의 Workspace API 키와 필수 권한을 검증합니다.
@@ -20,6 +24,10 @@ import type { AppEnv } from "../types/app-env.js";
 export function createWorkspaceApiKeyMiddleware(
   requiredScopes: readonly ApiKeyScope[] = [],
   authService: WorkspaceApiKeyAuthService = workspaceApiKeyAuthService,
+  productAccess: Pick<
+    ProductAccessService,
+    "assertWorkspaceAccess"
+  > = productAccessService,
 ) {
   return createMiddleware<AppEnv>(async (c, next) => {
     const apiKey = c.req.header("X-API-Key")?.trim();
@@ -31,6 +39,7 @@ export function createWorkspaceApiKeyMiddleware(
       apiKey,
       requiredScopes,
     );
+    await productAccess.assertWorkspaceAccess(authenticated.workspaceId);
     // 이후 계층은 요청 본문 대신 검증된 context의 테넌트 정보를 사용합니다.
     c.set("currentWorkspaceId", authenticated.workspaceId);
     c.set("currentApiKeyId", authenticated.apiKeyId);

@@ -9,6 +9,7 @@ import {
   SuccessResponseSchema,
   VerifyEmailTokenResponseSchema,
   VerifyEmailTokenSchema,
+  SignupPolicyResponseSchema,
 } from "@repo/dto";
 import { defineEndpoint } from "./util/endpoint.js";
 
@@ -16,6 +17,12 @@ const AUTH_BASE_PATH = "/auth" as const;
 
 export const authContract = {
   basePath: AUTH_BASE_PATH,
+  signupPolicy: defineEndpoint({
+    method: "GET",
+    path: "/signup/policy",
+    request: null,
+    response: SignupPolicyResponseSchema,
+  }),
   ssoLogin: defineEndpoint({
     method: "GET",
     path: "/sso/login",

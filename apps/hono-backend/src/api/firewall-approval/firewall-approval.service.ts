@@ -10,7 +10,6 @@ import {
   FirewallApprovalRepository,
   firewallApprovalRepository,
 } from "./firewall-approval.repository.js";
-import { firewallNotificationService } from "../../common/services/firewall-notification.service.js";
 
 /** 운영자 승인 목록 조회와 승인·거절 결정을 처리합니다. */
 export class FirewallApprovalService {
@@ -66,21 +65,6 @@ export class FirewallApprovalService {
     );
     if (!result) throw new NotFoundErrorException("APPROVAL_NOT_FOUND");
     const request = result.request;
-    if (result.didDecide) {
-      firewallNotificationService.notify({
-        workspaceId,
-        policyId: request.reportedPolicyId,
-        type: "approval.decided",
-        data: {
-          approvalId: request.id,
-          status: request.status,
-          decidedAt: request.decidedAt?.toISOString() ?? null,
-          decisionReason: request.decisionReason,
-          toolName: request.toolName,
-          runId: request.runId,
-        },
-      });
-    }
     return this.toStatus(request);
   }
 

@@ -1,3 +1,7 @@
+import {
+  SafeRedirectPathSchema,
+  TEAM_INVITATION_ROLES,
+} from "@repo/dto";
 import { z } from "zod";
 import { coreRedis } from "../../provider/redis/redis-config.js";
 
@@ -10,6 +14,10 @@ const SignupStageSchema = z.object({
   domain: z.string(),
   email_verified: z.boolean(),
   invited_organization: z.uuid().optional(),
+  invited_organization_role: z.enum(TEAM_INVITATION_ROLES).optional(),
+  access_invitation_id: z.uuid().optional(),
+  bootstrap_admin: z.boolean().optional(),
+  redirect_path: SafeRedirectPathSchema.optional(),
 });
 
 /** 이메일 확인부터 최종 가입 사이에 임시로 유지하는 상태입니다. */

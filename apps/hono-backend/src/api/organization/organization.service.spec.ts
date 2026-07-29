@@ -45,6 +45,29 @@ describe("OrganizationService", () => {
     source: "DASHBOARD" as const,
   };
 
+  it("현재 사용자가 참여 중인 조직 목록을 반환한다", async () => {
+    const organizations = [
+      {
+        id: randomUUID(),
+        name: "Lynx",
+        profileImageKey: null,
+        role: USER_PERMISSIONS.OWNER,
+      },
+    ];
+    const repository = createRepository({
+      listForUser: jest.fn().mockResolvedValue(organizations),
+    });
+    const service = new OrganizationService(repository);
+
+    await expect(service.listOrganizations(input.userId)).resolves.toEqual({
+      items: organizations.map(({ profileImageKey: _, ...organization }) => ({
+        ...organization,
+        profileImageUrl: null,
+      })),
+    });
+    expect(repository.listForUser).toHaveBeenCalledWith(input.userId);
+  });
+
   it("creates an organization when both limits allow it", async () => {
     const repository = createRepository();
     const service = new OrganizationService(repository);

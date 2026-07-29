@@ -33,6 +33,14 @@ const IssuePromptVersionSchema = z
   })
   .nullable();
 
+const IssueMessageSchema = z
+  .object({
+    titleKey: z.string().trim().min(1).max(120),
+    summaryKey: z.string().trim().min(1).max(120),
+    params: z.record(z.string(), z.unknown()),
+  })
+  .nullable();
+
 /** 이슈 목록 URL query를 검증하고 서비스 입력으로 변환합니다. */
 export const GetIssuesQuerySchema = z.object({
   status: z.enum(ISSUE_STATUS).optional(),
@@ -51,6 +59,7 @@ export const GetIssuesResponseSchema = z.object({
       id: z.uuid(),
       title: z.string().trim().min(1),
       summary: z.string().trim().min(1),
+      message: IssueMessageSchema,
       category: z.enum(ISSUE_CATEGORY),
       severity: z.enum(ISSUE_SEVERITY),
       status: z.enum(ISSUE_STATUS),
@@ -59,6 +68,7 @@ export const GetIssuesResponseSchema = z.object({
       occurrenceCount: z.number().int().nonnegative(),
       affectedSessionCount: z.number().int().nonnegative(),
       blockedOccurrenceCount: z.number().int().nonnegative(),
+      fingerprint: z.string().regex(/^[0-9a-f]{64}$/),
       firstSeenAt: z.string().datetime(),
       lastSeenAt: z.string().datetime(),
     }),
@@ -75,11 +85,16 @@ export const GetIssueResponseSchema = z.object({
   id: z.uuid(),
   title: z.string(),
   summary: z.string(),
+  message: IssueMessageSchema,
   category: z.enum(ISSUE_CATEGORY),
   severity: z.enum(ISSUE_SEVERITY),
   status: z.enum(ISSUE_STATUS),
   source: z.string(),
   environment: z.string(),
+  reporter: z.object({
+    type: z.string(),
+    name: z.string(),
+  }),
   agent: IssueAgentSchema,
   policy: IssuePolicySchema,
   promptVersion: IssuePromptVersionSchema,
@@ -93,6 +108,9 @@ export const GetIssueResponseSchema = z.object({
     affectedSessions: z.number().int().nonnegative(),
     blockedOccurrences: z.number().int().nonnegative(),
   }),
+  riskSignals: z.array(z.string()),
+  reproductionSteps: z.array(z.string()),
+  tags: z.array(z.string()),
   firstSeenAt: z.string().datetime(),
   lastSeenAt: z.string().datetime(),
   resolvedAt: z.string().datetime().nullable(),

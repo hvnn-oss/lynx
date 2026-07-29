@@ -16,7 +16,7 @@ export function KpiCard({
 }: {
   title: string;
   subtitle: string;
-  figure: number;
+  figure: number | string;
   unit?: string;
   isRisky?: boolean;
   href?: string;

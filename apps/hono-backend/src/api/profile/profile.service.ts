@@ -11,6 +11,7 @@ import { BadRequestErrorException } from "../../common/exceptions/bad-request.js
 import type { ChangePasswordDto, UpdateUserProfileDto } from "@repo/dto";
 import bcrypt from "bcrypt";
 import { BCRYPT_SALT_ROUNDS } from "@repo/constants";
+import { env } from "../../common/config/config.js";
 
 type ImageServiceFactory = () => ImageService;
 
@@ -19,6 +20,9 @@ export class ProfileService {
   constructor(
     private readonly repository: ProfileRepository = profileRepository,
     private readonly images: ImageServiceFactory = getImageService,
+    private readonly defaultProfileImageUrl:
+      | string
+      | null = env.DEFAULT_USER_PROFILE_IMAGE_URL ?? null,
   ) {}
 
   /** 현재 사용자의 프로필과 공개 이미지 URL을 반환합니다. */
@@ -91,7 +95,7 @@ export class ProfileService {
 
   /** 이미지 provider가 아직 설정되지 않은 프로필도 안전하게 조회합니다. */
   private getProfileImageUrl(storageKey: string | null): string | null {
-    if (!storageKey) return null;
+    if (!storageKey) return this.defaultProfileImageUrl;
     return this.images().getUrl(storageKey);
   }
 

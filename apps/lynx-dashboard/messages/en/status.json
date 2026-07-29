@@ -1,0 +1,81 @@
+{
+  "open": "Open",
+  "investigating": "Investigating",
+  "resolved": "Resolved",
+  "ignored": "Ignored",
+  "page": {
+    "title": "Data collection status",
+    "subtitle": "Check whether SDK events are reaching Lynx and being stored in the database.",
+    "window": "Calculated from real storage data collected over the last {hours} hours.",
+    "health": {
+      "HEALTHY": {
+        "label": "Collecting",
+        "title": "Events are being stored normally",
+        "description": "Recent events were found and storage delay is within the normal range."
+      },
+      "DELAYED": {
+        "label": "Delayed",
+        "title": "Event storage is slower than expected",
+        "description": "The p95 delay between the SDK event time and database storage is above five seconds."
+      },
+      "INACTIVE": {
+        "label": "No recent data",
+        "title": "No events were stored in the last 15 minutes",
+        "description": "If traffic is expected, check the SDK connection, API key, and server logs."
+      },
+      "NO_DATA": {
+        "label": "No data",
+        "title": "No events have been stored yet",
+        "description": "Collection status and storage delay will appear after the SDK sends its first event."
+      }
+    },
+    "metrics": {
+      "lastStoredAt": {
+        "label": "Last stored",
+        "description": "Most recent event stored in the database",
+        "none": "-"
+      },
+      "storedEvents": {
+        "label": "Stored events",
+        "description": "Events stored during the last {hours} hours"
+      },
+      "activeRuns": {
+        "label": "Active runs",
+        "description": "Runs with recently stored events"
+      },
+      "activeAgents": {
+        "label": "Active agents",
+        "description": "Agents that sent recent events"
+      },
+      "storageDelay": {
+        "label": "Storage delay p95",
+        "description": "From the SDK event time to database storage"
+      }
+    },
+    "volume": {
+      "title": "Stored events by hour",
+      "description": "Events stored in the database during the last 24 hours.",
+      "empty": "No events were stored during the last 24 hours."
+    },
+    "sources": {
+      "title": "Collection by agent and environment",
+      "description": "{environment} · last stored {lastStoredAt}",
+      "eventCount": "{count} events",
+      "empty": "No agents sent events recently."
+    },
+    "eventTypes": {
+      "title": "Collection by event type",
+      "eventCount": "{count} events",
+      "empty": "No event types are available."
+    },
+    "empty": {
+      "title": "No workspace is available",
+      "description": "Create a workspace and connect the SDK to inspect collection status."
+    },
+    "error": {
+      "title": "Could not load collection status",
+      "description": "Check the ingestion status API response, then try again.",
+      "action": "Try again"
+    }
+  }
+}

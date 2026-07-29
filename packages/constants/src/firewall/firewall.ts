@@ -28,6 +28,25 @@ export const FIREWALL_APPROVAL_STATUS = {
 export type FirewallApprovalStatus =
   (typeof FIREWALL_APPROVAL_STATUS)[keyof typeof FIREWALL_APPROVAL_STATUS];
 
+export const WEBHOOK_DELIVERY_STATUS = {
+  PENDING: "PENDING",
+  PROCESSING: "PROCESSING",
+  RETRY_SCHEDULED: "RETRY_SCHEDULED",
+  DELIVERED: "DELIVERED",
+  FAILED: "FAILED",
+} as const;
+
+export type WebhookDeliveryStatus =
+  (typeof WEBHOOK_DELIVERY_STATUS)[keyof typeof WEBHOOK_DELIVERY_STATUS];
+
+export const WEBHOOK_DELIVERY_PROVIDER = {
+  GENERIC: "GENERIC",
+  SLACK: "SLACK",
+} as const;
+
+export type WebhookDeliveryProvider =
+  (typeof WEBHOOK_DELIVERY_PROVIDER)[keyof typeof WEBHOOK_DELIVERY_PROVIDER];
+
 export const RISK_LEVEL = {
   INFO: "INFO",
   LOW: "LOW",

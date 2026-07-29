@@ -1,0 +1,64 @@
+{
+  "pages": {
+    "overview": {
+      "title": "Session overview",
+      "description": "Group runs from the last 24 hours by session and inspect outcomes, duration, and cost."
+    },
+    "completed": {
+      "title": "Completed sessions",
+      "description": "Inspect sessions whose runs all completed normally during the last 24 hours."
+    },
+    "failed": {
+      "title": "Failed sessions",
+      "description": "Inspect sessions containing at least one failed run during the last 24 hours."
+    }
+  },
+  "metrics": {
+    "sessions": {
+      "label": "Sessions",
+      "description": "Selected scope during the last {hours} hours"
+    },
+    "completed": {
+      "label": "Completed",
+      "description": "Sessions that completed normally"
+    },
+    "failed": {
+      "label": "Failed",
+      "description": "Sessions containing a failed run"
+    },
+    "duration": {
+      "label": "Average duration",
+      "description": "Sessions with a recorded end time"
+    },
+    "cost": {
+      "label": "Average cost",
+      "description": "Cost per session · {blocked} policy blocks"
+    }
+  },
+  "list": {
+    "title": "Recent sessions",
+    "description": "{agent} · {runs} runs · {duration} · {cost}",
+    "empty": "No sessions are available in the selected scope.",
+    "status": {
+      "RUNNING": "Running",
+      "COMPLETED": "Completed",
+      "FAILED": "Failed",
+      "CANCELLED": "Cancelled",
+      "UNKNOWN": "Unknown"
+    }
+  },
+  "volume": {
+    "title": "Sessions by hour",
+    "description": "Sessions started during the last {hours} hours.",
+    "empty": "No sessions are available for this chart."
+  },
+  "empty": {
+    "workspaceTitle": "No workspace is available",
+    "workspaceDescription": "Create a workspace and connect the SDK to inspect session data."
+  },
+  "error": {
+    "title": "Could not load session data",
+    "description": "Check the session dashboard API and workspace permissions.",
+    "action": "Try again"
+  }
+}

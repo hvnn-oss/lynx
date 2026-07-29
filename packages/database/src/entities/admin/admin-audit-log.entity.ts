@@ -2,10 +2,13 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   PrimaryGeneratedColumn,
 } from "typeorm";
 
 @Entity("admin_audit_log")
+@Index("IDX_admin_audit_log_actor_created", { synchronize: false })
+@Index("IDX_admin_audit_log_target", { synchronize: false })
 export class AdminAuditLogEntity {
   @PrimaryGeneratedColumn("uuid")
   id!: string;

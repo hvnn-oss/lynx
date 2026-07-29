@@ -1,13 +1,11 @@
-import {
-  DashboardMetricCard,
-  DashboardMetricGrid,
-} from "@repo/ui/components/dashboard/panel";
+import { DashboardMetricGrid } from "@repo/ui/components/dashboard/panel";
 import { useTranslations } from "next-intl";
 import {
   formatCost,
   formatLatency,
   type OverviewSummary,
 } from "./overview-model";
+import { KpiCard } from "./kpi-card";
 
 export function OverviewMetrics({ summary }: { summary: OverviewSummary }) {
   const t = useTranslations("dashboard.overview.metrics");
@@ -17,36 +15,37 @@ export function OverviewMetrics({ summary }: { summary: OverviewSummary }) {
 
   return (
     <DashboardMetricGrid>
-      <DashboardMetricCard
-        label={t("runs.label")}
-        value={summary.runCount.toLocaleString()}
-        description={sampleDescription}
+      <KpiCard
+        title={t("runs.label")}
+        figure={summary.runCount}
+        subtitle={sampleDescription}
       />
-      <DashboardMetricCard
-        label={t("failureRate.label")}
-        value={`${summary.failureRate.toFixed(1)}%`}
-        description={t("failureRate.description", {
+      <KpiCard
+        title={t("failureRate.label")}
+        figure={summary.failureRate.toFixed(1)}
+        unit="%"
+        subtitle={t("failureRate.description", {
           failed: summary.failedRunCount,
           terminal: summary.terminalRunCount,
         })}
-        tone={summary.failedRunCount > 0 ? "bad" : "good"}
+        isRisky={summary.failureRate > 20}
       />
-      <DashboardMetricCard
-        label={t("latency.label")}
-        value={formatLatency(summary.p95LatencyMs)}
-        description={t("latency.description")}
-        tone={summary.p95LatencyMs === null ? "neutral" : "good"}
+      <KpiCard
+        title={t("latency.label")}
+        figure={formatLatency(summary.p95LatencyMs)}
+        subtitle={t("latency.description")}
+        isRisky={!summary.p95LatencyMs === null}
       />
-      <DashboardMetricCard
-        label={t("cost.label")}
-        value={formatCost(summary.totalCost)}
-        description={sampleDescription}
+      <KpiCard
+        title={t("cost.label")}
+        figure={formatCost(summary.totalCost)}
+        subtitle={sampleDescription}
       />
-      <DashboardMetricCard
-        label={t("riskEvents.label")}
-        value={summary.riskEventCount.toLocaleString()}
-        description={t("riskEvents.description")}
-        tone={summary.riskEventCount > 0 ? "bad" : "good"}
+      <KpiCard
+        title={t("riskEvents.label")}
+        figure={summary.riskEventCount.toLocaleString()}
+        subtitle={t("riskEvents.description")}
+        isRisky={summary.riskEventCount > 0}
       />
     </DashboardMetricGrid>
   );

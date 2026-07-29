@@ -1,0 +1,259 @@
+{
+  "overview": {
+    "title": "Issue status",
+    "subtitle": "See what needs attention from SDK detection through investigation and resolution.",
+    "trendTitle": "New issues in the last 7 days",
+    "trendDescription": "Issues first created within the current result window.",
+    "trendSeries": "New issues",
+    "priorityTitle": "Issues to check first",
+    "priorityEmpty": "There are no open issues that need attention.",
+    "affectedTitle": "Most affected agents and environments",
+    "affectedDescription": "{environments} · {issues} issues",
+    "affectedOccurrences": "{count} occurrences",
+    "affectedEmpty": "There are no open issues to summarize."
+  },
+  "review": {
+    "title": "Needs review",
+    "subtitle": "Review new issues created by the server and decide whether to investigate.",
+    "listTitle": "Newly received issues",
+    "empty": "There are no issues waiting for review."
+  },
+  "investigating": {
+    "title": "Investigating",
+    "subtitle": "Track issues whose likely cause and execution evidence are under review.",
+    "listTitle": "Issues under investigation",
+    "empty": "There are no issues under investigation."
+  },
+  "recovery": {
+    "title": "Recovery review",
+    "subtitle": "Review Recovery records sent by the SDK and their processing status.",
+    "pending": "Waiting for review",
+    "pendingHint": "Recovery records without a final decision",
+    "empty": "No Recovery records have been received.",
+    "noticeTitle": "Automatic Recovery decisions are not ready yet.",
+    "noticeDescription": "The server currently stores Recovery records and keeps them scheduled for reevaluation. This page confirms that recovery signals were not lost. Automatic RESOLVED transitions will be enabled after recovery decision rules are added."
+  },
+  "patterns": {
+    "title": "Repeated patterns",
+    "subtitle": "Group issues that may share a cause by stable fingerprint.",
+    "empty": "There are no repeated patterns to review.",
+    "rowDescription": "{variants} variants · {agents} agents · last seen {lastSeen}",
+    "occurrenceCount": "{count} occurrences",
+    "fingerprintTitle": "A fingerprint is evidence, not the purpose of the page.",
+    "fingerprintDescription": "The list prioritizes shared causes and impact. Stable and exact fingerprint values remain available on the issue detail page."
+  },
+  "changeImpact": {
+    "title": "Change impact",
+    "subtitle": "Review problems and related runs that appeared or increased after a prompt version change.",
+    "listTitle": "Issues with suspected change impact",
+    "empty": "No change-impact issues were detected."
+  },
+  "history": {
+    "title": "Resolution history",
+    "subtitle": "Review resolved or ignored issues and whether they occurred again.",
+    "resolved": "Resolved",
+    "resolvedHint": "Issues in RESOLVED state",
+    "ignored": "Ignored",
+    "ignoredHint": "Issues in IGNORED state",
+    "listTitle": "Closed issues",
+    "empty": "There are no resolved or ignored issues."
+  },
+  "intake": {
+    "title": "Detection processing",
+    "subtitle": "Confirm that Issue Records sent by the SDK were received, evaluated, and decided.",
+    "received": "Received",
+    "receivedHint": "Records waiting for evaluation",
+    "evaluating": "Evaluating",
+    "evaluatingHint": "Records currently handled by a worker",
+    "decided": "Decided",
+    "decidedHint": "Issue creation, matching, or ignore decision completed",
+    "failed": "Failed",
+    "failedHint": "Records whose latest evaluation failed",
+    "deferred": "Reevaluation scheduled",
+    "deferredHint": "Waiting for more context or Recovery rules",
+    "delayed": "Delayed",
+    "delayedHint": "Records still incomplete after their scheduled time",
+    "unsupported": "Unsupported detection",
+    "unsupportedHint": "Detection types without a supported decision rule",
+    "empty": "No Issue Records have been received.",
+    "recordTitle": "{detectionType} · {agent}",
+    "recordDescription": "{environment} · {detectedAt} · {attempts} attempts · {error}"
+  },
+  "blocked": {
+    "title": "Blocked issues",
+    "subtitle": "Issues with at least one occurrence blocked before execution.",
+    "listTitle": "Issues with blocked occurrences",
+    "empty": "There are no blocked issues."
+  },
+  "metrics": {
+    "open": "Needs review",
+    "openHint": "Issues in OPEN state",
+    "investigating": "Investigating",
+    "investigatingHint": "Issues whose cause is under review",
+    "critical": "Critical",
+    "criticalHint": "Issues with CRITICAL severity",
+    "occurrences": "All occurrences",
+    "occurrencesHint": "Accumulated occurrences",
+    "affectedSessions": "Affected sessions",
+    "affectedSessionsHint": "Executions connected to these issues",
+    "environments": "Affected environments",
+    "environmentsHint": "Environments with open issues"
+  },
+  "list": {
+    "rowDescription": "{agent} · {environment} · {occurrences} occurrences · last seen {lastSeen}",
+    "unknownAgent": "Unknown agent"
+  },
+  "detail": {
+    "title": "Issue details",
+    "subtitle": "Review the decision evidence, execution context, occurrences, and resolution status.",
+    "tabs": {
+      "label": "Issue detail sections",
+      "overview": "Overview",
+      "activity": "Activity & comments ({count})",
+      "occurrences": "Occurrences ({count})",
+      "evaluations": "Evaluations ({count})"
+    },
+    "metrics": {
+      "severity": "Severity",
+      "occurrences": "Occurrences",
+      "occurrencesHint": "Records grouped into this issue",
+      "sessions": "Affected sessions",
+      "sessionsHint": "Unique sessions where the problem occurred",
+      "blocked": "Blocked occurrences",
+      "lastSeen": "Last seen",
+      "lastSeenHint": "Most recent risk signal"
+    },
+    "actions": {
+      "investigate": "Start investigation",
+      "resolve": "Mark resolved",
+      "ignore": "Ignore",
+      "returnToReview": "Return to review",
+      "reopen": "Reopen"
+    },
+    "judgementTitle": "Why was this considered an issue?",
+    "judgementDescription": "The latest server evaluation and its evidence.",
+    "noEvaluation": "No server evaluation is connected to this issue.",
+    "action": "Decision",
+    "reasonCode": "Reason code",
+    "confidence": "Confidence",
+    "evidence": "Raw decision evidence",
+    "contextTitle": "Impact scope",
+    "contextDescription": "The agent, policy, prompt, and environment connected to the problem.",
+    "agent": "Agent",
+    "environment": "Environment",
+    "policy": "Policy",
+    "promptVersion": "Prompt version",
+    "reporter": "Reporter",
+    "category": "Category",
+    "fingerprintTitle": "Repeat matching keys",
+    "fingerprintDescription": "Stable identifies a likely shared cause. Exact separates concrete execution conditions.",
+    "stableFingerprint": "Stable fingerprint",
+    "exactFingerprint": "Exact fingerprint",
+    "signalsTitle": "Risk signals and reproduction",
+    "signalsDescription": "Structured problem signals preserved by the SDK and server.",
+    "noSignals": "No risk signals were stored.",
+    "occurrenceList": "Occurrence timeline",
+    "noOccurrences": "No occurrence records are connected to this issue.",
+    "occurrenceDescription": "{environment} · {detectedAt}",
+    "blockedYes": "Blocked",
+    "blockedNo": "Allowed",
+    "representativeEvidence": "Representative occurrence evidence",
+    "evaluationList": "Decision timeline",
+    "noEvaluations": "No decision records are connected to this issue.",
+    "evaluationDescription": "{evaluator} · {pipeline}",
+    "statusUpdateError": "The issue status could not be changed. Check your permission and the allowed status transition.",
+    "activity": {
+      "title": "Activity",
+      "description": "Comments, status changes, and assignee changes appear in chronological order.",
+      "commentLabel": "Comment",
+      "commentPlaceholder": "Share investigation notes, reproduction results, or changes.",
+      "commentLength": "{count}/10,000 characters",
+      "addComment": "Add a comment",
+      "mentionHint": "Type @ to mention an organization member.",
+      "commentSubmit": "Add comment",
+      "commentSaving": "Saving…",
+      "commentError": "The comment could not be saved. Check your permission and server connection.",
+      "empty": "No Activity has been recorded yet.",
+      "unknownTarget": "Unknown user",
+      "edited": "edited",
+      "deleted": "This comment was deleted.",
+      "edit": "Edit",
+      "delete": "Delete",
+      "save": "Save changes",
+      "cancel": "Cancel",
+      "editError": "The comment could not be updated.",
+      "deleteConfirm": "Delete this comment? The deletion will remain in Activity.",
+      "deleteError": "The comment could not be deleted.",
+      "markResolved": "Mark as resolved",
+      "markUnresolved": "Mark as unresolved",
+      "events": {
+        "created": "{actor} created the issue.",
+        "reopened": "{actor} reopened the closed issue.",
+        "resolved": "{actor} marked this issue as resolved.",
+        "unresolved": "{actor} marked this issue as unresolved.",
+        "statusChanged": "{actor} changed the status from {previousStatus} to {nextStatus}.",
+        "assigned": "{actor} assigned {targetName}.",
+        "unassigned": "{actor} unassigned {targetName}.",
+        "severityChanged": "{actor} changed the severity.",
+        "labelAdded": "{actor} added a label.",
+        "labelRemoved": "{actor} removed a label.",
+        "tagAdded": "{actor} added a tag.",
+        "updated": "{actor} updated the issue."
+      }
+    },
+    "assignees": {
+      "title": "Assignees",
+      "description": "Choose organization members responsible for investigating this issue.",
+      "assign": "Assign",
+      "remove": "Remove",
+      "empty": "There are no organization members available to assign.",
+      "remaining": "{count} more members are available from member settings.",
+      "error": "Assignees could not be changed. Check your permission and member status."
+    },
+    "nextAction": "Next check",
+    "nextActionDescription": "Recommended checks for the current state.",
+    "nextActionByStatus": {
+      "OPEN": "Review the LLM and tool flow immediately before the representative Session, then decide whether to start an investigation.",
+      "INVESTIGATING": "Compare shared risk signals with changed prompt, policy, and agent versions, then watch for recurrence after a fix.",
+      "RESOLVED": "Check whether the same stable fingerprint appears again after the resolution time.",
+      "IGNORED": "Confirm that the ignore condition still applies. Reopen the issue if new impact appears."
+    }
+  },
+  "status": {
+    "OPEN": "Needs review",
+    "INVESTIGATING": "Investigating",
+    "RESOLVED": "Resolved",
+    "IGNORED": "Ignored"
+  },
+  "severity": {
+    "CRITICAL": "Critical",
+    "WARNING": "Warning",
+    "INFO": "Info"
+  },
+  "category": {
+    "TOOL_RISK": "Risky tool",
+    "FIREWALL": "Firewall",
+    "LOOP": "Repeated execution",
+    "MODEL_ERROR": "Model error",
+    "PROMPT_REGRESSION": "Change impact",
+    "LATENCY": "Latency",
+    "COST": "Cost",
+    "DATA_EXPOSURE": "Data exposure"
+  },
+  "processingStatus": {
+    "RECEIVED": "Received",
+    "EVALUATING": "Evaluating",
+    "DECIDED": "Decided",
+    "FAILED": "Failed"
+  },
+  "pagination": {
+    "loadMore": "Load more",
+    "loadingMore": "Loading..."
+  },
+  "error": {
+    "title": "Issue data could not be loaded.",
+    "description": "Check your workspace access and the server connection.",
+    "retry": "Try again"
+  },
+  "empty": "There are no issues matching these conditions."
+}

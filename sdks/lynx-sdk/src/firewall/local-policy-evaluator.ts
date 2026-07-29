@@ -7,7 +7,8 @@ import type {
 
 interface ToolPolicyContext {
   toolName: string;
-  input: unknown;
+  input?: unknown;
+  output?: unknown;
   metadata: LynxToolMetadata;
   state?: {
     callCount: number;
@@ -18,15 +19,15 @@ interface ToolPolicyContext {
 }
 
 const CONDITION_PATTERN =
-  /^\s*(tool\.(?:name|riskLevel|sideEffect|externalTarget)|state\.(?:callCount|totalCost|elapsedMs|loopCount)|input(?:\.[A-Za-z0-9_-]+)*)\s*(==|!=|>=|<=|>|<|contains)\s*(.+?)\s*$/;
+  /^\s*(tool\.(?:name|riskLevel|sideEffect|externalTarget)|state\.(?:callCount|totalCost|elapsedMs|loopCount)|(?:input|output)(?:\.[A-Za-z0-9_-]+)*)\s*(==|!=|>=|<=|>|<|contains)\s*(.+?)\s*$/;
 const UNSAFE_PATH_SEGMENTS = new Set(["__proto__", "prototype", "constructor"]);
 
 /**
  * Evaluates the intentionally small Lynx firewall expression language.
  *
- * Supported expressions compare tool metadata or nested input fields using
- * `==`, `!=`, numeric ordering operators, and `contains`. Arbitrary JavaScript
- * is never executed.
+ * Supported expressions compare tool metadata or nested input/output fields
+ * using `==`, `!=`, numeric ordering operators, and `contains`. Arbitrary
+ * JavaScript is never executed.
  */
 export class LocalPolicyEvaluator {
   /**
@@ -160,7 +161,7 @@ export class LocalPolicyEvaluator {
     return value;
   }
 
-  /** Resolves only allow-listed tool fields and safe nested input properties. */
+  /** Resolves only allow-listed metadata and safe nested content properties. */
   private readPath(path: string, context: ToolPolicyContext): unknown {
     if (path === "tool.name") return context.toolName;
     if (path === "tool.riskLevel") return context.metadata.riskLevel;
@@ -171,8 +172,18 @@ export class LocalPolicyEvaluator {
     if (path === "state.elapsedMs") return context.state?.elapsedMs ?? 0;
     if (path === "state.loopCount") return context.state?.loopCount ?? 0;
 
-    const segments = path.split(".").slice(1);
-    let value: unknown = context.input;
+    const [root, ...segments] = path.split(".");
+    let value: unknown = root === "output" ? context.output : context.input;
+    if (segments.length === 0) return value;
+
+    // Primitive chat content uses `.value` as a stable DSL alias.
+    if (
+      segments.length === 1 &&
+      segments[0] === "value" &&
+      (value === null || typeof value !== "object")
+    ) {
+      return value;
+    }
     for (const segment of segments) {
       if (UNSAFE_PATH_SEGMENTS.has(segment)) {
         throw new Error(`Unsafe Lynx policy path segment: ${segment}`);

@@ -23,7 +23,7 @@ export class LocalAuthRepository {
     }
 
     const userAccount = await userAccountRepository.findOne({
-      where: { provider: "LOCAL", user },
+      where: { provider: "LOCAL", user: { id: user.id } },
       relations: { user: true },
     });
     if (!userAccount) {

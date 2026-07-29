@@ -1,9 +1,5 @@
-import { IssueFingerprintsScreen } from "@/components/screen/issues/operations";
+import { redirect } from "next/navigation";
 
 export default function IssueFingerprintsPage() {
-  return (
-    <main className="min-h-full p-5">
-      <IssueFingerprintsScreen />
-    </main>
-  );
+  redirect("/issues/patterns");
 }

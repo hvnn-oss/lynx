@@ -20,6 +20,13 @@ import { PromptVersionEntity } from "./prompt-version.entity";
   "agentId",
   "active",
 ])
+@Index("IDX_prompt_deployment_workspace_created", [
+  "workspaceId",
+  "deployedAt",
+  "id",
+])
+@Index("UQ_prompt_deployment_default_active", { synchronize: false })
+@Index("UQ_prompt_deployment_agent_active", { synchronize: false })
 export class PromptDeploymentEntity {
   @PrimaryGeneratedColumn("uuid")
   id!: string;

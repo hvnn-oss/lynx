@@ -1,4 +1,7 @@
-import type { FirewallPolicyEntity } from "@repo/database";
+import type {
+  FirewallPolicyEntity,
+  WebhookDeliveryEntity,
+} from "@repo/database";
 import type { AccessControlService } from "../../common/access-control/access-control.service.js";
 import { BadRequestErrorException } from "../../common/exceptions/bad-request.js";
 import type { FirewallPolicyRepository } from "./firewall-policy.repository.js";
@@ -27,16 +30,47 @@ describe("FirewallPolicyService", () => {
     } as FirewallPolicyEntity;
   }
 
+  function webhookDelivery(
+    overrides: Partial<WebhookDeliveryEntity> = {},
+  ): WebhookDeliveryEntity {
+    const createdAt = new Date("2026-07-29T00:00:00.000Z");
+    return {
+      id: "5e32c70e-11d9-48b7-a2a9-8843209aacdf",
+      eventId: "814375cb-4fa0-4c53-a137-82b135392138",
+      eventType: "webhook.test",
+      status: "PENDING",
+      destinationUrl: "https://hooks.example.com/lynx",
+      policyRevision: 1,
+      attemptCount: 0,
+      maxAttempts: 8,
+      nextAttemptAt: createdAt,
+      lastAttemptAt: null,
+      responseStatus: null,
+      lastError: null,
+      deliveredAt: null,
+      createdAt,
+      ...overrides,
+    } as WebhookDeliveryEntity;
+  }
+
   function dependencies(current = policy()) {
     const repository = {
       list: jest.fn().mockResolvedValue([current]),
       find: jest.fn().mockResolvedValue(current),
       create: jest.fn().mockResolvedValue(current),
-      update: jest.fn().mockImplementation(async (entity, body) => ({
-        ...entity,
-        ...body,
-        draftRevision: entity.draftRevision + 1,
-      })),
+      updateDraft: jest
+        .fn()
+        .mockImplementation(async (_workspaceId, _id, body) => ({
+          status: "updated",
+          policy: {
+            ...current,
+            ...body,
+            draftRevision: current.draftRevision + 1,
+          },
+        })),
+      getViolationStats: jest.fn().mockResolvedValue(new Map()),
+      listRevisions: jest.fn().mockResolvedValue([]),
+      listRecords: jest.fn().mockResolvedValue([]),
       deploy: jest.fn().mockResolvedValue({
         ...current,
         activated: true,
@@ -56,6 +90,10 @@ describe("FirewallPolicyService", () => {
         activated,
       })),
       softDelete: jest.fn(),
+      listWebhookDeliveries: jest.fn().mockResolvedValue([]),
+      createWebhookTest: jest.fn(),
+      findWebhookDelivery: jest.fn(),
+      retryWebhookDelivery: jest.fn(),
     } as unknown as FirewallPolicyRepository;
     const accessControl = {
       assertWorkspaceCapability: jest.fn(),
@@ -73,6 +111,7 @@ describe("FirewallPolicyService", () => {
     const result = await service.update(userId, workspaceId, 7, {
       condition: "input.amount > 1000",
       version: "v2",
+      expectedDraftRevision: 1,
     });
 
     expect(result.policy).toEqual(
@@ -83,7 +122,7 @@ describe("FirewallPolicyService", () => {
         isDirty: true,
       }),
     );
-    expect(repository.update).toHaveBeenCalled();
+    expect(repository.updateDraft).toHaveBeenCalled();
     expect(repository.deploy).not.toHaveBeenCalled();
   });
 
@@ -105,6 +144,17 @@ describe("FirewallPolicyService", () => {
       }),
     ).resolves.toEqual({
       matched: true,
+      conditions: [
+        {
+          expression: "tool.riskLevel == 'CRITICAL'",
+          field: "tool.riskLevel",
+          operator: "==",
+          expected: "CRITICAL",
+          actual: "CRITICAL",
+          matched: true,
+          negated: false,
+        },
+      ],
       action: "BLOCK",
       severity: "CRITICAL",
       policyId: "7",
@@ -125,5 +175,152 @@ describe("FirewallPolicyService", () => {
         version: "v1",
       }),
     ).rejects.toBeInstanceOf(BadRequestErrorException);
+  });
+
+  it("Webhook 이력에서 목적지 query 값을 제거하고 전송 상태를 반환한다", async () => {
+    const { service, repository } = dependencies();
+    const createdAt = new Date("2026-07-29T00:00:00.000Z");
+    jest.mocked(repository.listWebhookDeliveries).mockResolvedValue([
+      {
+        id: "5e32c70e-11d9-48b7-a2a9-8843209aacdf",
+        eventId: "814375cb-4fa0-4c53-a137-82b135392138",
+        eventType: "firewall.blocked",
+        status: "DELIVERED",
+        destinationUrl:
+          "https://hooks.example.com/lynx?token=must-not-be-returned",
+        policyRevision: 1,
+        attemptCount: 1,
+        maxAttempts: 8,
+        nextAttemptAt: createdAt,
+        lastAttemptAt: createdAt,
+        responseStatus: 204,
+        lastError: null,
+        deliveredAt: createdAt,
+        createdAt,
+      } as WebhookDeliveryEntity,
+    ]);
+
+    const result = await service.webhookDeliveries(userId, workspaceId, 7, {
+      limit: 25,
+    });
+
+    expect(result.items[0]).toEqual(
+      expect.objectContaining({
+        destination: "https://hooks.example.com/lynx",
+        status: "DELIVERED",
+      }),
+    );
+    expect(JSON.stringify(result)).not.toContain("must-not-be-returned");
+  });
+
+  it("Webhook URL이 없는 정책은 테스트 전송을 만들지 않는다", async () => {
+    const { service, repository } = dependencies(policy({ webhookUrl: null }));
+
+    await expect(
+      service.testWebhook(userId, workspaceId, 7),
+    ).rejects.toBeInstanceOf(BadRequestErrorException);
+    expect(repository.createWebhookTest).not.toHaveBeenCalled();
+  });
+
+  it("저장된 정책 URL로 테스트 전송을 예약한다", async () => {
+    const current = policy({
+      webhookUrl: "https://hooks.example.com/lynx",
+    });
+    const { service, repository } = dependencies(current);
+    const queued = webhookDelivery();
+    jest.mocked(repository.createWebhookTest).mockResolvedValue(queued);
+
+    const result = await service.testWebhook(userId, workspaceId, 7);
+
+    expect(repository.createWebhookTest).toHaveBeenCalledWith(
+      workspaceId,
+      current,
+      current.webhookUrl,
+    );
+    expect(result.delivery).toEqual(
+      expect.objectContaining({
+        id: queued.id,
+        status: "PENDING",
+        destination: "https://hooks.example.com/lynx",
+      }),
+    );
+  });
+
+  it("Webhook 이력은 limit보다 한 건 더 조회한 결과로 다음 커서를 만든다", async () => {
+    const { service, repository } = dependencies();
+    const first = webhookDelivery({
+      id: "5e32c70e-11d9-48b7-a2a9-8843209aacdf",
+      createdAt: new Date("2026-07-29T02:00:00.000Z"),
+    });
+    const second = webhookDelivery({
+      id: "b5a83ec3-68d7-4b75-bc89-fddb7ef07fd2",
+      createdAt: new Date("2026-07-29T01:00:00.000Z"),
+    });
+    jest
+      .mocked(repository.listWebhookDeliveries)
+      .mockResolvedValue([first, second]);
+
+    const result = await service.webhookDeliveries(
+      userId,
+      workspaceId,
+      7,
+      { limit: 1 },
+    );
+
+    expect(result.items).toHaveLength(1);
+    expect(result.nextCursor).toBe(
+      "2026-07-29T02:00:00.000Z|5e32c70e-11d9-48b7-a2a9-8843209aacdf",
+    );
+  });
+
+  it("실패한 Webhook 전송을 수동 재시도하고 갱신된 상태를 반환한다", async () => {
+    const { service, repository } = dependencies();
+    const failed = webhookDelivery({
+      status: "FAILED",
+      attemptCount: 8,
+      lastError: "FIREWALL_WEBHOOK_FAILED_503",
+    });
+    const retried = webhookDelivery({
+      status: "PENDING",
+      attemptCount: 8,
+      maxAttempts: 16,
+    });
+    jest.mocked(repository.findWebhookDelivery).mockResolvedValue(failed);
+    jest.mocked(repository.retryWebhookDelivery).mockResolvedValue(retried);
+
+    const result = await service.retryWebhookDelivery(
+      userId,
+      workspaceId,
+      7,
+      failed.id,
+    );
+
+    expect(repository.retryWebhookDelivery).toHaveBeenCalledWith(
+      workspaceId,
+      7,
+      failed.id,
+    );
+    expect(result.delivery).toEqual(
+      expect.objectContaining({
+        status: "PENDING",
+        maxAttempts: 16,
+      }),
+    );
+  });
+
+  it("성공했거나 처리 중인 Webhook은 수동 재시도를 거절한다", async () => {
+    const { service, repository } = dependencies();
+    const delivered = webhookDelivery({ status: "DELIVERED" });
+    jest.mocked(repository.findWebhookDelivery).mockResolvedValue(delivered);
+
+    await expect(
+      service.retryWebhookDelivery(
+        userId,
+        workspaceId,
+        7,
+        delivered.id,
+      ),
+    ).rejects.toThrow("WEBHOOK_DELIVERY_NOT_RETRYABLE");
+    expect(repository.retryWebhookDelivery).not.toHaveBeenCalled();
   });
 });

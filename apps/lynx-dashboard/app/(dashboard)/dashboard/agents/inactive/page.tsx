@@ -1,5 +1,5 @@
-import { DashboardOperationalPage } from "@/components/screen/dashboard/operational-page";
+import { DashboardAgentsScreen } from "@/components/screen/dashboard/agents";
 
 export default function DashboardAgentsInactivePage() {
-  return <DashboardOperationalPage kind="agentsInactive" />;
+  return <DashboardAgentsScreen scope="INACTIVE" />;
 }

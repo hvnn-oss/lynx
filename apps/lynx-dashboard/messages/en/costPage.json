@@ -1,0 +1,54 @@
+{
+  "title": "Cost analysis",
+  "description": "Inspect usage based on cost and tokens accumulated on real runs.",
+  "metrics": {
+    "today": {
+      "label": "Today",
+      "description": "Cost of runs started today"
+    },
+    "week": {
+      "label": "This week",
+      "description": "Cost of runs started this week"
+    },
+    "month": {
+      "label": "This month",
+      "description": "Cost of runs started this month"
+    },
+    "average": {
+      "label": "Average per run",
+      "description": "Average cost of runs started this month"
+    },
+    "tokens": {
+      "label": "Monthly tokens",
+      "description": "Total tokens accumulated this month"
+    }
+  },
+  "trend": {
+    "title": "Daily cost",
+    "description": "Daily cost of runs started during the last 14 days.",
+    "empty": "No cost was recorded during the last 14 days."
+  },
+  "agents": {
+    "title": "Top agents by cost",
+    "description": "{runs} runs · {tokens} tokens",
+    "empty": "No agents have recorded cost this month."
+  },
+  "pricing": {
+    "title": "Pricing coverage",
+    "coverage": "{percentage}% priced",
+    "counts": "{priced} priced · {unpriced} unpriced · {estimated} estimated",
+    "catalog": "Catalog {version}",
+    "complete": "Every LLM call this month has a calculated cost.",
+    "incomplete": "Unpriced calls are excluded from the total. Add the model to the catalog or report the actual cost.",
+    "noCalls": "No completed LLM calls were recorded this month."
+  },
+  "empty": {
+    "workspaceTitle": "No workspace is available",
+    "workspaceDescription": "Create a workspace and collect runs to inspect cost."
+  },
+  "error": {
+    "title": "Could not load cost data",
+    "description": "Check the cost dashboard API and workspace permissions.",
+    "action": "Try again"
+  }
+}

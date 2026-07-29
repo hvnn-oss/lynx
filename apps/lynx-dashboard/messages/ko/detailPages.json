@@ -1,0 +1,51 @@
+{
+  "session": {
+    "title": "Session 상세",
+    "description": "Session의 실제 이벤트 타임라인을 확인합니다.",
+    "header": "{agent} · 시작 {startedAt}",
+    "metrics": {
+      "status": "상태",
+      "duration": "실행 시간",
+      "runs": "Run",
+      "tokens": "토큰",
+      "cost": "비용",
+      "issues": "연결된 이슈 발생 {count}건"
+    },
+    "events": {
+      "title": "이벤트 타임라인",
+      "description": "{type} · {timestamp}",
+      "empty": "저장된 이벤트가 없습니다.",
+      "more": "최대 100개 이벤트만 표시합니다."
+    },
+    "error": {
+      "title": "Session을 불러오지 못했습니다",
+      "description": "Session이 존재하는지와 워크스페이스 권한을 확인해 주세요.",
+      "action": "다시 시도"
+    }
+  },
+  "agent": {
+    "title": "Agent 상세",
+    "description": "Agent의 실제 Run과 이슈를 확인합니다.",
+    "noDescription": "등록된 Agent 설명이 없습니다.",
+    "metrics": {
+      "runs": "전체 Run",
+      "completed": "완료 Run",
+      "failed": "실패 Run",
+      "tokens": "전체 토큰",
+      "cost": "전체 비용"
+    },
+    "runs": {
+      "title": "최근 Run",
+      "empty": "저장된 Run이 없습니다."
+    },
+    "issues": {
+      "title": "열린 이슈",
+      "empty": "현재 열린 이슈가 없습니다."
+    },
+    "error": {
+      "title": "Agent를 불러오지 못했습니다",
+      "description": "Agent가 존재하는지와 워크스페이스 권한을 확인해 주세요.",
+      "action": "다시 시도"
+    }
+  }
+}

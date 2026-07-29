@@ -1,6 +1,7 @@
 import {
   Column,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   OneToMany,
@@ -14,6 +15,8 @@ import { PromptExperimentEntity } from "./prompt-experiment.entity";
 import { PromptVersionEntity } from "./prompt-version.entity";
 
 @Entity("prompt")
+@Index("UQ_prompt_workspace_name_active", { synchronize: false })
+@Index("IDX_prompt_workspace_updated", ["workspaceId", "updatedAt", "id"])
 export class PromptEntity {
   @PrimaryGeneratedColumn("uuid")
   id!: string;

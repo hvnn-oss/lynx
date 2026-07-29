@@ -56,6 +56,14 @@ export class FirewallPolicyRevisionEntity {
   @Column({ type: "varchar", length: 2048, nullable: true })
   webhookUrl!: string | null;
 
+  /** 이 배포본이 적용되는 실행 환경 스냅샷입니다. */
+  @Column({ type: "text", array: true, default: () => "'{}'" })
+  environments!: string[];
+
+  /** 이 배포본이 적용되는 Agent ID 스냅샷입니다. */
+  @Column({ type: "uuid", array: true, default: () => "'{}'" })
+  agentIds!: string[];
+
   @ManyToOne(() => FirewallPolicyEntity, (policy) => policy.revisions, {
     onDelete: "CASCADE",
   })

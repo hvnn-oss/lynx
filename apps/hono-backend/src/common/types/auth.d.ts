@@ -57,6 +57,8 @@ interface RefreshSession {
   secretHash: string;
   /** 직전에 사용한 secret의 해시로, 한 단계 이전 토큰의 재사용을 감지한다. */
   previousSecretHash?: string;
+  /** 마지막 토큰 회전 시각으로, 동시 요청 유예 구간을 판정한다. */
+  rotatedAt?: number;
   createdAt: number;
   ipAddress?: string;
   userAgent?: string;

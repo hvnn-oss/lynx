@@ -1,5 +1,5 @@
-import { DashboardOperationalPage } from "@/components/screen/dashboard/operational-page";
+import { DashboardCostScreen } from "@/components/screen/dashboard/cost";
 
 export default function DashboardCostPage() {
-  return <DashboardOperationalPage kind="cost" />;
+  return <DashboardCostScreen />;
 }

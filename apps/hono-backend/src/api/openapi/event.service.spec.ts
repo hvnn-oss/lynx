@@ -1,6 +1,7 @@
 import type { OpenAPIEventRepository } from "./event.repository.js";
 import type { IngestEvent } from "./event.schema.js";
 import { OpenAPIEventService } from "./event.service.js";
+import { MODEL_PRICING_VERSION } from "../../common/services/llm-cost.service.js";
 
 function event(overrides: Partial<IngestEvent> = {}): IngestEvent {
   return {
@@ -61,6 +62,47 @@ describe("OpenAPIEventService", () => {
     expect(result.accepted).toBe(1);
     expect(result.retryableEventIds).toEqual(["event-2"]);
     expect(result.rejectedEventIds).toEqual([]);
+  });
+
+  it("LLM 종료 이벤트에 서버 추정 비용을 저장한다", async () => {
+    const repository = {
+      findEvent: jest.fn().mockResolvedValue(null),
+      findOrCreateAgent: jest.fn().mockResolvedValue({ id: "agent-1" }),
+      findOrCreateSession: jest.fn().mockResolvedValue({ id: "session-1" }),
+      findOrCreateRun: jest.fn().mockResolvedValue({ id: "run-1" }),
+      saveEvent: jest.fn().mockResolvedValue({ id: "stored-event" }),
+    } as unknown as OpenAPIEventRepository;
+    const service = new OpenAPIEventService(repository);
+
+    await service.ingestBatch("workspace-1", "production", [
+      event({
+        eventType: "LLM_CALL",
+        payload: {
+          phase: "end",
+          provider: "openai",
+          model: "gpt-4.1-mini",
+          usage: {
+            promptTokens: 1_000,
+            completionTokens: 500,
+            totalTokens: 1_500,
+          },
+        },
+      }),
+    ]);
+
+    expect(repository.saveEvent).toHaveBeenCalledWith(
+      "workspace-1",
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          cost: 0.0012,
+          costSource: "SERVER_ESTIMATED",
+          pricingVersion: MODEL_PRICING_VERSION,
+        }),
+      }),
+    );
   });
 
   it("accepts a concurrent duplicate after confirming that it was stored", async () => {

@@ -8,10 +8,12 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { requestContract } from "@/lib/api";
 import axios from "axios";
+import { getSafeRedirect, withRedirect } from "@/lib/safe-redirect";
 
 export default function Signup() {
   const param = useSearchParams();
   const token = param.get("token");
+  const requestedRedirect = getSafeRedirect(param.get("redirects"));
   const [step, setStep] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -26,20 +28,72 @@ export default function Signup() {
 
   useEffect(() => {
     if (!token) {
-      window.location.href = "/signup";
+      window.location.href = withRedirect("/signup", requestedRedirect);
     }
-  }, [token]);
+  }, [requestedRedirect, token]);
+
+  async function submitSignup(
+    data: SignUpDto,
+    redirectAfterLogin: string,
+  ): Promise<void> {
+    setData(data);
+    setIsLoading(true);
+    setError("");
+    const request = authContract.signUp.request.safeParse(data);
+    if (!request.success) {
+      setError("errors.unknown");
+      setIsLoading(false);
+      return;
+    }
+    try {
+      await requestContract({
+        basePath: authContract.basePath,
+        endpoint: authContract.signUp,
+        request: request.data,
+      });
+      window.location.href = withRedirect("/login", redirectAfterLogin);
+    } catch (err) {
+      if (axios.isAxiosError(err)) {
+        const errors = err.response?.data?.errors;
+        const errCode =
+          err.response?.data?.code ||
+          err.response?.data?.error_code ||
+          (errors && errors[0]?.error_code);
+        if (errCode === "USER_ALREADY_EXISTS") {
+          setError("errors.user_already_exists");
+        } else if (errCode === "INVALID_SIGNUP_TOKEN") {
+          setError("errors.invalid-signup-token");
+        } else {
+          setError("errors.unknown");
+        }
+      } else {
+        setError("errors.unknown");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   return (
     <main>
       {step === 0 && (
         <SignupForm
           onComplete={(e) => {
+            const profileData: SignUpDto = {
+              token: token || "",
+              name: e.name,
+              password: e.pw,
+            };
             setData((prev) => ({
               ...prev,
               name: e.name,
               password: e.pw,
             }));
+            if (!e.requiresOrganization) {
+              // 팀 초대 가입은 서버가 멤버십을 생성하므로 조직 생성 단계를 건너뜁니다.
+              void submitSignup(profileData, "/dashboard");
+              return;
+            }
             setStep(1);
           }}
         />
@@ -55,42 +109,7 @@ export default function Signup() {
                 name: e.name,
               },
             };
-            setData(updatedData);
-            setIsLoading(true);
-            setError("");
-            const request = authContract.signUp.request.safeParse(updatedData);
-            if (!request.success) {
-              setError("errors.unknown");
-              setIsLoading(false);
-              return;
-            }
-            try {
-              await requestContract({
-                basePath: authContract.basePath,
-                endpoint: authContract.signUp,
-                request: request.data,
-              });
-              window.location.href = "/login";
-            } catch (err) {
-              if (axios.isAxiosError(err)) {
-                const errors = err.response?.data?.errors;
-                const errCode =
-                  err.response?.data?.code ||
-                  err.response?.data?.error_code ||
-                  (errors && errors[0]?.error_code);
-                if (errCode === "USER_ALREADY_EXISTS") {
-                  setError("errors.user_already_exists");
-                } else if (errCode === "INVALID_SIGNUP_TOKEN") {
-                  setError("errors.invalid-signup-token");
-                } else {
-                  setError("errors.unknown");
-                }
-              } else {
-                setError("errors.unknown");
-              }
-            } finally {
-              setIsLoading(false);
-            }
+            await submitSignup(updatedData, requestedRedirect);
           }}
           backward={() => {
             setStep(0);

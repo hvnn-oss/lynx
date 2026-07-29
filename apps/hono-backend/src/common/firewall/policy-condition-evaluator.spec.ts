@@ -39,4 +39,51 @@ describe("PolicyConditionEvaluator", () => {
       }),
     ).toThrow(/grouping|parentheses/);
   });
+  it("조건별 일치 결과를 시뮬레이션 추적으로 반환한다", () => {
+    const result = evaluator.evaluate(
+      "tool.riskLevel == 'CRITICAL' AND input.amount > 1000",
+      {
+        tool: { name: "transfer", riskLevel: "CRITICAL" },
+        input: { amount: 500 },
+      },
+    );
+
+    expect(result.matched).toBe(false);
+    expect(result.conditions).toEqual([
+      expect.objectContaining({
+        field: "tool.riskLevel",
+        matched: true,
+      }),
+      expect.objectContaining({
+        field: "input.amount",
+        actual: 500,
+        matched: false,
+      }),
+    ]);
+  });
+
+  it("문자열 입력을 input.value 별칭으로 평가한다", () => {
+    expect(
+      evaluator.matches("input.value contains '안녕'", {
+        tool: { name: "llm.input" },
+        input: "안녕하세요",
+      }),
+    ).toBe(true);
+  });
+
+  it("모델 응답의 output.value 포함 조건을 평가한다", () => {
+    const result = evaluator.evaluate("output.value contains '차단'", {
+      tool: { name: "llm.output" },
+      output: "이 답변은 차단 대상입니다.",
+    });
+
+    expect(result.matched).toBe(true);
+    expect(result.conditions[0]).toEqual(
+      expect.objectContaining({
+        field: "output.value",
+        actual: "이 답변은 차단 대상입니다.",
+        matched: true,
+      }),
+    );
+  });
 });

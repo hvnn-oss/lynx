@@ -10,15 +10,16 @@ export function useDashboardOverview() {
     queryFn: listAvailableWorkspaces,
   });
   const workspaceId = workspaces.data?.items[0]?.id ?? "";
+  const hasWorkspace = workspaceId.length > 0;
   const overview = useQuery({
     queryKey: ["dashboard", "overview", workspaceId],
     queryFn: () => getDashboardOverview(workspaceId),
-    enabled: workspaceId.length > 0,
+    enabled: hasWorkspace,
   });
   const runs = useQuery({
     queryKey: ["dashboard", "overview", "runs", workspaceId],
     queryFn: () => listWorkspaceRuns(workspaceId, { limit: 100 }),
-    enabled: workspaceId.length > 0,
+    enabled: hasWorkspace,
   });
 
   return {
@@ -27,7 +28,9 @@ export function useDashboardOverview() {
         ? { overview: overview.data, runs: runs.data }
         : undefined,
     workspaceId,
-    isPending: workspaces.isPending || overview.isPending || runs.isPending,
+    isPending:
+      workspaces.isPending ||
+      (hasWorkspace && (overview.isPending || runs.isPending)),
     isError: workspaces.isError || overview.isError || runs.isError,
     refetch: async () => {
       await Promise.all([

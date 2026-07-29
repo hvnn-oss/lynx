@@ -4,14 +4,21 @@ import { dirname, resolve } from "node:path";
 const envFileCandidates = [
   resolve(process.cwd(), ".env"),
   resolve(process.cwd(), ".env.local"),
+  resolve(process.cwd(), "apps/hono-backend/.env"),
+  resolve(process.cwd(), "apps/hono-backend/.env.local"),
   resolve(process.cwd(), "apps/backend/.env"),
   resolve(process.cwd(), "apps/backend/.env.local"),
+  resolve(process.cwd(), "../../apps/hono-backend/.env"),
+  resolve(process.cwd(), "../../apps/hono-backend/.env.local"),
   resolve(process.cwd(), "../../apps/backend/.env"),
   resolve(process.cwd(), "../../apps/backend/.env.local"),
+  resolve(__dirname, "../../../apps/hono-backend/.env"),
+  resolve(__dirname, "../../../apps/hono-backend/.env.local"),
   resolve(dirname(__dirname), "../../apps/backend/.env"),
   resolve(dirname(__dirname), "../../apps/backend/.env.local"),
 ];
 
+/** 실행 위치와 관계없이 서버의 DB 환경 변수를 한 번만 로드합니다. */
 export function loadDatabaseEnv() {
   for (const envFilePath of envFileCandidates) {
     if (!existsSync(envFilePath)) {

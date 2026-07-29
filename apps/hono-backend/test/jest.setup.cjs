@@ -16,6 +16,11 @@ process.env.SMTP_PORT = "587";
 process.env.SMTP_USERNAME = "test";
 process.env.SMTP_PASSWORD = "test";
 process.env.SMTP_FROM_EMAIL = "noreply@example.com";
+process.env.IMAGE_S3_REGION = "ap-northeast-2";
+process.env.IMAGE_S3_BUCKET = "lynx-test-profile-images";
+process.env.IMAGE_S3_ACCESS_KEY_ID = "test-access-key";
+process.env.IMAGE_S3_SECRET_ACCESS_KEY = "test-secret-access-key";
+process.env.IMAGE_CDN_BASE_URL = "https://images.example.com";
 
 // 단위 테스트가 실제 Redis 연결을 만들지 않도록 기본 provider를 대체합니다.
 jest.mock("../src/provider/redis/redis-config.js", () => ({

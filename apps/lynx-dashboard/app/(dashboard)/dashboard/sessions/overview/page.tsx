@@ -1,5 +1,5 @@
-import { DashboardOperationalPage } from "@/components/screen/dashboard/operational-page";
+import { DashboardSessionsScreen } from "@/components/screen/dashboard/sessions";
 
 export default function DashboardSessionsOverviewPage() {
-  return <DashboardOperationalPage kind="sessionsOverview" />;
+  return <DashboardSessionsScreen scope="ALL" />;
 }

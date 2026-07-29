@@ -1,4 +1,4 @@
-import { PolicyDetailScreen } from "@/components/screen/firewall/operations";
+import { FirewallPolicyEditor } from "@/components/screen/firewall/policy-editor";
 
 export default async function PolicyDetailPage({
   params,
@@ -9,7 +9,7 @@ export default async function PolicyDetailPage({
 
   return (
     <main className="min-h-full p-5">
-      <PolicyDetailScreen policyId={id} />
+      <FirewallPolicyEditor policyId={id} />
     </main>
   );
 }

@@ -108,32 +108,57 @@ export const sidebarItems: SidebarItemType[] = [
     wildcard: "/issues/**",
     items: [
       {
-        title: "issues.tracker.title",
+        title: "issues.work.title",
         items: [
           {
-            title: "issues.tracker.overview",
+            title: "issues.work.overview",
             href: "/issues/overview",
-            wildcard: "/issues/(overview|tracker)/**",
+            wildcard: "/issues/overview/**",
           },
           {
-            title: "issues.tracker.review",
+            title: "issues.work.review",
             href: "/issues/review",
             wildcard: "/issues/review/**",
           },
           {
-            title: "issues.tracker.fingerprints",
-            href: "/issues/fingerprints",
-            wildcard: "/issues/fingerprints/**",
+            title: "issues.work.investigating",
+            href: "/issues/investigating",
+            wildcard: "/issues/investigating/**",
           },
           {
-            title: "issues.tracker.trends",
-            href: "/issues/trends",
-            wildcard: "/issues/trends/**",
+            title: "issues.work.recovery",
+            href: "/issues/recovery",
+            wildcard: "/issues/recovery/**",
+          },
+        ],
+      },
+      {
+        title: "issues.analysis.title",
+        items: [
+          {
+            title: "issues.analysis.patterns",
+            href: "/issues/patterns",
+            wildcard: "/issues/patterns/**",
           },
           {
-            title: "issues.tracker.blocked",
-            href: "/issues/blocked",
-            wildcard: "/issues/blocked/**",
+            title: "issues.analysis.changeImpact",
+            href: "/issues/change-impact",
+            wildcard: "/issues/change-impact/**",
+          },
+        ],
+      },
+      {
+        title: "issues.records.title",
+        items: [
+          {
+            title: "issues.records.history",
+            href: "/issues/history",
+            wildcard: "/issues/history/**",
+          },
+          {
+            title: "issues.records.intake",
+            href: "/issues/intake",
+            wildcard: "/issues/intake/**",
           },
         ],
       },
@@ -153,27 +178,27 @@ export const sidebarItems: SidebarItemType[] = [
           {
             title: "firewall.summary.overview",
             href: "/firewall/overview",
-            wildcard: "/firewall/(overview|policies)/**",
+            wildcard: "/firewall/overview/**",
           },
           {
-            title: "firewall.summary.blockedEvents",
-            href: "/firewall/blocked-events",
-            wildcard: "/firewall/blocked-events/**",
+            title: "firewall.summary.policies",
+            href: "/firewall/policies",
+            wildcard: "/firewall/policies/**",
           },
           {
-            title: "firewall.summary.policyCoverage",
-            href: "/firewall/policy-coverage",
-            wildcard: "/firewall/policy-coverage/**",
+            title: "firewall.summary.approvals",
+            href: "/firewall/approvals",
+            wildcard: "/firewall/approvals/**",
           },
           {
-            title: "firewall.summary.riskTools",
-            href: "/firewall/risk-tools",
-            wildcard: "/firewall/risk-tools/**",
+            title: "firewall.summary.records",
+            href: "/firewall/records",
+            wildcard: "/firewall/records/**",
           },
           {
-            title: "firewall.summary.simulation",
-            href: "/firewall/simulation",
-            wildcard: "/firewall/simulation/**",
+            title: "firewall.summary.lab",
+            href: "/firewall/lab",
+            wildcard: "/firewall/lab/**",
           },
         ],
       },
@@ -188,32 +213,38 @@ export const sidebarItems: SidebarItemType[] = [
     wildcard: "/prompts/**",
     items: [
       {
-        title: "prompts.summary.title",
+        title: "prompts.management.title",
         items: [
           {
-            title: "prompts.summary.overview",
+            title: "prompts.management.library",
             href: "/prompts/overview",
-            wildcard: "/prompts/overview/**",
+            wildcard: [
+              "/prompts/overview",
+              "/prompts/overview/**",
+              "/prompts/new",
+              "/prompts/new/**",
+              "/prompts/????????-????-????-????-????????????",
+            ],
           },
           {
-            title: "prompts.summary.changes",
-            href: "/prompts/changes",
-            wildcard: "/prompts/changes/**",
-          },
-          {
-            title: "prompts.summary.regressions",
-            href: "/prompts/regressions",
-            wildcard: "/prompts/regressions/**",
-          },
-          {
-            title: "prompts.summary.compare",
-            href: "/prompts/compare",
-            wildcard: "/prompts/compare/**",
-          },
-          {
-            title: "prompts.summary.deployments",
+            title: "prompts.management.deployments",
             href: "/prompts/deployments",
             wildcard: "/prompts/deployments/**",
+          },
+        ],
+      },
+      {
+        title: "prompts.optimization.title",
+        items: [
+          {
+            title: "prompts.optimization.experiments",
+            href: "/prompts/experiments",
+            wildcard: "/prompts/experiments/**",
+          },
+          {
+            title: "prompts.optimization.performance",
+            href: "/prompts/regressions",
+            wildcard: "/prompts/regressions/**",
           },
         ],
       },

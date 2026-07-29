@@ -24,6 +24,13 @@ export interface PromptExperimentVariant {
   "agentId",
   "status",
 ])
+@Index("IDX_prompt_experiment_workspace_created", [
+  "workspaceId",
+  "createdAt",
+  "id",
+])
+@Index("UQ_prompt_experiment_default_active", { synchronize: false })
+@Index("UQ_prompt_experiment_agent_active", { synchronize: false })
 export class PromptExperimentEntity {
   @PrimaryGeneratedColumn("uuid")
   id!: string;

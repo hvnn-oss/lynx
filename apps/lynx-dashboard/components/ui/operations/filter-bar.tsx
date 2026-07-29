@@ -1,4 +1,11 @@
 import { Search } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@repo/ui/components/ui/select";
 
 export function OperationsFilterBar({
   searchPlaceholder,
@@ -18,15 +25,18 @@ export function OperationsFilterBar({
       </div>
       <div className="flex flex-wrap gap-2">
         {filters.map((filter) => (
-          <select
-            aria-label={filter.label}
-            className="h-9 rounded-md border border-border bg-background px-2 text-sm"
-            key={filter.label}
-          >
-            {filter.options.map((option) => (
-              <option key={option}>{option}</option>
-            ))}
-          </select>
+          <Select defaultValue={filter.options[0]} key={filter.label}>
+            <SelectTrigger aria-label={filter.label} className="h-9 min-w-32">
+              <SelectValue placeholder={filter.label} />
+            </SelectTrigger>
+            <SelectContent>
+              {filter.options.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         ))}
       </div>
     </div>

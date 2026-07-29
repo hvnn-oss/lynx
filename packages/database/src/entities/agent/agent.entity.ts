@@ -1,6 +1,7 @@
 import {
   Column,
   Entity,
+  Index,
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
@@ -10,6 +11,7 @@ import { WorkspaceEntity } from "../organization/workspace.entity";
 import { SessionEntity } from "../session/session.entity";
 
 @Entity("agent")
+@Index("IDX_agent_workspace_name", { synchronize: false })
 export class AgentEntity {
   @PrimaryGeneratedColumn("uuid")
   id!: string;

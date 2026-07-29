@@ -18,6 +18,7 @@ import { EventEntity } from "../event/event.entity";
   unique: true,
   where: '"eventId" IS NOT NULL',
 })
+@Index("IDX_firewall_violation_workspace_created", { synchronize: false })
 export class FirewallViolationEntity {
   @PrimaryGeneratedColumn("uuid")
   id!: string;

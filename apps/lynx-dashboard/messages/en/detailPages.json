@@ -1,0 +1,51 @@
+{
+  "session": {
+    "title": "Session details",
+    "description": "Inspect the real event timeline for a session.",
+    "header": "{agent} · started {startedAt}",
+    "metrics": {
+      "status": "Status",
+      "duration": "Duration",
+      "runs": "Runs",
+      "tokens": "Tokens",
+      "cost": "Cost",
+      "issues": "{count} related issue occurrences"
+    },
+    "events": {
+      "title": "Event timeline",
+      "description": "{type} · {timestamp}",
+      "empty": "No events were stored.",
+      "more": "Only the first 100 events are shown."
+    },
+    "error": {
+      "title": "Could not load the session",
+      "description": "Check that the session exists and that you have workspace access.",
+      "action": "Try again"
+    }
+  },
+  "agent": {
+    "title": "Agent details",
+    "description": "Inspect real runs and issues for an agent.",
+    "noDescription": "No description is registered for this agent.",
+    "metrics": {
+      "runs": "Total runs",
+      "completed": "Completed runs",
+      "failed": "Failed runs",
+      "tokens": "Total tokens",
+      "cost": "Total cost"
+    },
+    "runs": {
+      "title": "Recent runs",
+      "empty": "No runs were stored."
+    },
+    "issues": {
+      "title": "Open issues",
+      "empty": "There are no open issues."
+    },
+    "error": {
+      "title": "Could not load the agent",
+      "description": "Check that the agent exists and that you have workspace access.",
+      "action": "Try again"
+    }
+  }
+}

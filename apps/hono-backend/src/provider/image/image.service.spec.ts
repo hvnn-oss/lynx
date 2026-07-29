@@ -17,8 +17,8 @@ describe("ImageService", () => {
     jest.clearAllMocks();
   });
 
-  it("프로필 이미지를 업로드하고 공개 URL을 반환한다", async () => {
-    const service = new ImageService(storage, urls, 1024);
+  it("프로필 이미지를 고유한 키로 업로드하고 공개 URL을 반환한다", async () => {
+    const service = new ImageService(storage, urls, 1024, () => "image-id");
 
     const result = await service.upload({
       ownerType: "user",
@@ -27,7 +27,7 @@ describe("ImageService", () => {
       bytes: new Uint8Array([1, 2, 3]),
     });
 
-    expect(result.storageKey).toBe("profile-images/users/user-1/profile");
+    expect(result.storageKey).toBe("profile-images/users/user-1/image-id.png");
     expect(result.url).toBe(`https://images.example.com/${result.storageKey}`);
     expect(storage.putObject).toHaveBeenCalledWith({
       storageKey: result.storageKey,
@@ -37,8 +37,13 @@ describe("ImageService", () => {
     });
   });
 
-  it("이미지 업데이트 시 같은 사용자의 기존 객체를 덮어쓴다", async () => {
-    const service = new ImageService(storage, urls, 1024);
+  it("새 이미지를 저장한 후 같은 사용자의 기존 객체를 삭제한다", async () => {
+    const service = new ImageService(
+      storage,
+      urls,
+      1024,
+      () => "replacement-id",
+    );
     const result = await service.update({
       ownerType: "user",
       ownerId: "user-1",
@@ -47,8 +52,37 @@ describe("ImageService", () => {
       bytes: new Uint8Array([4, 5, 6]),
     });
 
-    expect(result.storageKey).toBe("profile-images/users/user-1/previous.png");
+    expect(result.storageKey).toBe(
+      "profile-images/users/user-1/replacement-id.webp",
+    );
     expect(storage.putObject).toHaveBeenCalledTimes(1);
+    expect(storage.deleteObject).toHaveBeenCalledWith(
+      "profile-images/users/user-1/previous.png",
+    );
+    expect(storage.putObject.mock.invocationCallOrder[0]).toBeLessThan(
+      storage.deleteObject.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("새 이미지 저장에 실패하면 기존 객체를 삭제하지 않는다", async () => {
+    storage.putObject.mockRejectedValueOnce(new Error("IMAGE_UPLOAD_FAILED"));
+    const service = new ImageService(
+      storage,
+      urls,
+      1024,
+      () => "replacement-id",
+    );
+
+    await expect(
+      service.update({
+        ownerType: "user",
+        ownerId: "user-1",
+        currentStorageKey: "profile-images/users/user-1/previous.png",
+        contentType: "image/png",
+        bytes: new Uint8Array([1]),
+      }),
+    ).rejects.toThrow("IMAGE_UPLOAD_FAILED");
+
     expect(storage.deleteObject).not.toHaveBeenCalled();
   });
 
@@ -69,7 +103,7 @@ describe("ImageService", () => {
     expect(storage.deleteObject).not.toHaveBeenCalled();
   });
 
-  it("지원하지 않는 형식과 최대 크기를 거부한다", async () => {
+  it("지원하지 않는 형식과 최대 크기 초과를 거절한다", async () => {
     const service = new ImageService(storage, urls, 2);
 
     await expect(

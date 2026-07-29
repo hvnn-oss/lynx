@@ -5,6 +5,7 @@ import {
   LynxRunOptions,
   LlmInstrumentationRule,
   LynxEventDto,
+  LynxFirewallContentOptions,
   LynxFirewallToolOptions,
   LynxOutcomeOptions,
   LynxPolicyDecision,
@@ -31,6 +32,7 @@ import { createRuntimeConfigCache } from "../runtime-config/runtime-config-cache
 import { LocalPolicyEvaluator } from "../firewall/local-policy-evaluator.js";
 import { IssueRecordReporter } from "../issue-reporting/issue-record-reporter.js";
 import { ApprovalClient } from "../approval/approval-client.js";
+import { assertValidAgentId } from "../utils/agent-id.js";
 
 export const DEFAULT_ENDPOINT = "https://api.lynxops.co";
 
@@ -108,6 +110,9 @@ export class LynxTracer {
    * @param config Runtime configuration for telemetry capture and delivery.
    */
   constructor(config: LynxConfig) {
+    if (config.agentId !== undefined) {
+      assertValidAgentId(config.agentId);
+    }
     this.config = {
       ...config,
       endpoint: config.endpoint ?? DEFAULT_ENDPOINT,
@@ -314,6 +319,14 @@ export class LynxTracer {
     optionsOrAgentName: string | LynxRunOptions,
     executionBlock: () => Promise<T> | T,
   ): Promise<T> {
+    const options =
+      typeof optionsOrAgentName === "string"
+        ? { agentName: optionsOrAgentName }
+        : optionsOrAgentName;
+    if (options.agentId !== undefined) {
+      assertValidAgentId(options.agentId);
+    }
+
     if (this.config.runtimeConfig?.enabled === true) {
       // Automatic control-plane loading is fail-open so a Lynx outage cannot
       // prevent the host application from serving a request. getPrompt()
@@ -324,11 +337,6 @@ export class LynxTracer {
         // RuntimeConfigManager retains the diagnostic error in getStatus().
       }
     }
-
-    const options =
-      typeof optionsOrAgentName === "string"
-        ? { agentName: optionsOrAgentName }
-        : optionsOrAgentName;
 
     const agentName = options.agentName;
     const parentContext = LynxTracer.storage.getStore();
@@ -855,6 +863,7 @@ export class LynxTracer {
     toolName: string,
     input: unknown,
     options: LynxToolMetadata,
+    output?: unknown,
   ): LynxPolicyDecision {
     const status = this.runtimeConfig.getStatus();
     if (
@@ -875,6 +884,7 @@ export class LynxTracer {
       {
         toolName,
         input,
+        output,
         metadata: options,
         state: {
           callCount,
@@ -889,11 +899,12 @@ export class LynxTracer {
   /** Enqueues a policy detection for asynchronous server-side issue review. */
   private reportPolicyDetection(
     toolName: string,
-    input: unknown,
+    evaluatedValue: unknown,
     decision: LynxPolicyDecision & {
       action: LynxPolicyAction;
       allow: boolean;
     },
+    phase: "TOOL_INPUT" | "INPUT" | "OUTPUT" = "TOOL_INPUT",
   ): void {
     if (decision.action === "ALLOW") return;
     const context = LynxTracer.storage.getStore();
@@ -917,7 +928,16 @@ export class LynxTracer {
         action: decision.action,
         reason: decision.reason,
         severity: decision.severity,
-        argsHash: stableHash(input),
+        policyName:
+          typeof decision.metadata?.policyName === "string"
+            ? decision.metadata.policyName
+            : undefined,
+        condition:
+          typeof decision.metadata?.condition === "string"
+            ? decision.metadata.condition
+            : undefined,
+        phase,
+        argsHash: stableHash(evaluatedValue),
       },
       evidence: {
         spanId: context.spanId,
@@ -925,6 +945,120 @@ export class LynxTracer {
         managedPolicy: decision.metadata?.managedPolicy === true,
       },
     });
+  }
+
+  /**
+   * Applies managed firewall policies to user or model input content.
+   *
+   * String content is available to policy expressions as both `input` and
+   * `input.value`. A matching BLOCK or REQUIRE_APPROVAL decision throws before
+   * the caller continues to the model.
+   *
+   * @param input User, prompt, or model request content to evaluate locally.
+   * @param options Content boundary label and policy failure behavior.
+   * @returns The strongest managed policy decision.
+   * @throws {LynxPolicyError} When a managed policy blocks the content.
+   */
+  firewallInput(
+    input: unknown,
+    options: LynxFirewallContentOptions = {},
+  ): LynxPolicyDecision {
+    return this.enforceManagedContentPolicy("INPUT", input, options);
+  }
+
+  /**
+   * Applies managed firewall policies to generated model output.
+   *
+   * String content is available to policy expressions as both `output` and
+   * `output.value`. A matching BLOCK or REQUIRE_APPROVAL decision throws before
+   * the application returns the generated content to its user.
+   *
+   * @param output Generated model content to evaluate locally.
+   * @param options Content boundary label and policy failure behavior.
+   * @returns The strongest managed policy decision.
+   * @throws {LynxPolicyError} When a managed policy blocks the content.
+   */
+  firewallOutput(
+    output: unknown,
+    options: LynxFirewallContentOptions = {},
+  ): LynxPolicyDecision {
+    return this.enforceManagedContentPolicy("OUTPUT", output, options);
+  }
+
+  /** Evaluates, records, and enforces one managed content policy boundary. */
+  private enforceManagedContentPolicy(
+    phase: "INPUT" | "OUTPUT",
+    value: unknown,
+    options: LynxFirewallContentOptions,
+  ): LynxPolicyDecision & { action: LynxPolicyAction; allow: boolean } {
+    const label =
+      options.label ?? (phase === "INPUT" ? "llm.input" : "llm.output");
+    const metadata: LynxToolMetadata = {
+      riskLevel: options.riskLevel,
+      failureMode: options.failureMode,
+    };
+    let decision: LynxPolicyDecision & {
+      action: LynxPolicyAction;
+      allow: boolean;
+    };
+
+    try {
+      decision = this.normalizePolicyDecision(
+        this.evaluateManagedPolicies(
+          label,
+          phase === "INPUT" ? value : undefined,
+          metadata,
+          phase === "OUTPUT" ? value : undefined,
+        ),
+      );
+    } catch (error) {
+      decision = this.decisionFromPolicyError(error, metadata);
+    }
+
+    const content = phase === "INPUT" ? { input: value } : { output: value };
+    this.capture("POLICY_EVALUATION", `policy:${label}`, {
+      ...content,
+      phase,
+      toolName: label,
+      valueHash: stableHash(value),
+      action: decision.action,
+      allow: decision.allow,
+      policyId: decision.policyId,
+      policyVersion: decision.policyVersion,
+      reason: decision.reason,
+      severity: decision.severity,
+      metadata: decision.metadata,
+    });
+    this.reportPolicyDetection(label, value, decision, phase);
+
+    if (decision.allow) return decision;
+
+    this.capture("POLICY_VIOLATION", `policy.violation:${label}`, {
+      ...content,
+      phase,
+      toolName: label,
+      valueHash: stableHash(value),
+      action: decision.action,
+      policyId: decision.policyId,
+      policyVersion: decision.policyVersion,
+      reason: decision.reason,
+      severity: decision.severity ?? options.riskLevel,
+    });
+    this.capture("FIREWALL_ACTIVATED", `firewall.blocked:${label}`, {
+      phase,
+      toolName: label,
+      action: decision.action,
+      reason: decision.reason,
+      riskLevel: decision.severity ?? options.riskLevel,
+    });
+    throw new LynxPolicyError(
+      decision.reason || `Lynx firewall blocked ${phase.toLowerCase()} content`,
+      decision.action === "REQUIRE_APPROVAL" ? "REQUIRE_APPROVAL" : "BLOCK",
+      decision.policyId,
+      decision.severity ?? options.riskLevel,
+      decision.reason,
+      decision.metadata,
+    );
   }
 
   /**

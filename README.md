@@ -1,82 +1,114 @@
 # Lynx
 
-Lynx는 AI 에이전트의 실행을 기록하고, 문제 원인을 추적하며, 위험한 행동을 실행 직전에 차단하기 위한 런타임 운영 플랫폼이다.
+Lynx는 AI Agent 실행을 Run 단위로 기록하고, 문제 원인 후보를 추적하며,
+위험한 Tool 실행을 직전에 통제하는 운영 플랫폼입니다.
 
-단순한 LLM 호출 로그 도구가 아니라, 한 번의 사용자 요청이 어떤 판단, LLM 호출, 도구 실행, 재시도, 정책 판단, 최종 결과로 이어졌는지 하나의 실행 단위로 복원하는 것을 목표로 한다.
+핵심 흐름은 다음과 같습니다.
+
+```text
+Observe → Understand → Control → Improve
+```
 
 ## 저장소 구성
 
-- `apps/backend`: NestJS API, 이벤트 수집, 인증, 관측 API, 디버깅 API를 담당한다.
-- `apps/lynx-dashboard`: 운영자가 실행 상태, 비용, 오류, 정책 이벤트를 확인하는 Next.js 대시보드다.
-- `apps/lynx-landing`: 제품 소개와 개발자 진입점을 담당한다.
-- `apps/sdk-docs`: 외부 사용자를 위한 SDK 문서 사이트다.
-- `sdks/lynx-sdk`: 고객 서비스에 설치되는 TypeScript SDK다.
-- `packages/database`: TypeORM 엔티티, 마이그레이션, DB 설정을 담당한다.
-- `packages/dto`: 백엔드와 프론트엔드가 공유하는 요청과 응답 계약이다.
-- `packages/sdk-types`: SDK와 서버가 공유하는 이벤트 타입이다.
-- `packages/constants`: 공통 상수, 권한, 에러 코드, 정책 값을 둔다.
-- `packages/ui`: 공통 UI 컴포넌트다.
+- `apps/hono-backend`: Hono 기반 관리 API, SDK OpenAPI, 인증, 이벤트 수집,
+  이슈 판정, 방화벽 및 프롬프트 운영을 담당합니다.
+- `apps/lynx-dashboard`: 운영자가 Run, Session, Agent, 비용, 이슈, 정책과
+  프롬프트를 확인하는 Next.js 대시보드입니다.
+- `apps/acme-ai`: `@lynxops/sdk` 연결을 검증하는 예제 Agent 앱입니다.
+- `apps/sdk-docs`: SDK와 OpenAPI 공개 문서입니다.
+- `apps/lynx-admin`: 향후 내부 운영 기능을 위한 초기 관리자 앱입니다.
+- `sdks/lynx-sdk`: 고객 서비스에 설치되는 TypeScript SDK입니다.
+- `packages/database`: TypeORM 엔티티, 초기 마이그레이션과 시드를 관리합니다.
+- `packages/sdk-types`: SDK와 수집 서버가 공유하는 공개 요청 계약입니다.
+- `packages/dto`: 관리 API와 대시보드가 공유하는 Zod DTO입니다.
+- `packages/contract`: HTTP method, path, params, request, response 계약입니다.
+- `packages/constants`: 권한, 상태, API Key scope와 오류 코드를 관리합니다.
+- `packages/ui`: 대시보드 공통 UI 컴포넌트입니다.
 
 ## 요구 사항
 
 - Node.js `>=18`
-- pnpm `11.9.0`
+- pnpm `11.17.0`
 - PostgreSQL
 - Redis
 
 ## 시작하기
+
+의존성 설치 후 전체 공유 패키지와 앱을 빌드합니다.
 
 ```bash
 pnpm install
 pnpm build
 ```
 
-개발 서버를 모두 실행하려면:
+전체 개발 환경:
 
 ```bash
 pnpm dev
 ```
 
-개별 앱 실행:
+개별 앱:
 
 ```bash
-pnpm --filter backend dev
+pnpm --filter hono-backend dev
 pnpm --filter lynx-dashboard dev
-pnpm --filter lynx-landing dev
+pnpm --filter acme-ai dev
+pnpm --filter docs dev
 ```
 
 기본 포트:
 
-- backend: `http://localhost:4000` 또는 `.env`의 `PORT`
-- lynx-dashboard: `http://localhost:3000`
-- lynx-landing: `http://localhost:3001`
+- Hono backend: `http://localhost:8000` 또는 `PORT`
+- Dashboard: `http://localhost:3000`
+- SDK docs: `http://localhost:3002`
+- ACME SDK example: `http://localhost:3100`
+
+대시보드는 `BACKEND_URL`을 사용해 `/api/*` 요청을 Hono 서버로 전달합니다.
 
 ## SDK 빠른 예시
 
 ```ts
-import { LynxTracer } from "@repo/sdk";
+import { LynxTracer } from "@lynxops/sdk";
 
 const lynx = new LynxTracer({
   clientId: "support-api",
+  agentId: "support-agent",
   apiKey: process.env.LYNX_API_KEY,
 });
+
+await lynx.initialize();
 
 await lynx.run("SupportAgent", async () => {
   lynx.userInput("환불하고 싶어요");
   lynx.decision("refund workflow selected");
 });
+
+await lynx.shutdown();
 ```
 
-SDK의 기본 수집 서버는 `https://api.lynxops.co`다. 자체 서버나 로컬 백엔드를 사용할 때만 `endpoint`를 명시한다.
+SDK 기본 endpoint는 `https://api.lynxops.co`입니다. 자체 서버나 로컬
+백엔드를 사용할 때만 `endpoint`를 지정합니다.
 
-SDK 기본값은 프로덕션 서비스가 Lynx 서버 장애에 끌려가지 않도록 안전하게 맞춰져 있다.
+## API 경계
 
-- `delivery.mode`: `"BACKGROUND"`
-- `delivery.flushOnRunEnd`: `false`
-- `delivery.timeoutMs`: `1000`
-- `circuitBreaker.enabled`: `true`
+- 관리 API는 Access Token과 조직·워크스페이스 capability를 사용합니다.
+- `/openapi/v1`은 Workspace API Key와 최소 scope를 사용합니다.
+- SDK payload의 `workspaceId`보다 API Key에서 확인한 workspace 경계를
+  우선합니다.
+- 공유 계약 변경 후에는 `packages/constants`, `packages/sdk-types`,
+  `packages/dto`, `packages/database`, `packages/contract` 순서의 빌드가
+  선행되어야 합니다. 루트 `pnpm dev`와 backend `predev`가 이를 처리합니다.
 
-자세한 내용은 [SDK README](sdks/lynx-sdk/README.md)를 참고한다.
+## 데이터베이스
+
+```bash
+pnpm migration:run
+pnpm migration:revert
+pnpm db:reset
+```
+
+스키마는 TypeORM `synchronize`가 아니라 마이그레이션으로만 변경합니다.
 
 ## 검증
 
@@ -86,46 +118,25 @@ pnpm lint
 pnpm test
 ```
 
-SDK만 검증하려면:
+SDK:
 
 ```bash
-pnpm --filter @repo/sdk build
-pnpm --filter @repo/sdk test
+pnpm --filter @lynxops/sdk build
+pnpm --filter @lynxops/sdk test
 ```
 
-## 현재 개발 메모
+Backend:
 
-아직 배포 전 단계이므로 이전 SDK 옵션과의 호환성은 유지하지 않는다. 문서는 코드의 현재 API인 `endpoint`, `delivery`, `circuitBreaker`, `flush()`, `shutdown()` 구조를 기준으로 맞춘다.
+```bash
+pnpm --filter hono-backend test
+```
 
-## 운영 리스크 TODO
+## 현재 확장 경계
 
-이번 점검에서 바로 손댄 범위와 별개로, 아직 충분히 검증하지 못했거나 제품이 커질수록 위험해질 수 있는 부분을 따로 기록한다.
-
-### 아직 검사하지 못한 부분
-
-- [ ] 결제/사용량 집계가 실제 과금 기준과 정확히 맞는지 검증하기
-- [ ] 마이그레이션 실행, 롤백, 시드 순서가 빈 DB와 기존 DB 모두에서 안전한지 검증하기
-- [ ] 어드민 변경 작업이 모두 감사 로그로 남는지 확인하기
-- [ ] 대시보드 전체 문구가 `next-intl` 메시지 파일만 사용하도록 점검하기
-- [ ] SDK README와 `apps/sdk-docs` 문서가 실제 SDK 옵션, DTO, 엔드포인트와 일치하는지 다시 맞추기
-- [ ] 프론트엔드 인증 만료, 새로고침, 워크스페이스 전환, 권한 없음 상태를 E2E로 검증하기
-- [ ] 백엔드 API별 요청 추적 ID, 구조화 로그, 장애 알림 기준을 정리하기
-- [ ] 데이터 보존 기간 만료, 삭제, 백업 복구 정책을 실제 운영 절차로 검증하기
-- [ ] SSO/OIDC, 조직 도메인, 초대 흐름의 권한 상승 가능성을 별도 보안 점검하기
-- [ ] 원본 payload 마스킹, `metadata-only`, `smart` 수집 모드가 모든 화면과 API에서 일관되게 동작하는지 확인하기
-
-### 앞으로 위험해질 수 있는 부분
-
-- [x] 인메모리 rate limit을 Redis 기반 rate limit으로 교체하기
-- [ ] 원본 이벤트 직접 조회가 느려지기 전에 세션 요약, 에이전트 요약, 사용량 집계 테이블을 분리하기
-- [x] 이벤트 payload 원문 기본 노출을 끄고 명시 설정(`LYNX_EXPOSE_RAW_PAYLOADS=true`)에서만 내려주기
-- [ ] API key scope, 만료, 폐기, 최근 사용 시각을 관리할 수 있는 화면과 API를 추가하기
-- [x] 기존 평문 workspace API key를 해시 기반 key 테이블로 백필하는 스크립트 추가하기
-- [ ] 백필 실행 후 기존 평문 workspace API key 컬럼 제거하기
-- [ ] refresh token과 세션을 디바이스 단위로 관리하고, 강제 로그아웃/폐기 기능 추가하기
-- [x] demo API가 운영 환경에서 기본 노출되지 않도록 모듈 등록 조건을 환경별로 고정하기
-- [x] 요청 단위 requestId를 백엔드 응답 헤더에 일관되게 연결하기
-- [ ] requestId를 구조화 로그와 에러 리포팅에도 연결하기
-- [ ] 로그 수 기반 과금 정책을 DB의 plan 설정과 usage 집계에 연결하기
-- [ ] 이벤트 수집을 동기 DB 저장에서 큐 기반 비동기 처리로 확장할 수 있게 경계 정리하기
-- [ ] PostgreSQL 단일 테이블이 커지기 전에 파티셔닝, 보존 삭제, 인덱스 전략을 실제 데이터로 검증하기
+- 이벤트 원본은 PostgreSQL에 저장하고 대시보드 집계도 현재 PostgreSQL에서
+  계산합니다.
+- 데이터 증가 시 Dashboard repository를 직접 확장하지 않고 hourly rollup과
+  usage summary 테이블로 이전합니다.
+- Issue Record worker는 현재 단일 프로세스 polling 방식입니다. 다중 서버로
+  확장할 때 별도 worker process 또는 queue로 분리합니다.
+- 원본 payload를 다루는 기능은 수집 모드와 마스킹 설정을 확인해야 합니다.

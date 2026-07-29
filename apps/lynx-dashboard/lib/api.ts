@@ -7,8 +7,10 @@ import {
   type ContractSchemaInput,
   type ContractSchemaOutput,
 } from "@repo/contract";
+import { getCurrentRedirectPath, withRedirect } from "./safe-redirect";
 
 const ACCESS_TOKEN_STORAGE_KEY = "_uid";
+const REFRESH_TOKEN_LOCK_NAME = "lynx-refresh-token";
 const TOKEN_REFRESH_BUFFER_SECONDS = 30;
 
 let refreshPromise: Promise<string> | null = null;
@@ -50,26 +52,44 @@ export function isAccessTokenExpired(accessToken: string) {
 
 export async function refreshAccessToken() {
   if (!refreshPromise) {
-    const request = authContract.refresh.request.parse({});
-    refreshPromise = axios
-      .post(
-        `/api${getAuthEndpointPath(authContract.refresh)}`,
-        request,
-        {
-          withCredentials: true,
-        },
-      )
-      .then((res) => {
-        const response = authContract.refresh.response.parse(res.data);
-        setStoredAccessToken(response.access_token);
-        return response.access_token;
-      })
-      .finally(() => {
-        refreshPromise = null;
-      });
+    refreshPromise = refreshAccessTokenAcrossTabs().finally(() => {
+      refreshPromise = null;
+    });
   }
 
   return refreshPromise;
+}
+
+/** 브라우저 탭 전체에서 Refresh 요청을 한 번씩만 실행합니다. */
+async function refreshAccessTokenAcrossTabs(): Promise<string> {
+  if (typeof navigator === "undefined" || !navigator.locks) {
+    return requestNewAccessToken();
+  }
+
+  return navigator.locks.request(REFRESH_TOKEN_LOCK_NAME, async () => {
+    // 잠금을 기다리는 동안 다른 탭이 갱신한 Access Token을 재사용합니다.
+    const currentAccessToken = getStoredAccessToken();
+    if (currentAccessToken && !isAccessTokenExpired(currentAccessToken)) {
+      return currentAccessToken;
+    }
+
+    return requestNewAccessToken();
+  });
+}
+
+/** 서버에서 Access Token을 재발급받고 공유 저장소에 반영합니다. */
+async function requestNewAccessToken(): Promise<string> {
+  const request = authContract.refresh.request.parse({});
+  const result = await axios.post(
+    `/api${getAuthEndpointPath(authContract.refresh)}`,
+    request,
+    {
+      withCredentials: true,
+    },
+  );
+  const response = authContract.refresh.response.parse(result.data);
+  setStoredAccessToken(response.access_token);
+  return response.access_token;
 }
 
 // API 요청 헤더에 access token을 추가합니다.
@@ -116,7 +136,10 @@ api.interceptors.response.use(
       } catch (refreshError) {
         clearStoredAccessToken();
         if (typeof window !== "undefined") {
-          window.location.href = "/login";
+          window.location.href = withRedirect(
+            "/login",
+            getCurrentRedirectPath(),
+          );
         }
         return Promise.reject(refreshError);
       }
@@ -157,18 +180,58 @@ export async function requestContract<TEndpoint extends ContractEndpoint>({
     data: isQueryRequest ? undefined : parsedRequest,
   });
 
-  if (!endpoint.response) return undefined as ContractSchemaOutput<
-    TEndpoint["response"]
-  >;
+  if (!endpoint.response)
+    return undefined as ContractSchemaOutput<TEndpoint["response"]>;
 
   return endpoint.response.parse(response.data) as ContractSchemaOutput<
     TEndpoint["response"]
   >;
 }
 
-function cleanParams(
-  params?: unknown,
-): Record<string, unknown> | undefined {
+type BinaryContractRequestOptions<TEndpoint extends ContractEndpoint> = {
+  basePath: string;
+  endpoint: TEndpoint;
+  body: Blob;
+} & ([NonNullable<TEndpoint["params"]>] extends [never]
+  ? { params?: never }
+  : {
+      params: ContractSchemaInput<NonNullable<TEndpoint["params"]>>;
+    });
+
+/**
+ * Sends a binary body through the same authenticated client used by JSON
+ * contracts. This keeps token refresh behavior consistent for image uploads.
+ */
+export async function requestBinaryContract<
+  TEndpoint extends ContractEndpoint,
+>({
+  basePath,
+  endpoint,
+  params,
+  body,
+}: BinaryContractRequestOptions<TEndpoint>): Promise<
+  ContractSchemaOutput<TEndpoint["response"]>
+> {
+  const parsedParams = endpoint.params?.parse(params);
+  const path = buildContractPath(basePath, endpoint.path, parsedParams);
+  const response = await api.request<unknown>({
+    method: endpoint.method,
+    url: path,
+    data: body,
+    headers: {
+      "Content-Type": body.type || "application/octet-stream",
+    },
+  });
+
+  if (!endpoint.response)
+    return undefined as ContractSchemaOutput<TEndpoint["response"]>;
+
+  return endpoint.response.parse(response.data) as ContractSchemaOutput<
+    TEndpoint["response"]
+  >;
+}
+
+function cleanParams(params?: unknown): Record<string, unknown> | undefined {
   if (!params || typeof params !== "object") return undefined;
 
   return Object.fromEntries(

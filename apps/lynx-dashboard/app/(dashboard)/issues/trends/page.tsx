@@ -1,9 +1,5 @@
-import { IssueTrendsScreen } from "@/components/screen/issues/operations";
+import { redirect } from "next/navigation";
 
 export default function IssueTrendsPage() {
-  return (
-    <main className="min-h-full p-5">
-      <IssueTrendsScreen />
-    </main>
-  );
+  redirect("/issues/overview");
 }

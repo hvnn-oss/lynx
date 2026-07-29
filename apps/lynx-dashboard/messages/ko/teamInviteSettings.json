@@ -1,0 +1,26 @@
+{
+  "inviteMember": "멤버 초대",
+  "email": "이메일",
+  "role": "역할",
+  "send": "초대 보내기",
+  "sending": "보내는 중...",
+  "cancel": "취소",
+  "done": "완료",
+  "linkReady": "초대 링크가 생성되었습니다",
+  "linkDescription": "초대 메일도 함께 전송했습니다. 다른 방법으로 전달하려면 지금 링크를 복사해 주세요.",
+  "copyLink": "초대 링크 복사",
+  "invitationHistory": "초대 내역",
+  "expires": "{date} 만료",
+  "revoke": "초대 취소",
+  "roles": {
+    "ADMIN": "관리자",
+    "MEMBER": "멤버",
+    "VIEWER": "조회자"
+  },
+  "status": {
+    "PENDING": "수락 대기",
+    "ACCEPTED": "수락됨",
+    "EXPIRED": "만료됨",
+    "REVOKED": "취소됨"
+  }
+}

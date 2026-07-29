@@ -58,7 +58,7 @@ export class RunEntity {
   @Column({ type: "integer", default: 0 })
   totalTokens!: number;
 
-  @Column({ type: "numeric", precision: 16, scale: 6, default: 0 })
+  @Column({ type: "numeric", precision: 20, scale: 12, default: 0 })
   totalCost!: number;
 
   @ManyToOne(() => WorkspaceEntity, { onDelete: "CASCADE" })

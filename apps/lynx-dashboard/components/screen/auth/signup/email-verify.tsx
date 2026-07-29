@@ -14,18 +14,29 @@ import axios from "axios";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useState } from "react";
+import { withRedirect } from "@/lib/safe-redirect";
 
 export default function RegisterEmailVerifyForm({
+  invitationToken,
+  teamInvitationCode,
+  redirectTo,
   onSuccess,
 }: {
+  invitationToken?: string;
+  teamInvitationCode?: string;
+  redirectTo: string;
   onSuccess: (email: string) => void;
 }) {
   const [isLoading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [email, setEmail] = useState("");
   const t = useTranslations("auth");
+  const accessT = useTranslations("access");
   const isEmailValid = authContract.createEmailVerification.request.safeParse({
     email,
+    invitation_token: invitationToken,
+    team_invitation_code: teamInvitationCode,
+    redirects: redirectTo,
   }).success;
 
   const onSubmit = async () => {
@@ -33,6 +44,9 @@ export default function RegisterEmailVerifyForm({
     setError("");
     const request = authContract.createEmailVerification.request.safeParse({
       email,
+      invitation_token: invitationToken,
+      team_invitation_code: teamInvitationCode,
+      redirects: redirectTo,
     });
     if (!request.success) {
       setError("errors.unknown");
@@ -69,6 +83,16 @@ export default function RegisterEmailVerifyForm({
           setLoading(false);
           return;
         }
+        if (
+          errorCode === ERROR_CODES.SIGNUP_INVITATION_REQUIRED ||
+          errorCode === ERROR_CODES.INVALID_ACCESS_INVITATION ||
+          errorCode === ERROR_CODES.TEAM_INVITATION_NOT_FOUND ||
+          errorCode === ERROR_CODES.TEAM_INVITATION_EMAIL_MISMATCH
+        ) {
+          setError("invalid-invitation");
+          setLoading(false);
+          return;
+        }
       }
       setError("errors.unknown");
       setLoading(false);
@@ -98,7 +122,9 @@ export default function RegisterEmailVerifyForm({
             />
             {error !== "" && (
               <FieldDescription className="text-destructive">
-                {t(error)}
+                {error === "invalid-invitation"
+                  ? accessT("signup.invalidInvitation")
+                  : t(error)}
               </FieldDescription>
             )}
           </Field>
@@ -113,7 +139,9 @@ export default function RegisterEmailVerifyForm({
             </Button>
             <FieldDescription className="text-center">
               {t("common.alreadyHaveAccount")}{" "}
-              <Link href="/login">{t("common.loginLink")}</Link>
+              <Link href={withRedirect("/login", redirectTo)}>
+                {t("common.loginLink")}
+              </Link>
             </FieldDescription>
           </Field>
         </FieldGroup>

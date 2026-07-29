@@ -13,6 +13,24 @@ import { CreateOrganizationRecordInput } from "../../common/types/org.js";
 
 /** 조직 생성에 필요한 권한, 사용량, 영속화 작업을 제공합니다. */
 export class OrganizationRepository {
+  /** 사용자가 멤버로 속한 조직과 조직 내 역할을 조회합니다. */
+  async listForUser(userId: string) {
+    const memberships = await AppDataSource.getRepository(
+      OrganizationUserEntity,
+    ).find({
+      where: { user: { id: userId } },
+      relations: { organization: true },
+      order: { joinedAt: "ASC", id: "ASC" },
+    });
+
+    return memberships.map((membership) => ({
+      id: membership.organization.id,
+      name: membership.organization.name,
+      profileImageKey: membership.organization.profileImageKey,
+      role: membership.role,
+    }));
+  }
+
   listMembers(organizationId: string) {
     return AppDataSource.getRepository(OrganizationUserEntity).find({
       where: { organization: { id: organizationId } },

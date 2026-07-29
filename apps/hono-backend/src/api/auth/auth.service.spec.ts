@@ -1,5 +1,10 @@
 import { ERROR_CODES } from "@repo/constants";
-import { OrganizationDomainEntity, UserEntity } from "@repo/database";
+import {
+  OrganizationDomainEntity,
+  UserAccountEntity,
+  UserEntity,
+  UserEntitlementEntity,
+} from "@repo/database";
 import { createHash, randomUUID } from "node:crypto";
 
 import { AuthService } from "./auth.service.js";
@@ -82,6 +87,7 @@ describe("AuthService", () => {
         expect.objectContaining({
           createdAt: session.createdAt,
           previousSecretHash: secretHash,
+          rotatedAt: expect.any(Number),
           sessionId,
           userId,
         }),
@@ -135,7 +141,13 @@ describe("AuthService", () => {
 });
 
 describe("AuthService 이메일 확인", () => {
-  function createService(options: { shouldMailFail?: boolean } = {}) {
+  function createService(
+    options: {
+      shouldMailFail?: boolean;
+      invitationId?: string;
+      isBootstrapAdmin?: boolean;
+    } = {},
+  ) {
     const refreshStore = {
       getRefreshSession: jest.fn(),
       rotateRefresh: jest.fn(),
@@ -163,6 +175,17 @@ describe("AuthService 이메일 확인", () => {
       }),
       transaction: jest.fn(),
     };
+    const accessInvitations = {
+      resolveSignupInvitation: jest
+        .fn()
+        .mockResolvedValue(options.invitationId ?? null),
+      resolveTeamSignupInvitation: jest.fn(),
+      acceptSignupInvitation: jest.fn(),
+      isBootstrapAdminEmail: jest
+        .fn()
+        .mockReturnValue(options.isBootstrapAdmin ?? false),
+      activateBootstrapAdmin: jest.fn(),
+    };
 
     const service = new AuthService(
       refreshStore as never,
@@ -170,8 +193,16 @@ describe("AuthService 이메일 확인", () => {
       { createOrganization: jest.fn() } as never,
       mailer as never,
       dataSource as never,
+      accessInvitations as never,
     );
-    return { domainRepository, mailer, service, stageStore, userRepository };
+    return {
+      accessInvitations,
+      domainRepository,
+      mailer,
+      service,
+      stageStore,
+      userRepository,
+    };
   }
 
   it("가입 단계를 저장하고 이메일 확인 링크를 발송한다", async () => {
@@ -195,6 +226,104 @@ describe("AuthService 이메일 확인", () => {
         to: "user@example.com",
         html: expect.stringContaining("/signup/verify?token="),
       }),
+    );
+  });
+
+  it("검증된 초대 ID를 이메일 인증 단계에 함께 저장한다", async () => {
+    const invitationId = randomUUID();
+    const { accessInvitations, service, stageStore } = createService({
+      invitationId,
+    });
+
+    await service.createEmailVerification({
+      email: "pilot@example.com",
+      invitation_token: "T".repeat(48),
+    });
+
+    expect(accessInvitations.resolveSignupInvitation).toHaveBeenCalledWith(
+      "pilot@example.com",
+      "T".repeat(48),
+    );
+    expect(stageStore.save).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ access_invitation_id: invitationId }),
+    );
+  });
+
+  it("첫 관리자 이메일은 초대 없이 bootstrap 가입 단계로 저장한다", async () => {
+    const { accessInvitations, service, stageStore } = createService({
+      isBootstrapAdmin: true,
+    });
+
+    await service.createEmailVerification({
+      email: "owner@example.com",
+    });
+
+    expect(stageStore.save).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        bootstrap_admin: true,
+        access_invitation_id: undefined,
+      }),
+    );
+    expect(
+      accessInvitations.resolveSignupInvitation,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("팀 초대는 조직과 역할을 가입 단계에 저장하고 파일럿 초대 검사를 대신한다", async () => {
+    const { accessInvitations, service, stageStore } = createService();
+    const invitationId = randomUUID();
+    const organizationId = randomUUID();
+    const code = randomUUID();
+    accessInvitations.resolveTeamSignupInvitation.mockResolvedValue({
+      invitationId,
+      organizationId,
+      role: "VIEWER",
+    });
+
+    await service.createEmailVerification({
+      email: "member@example.com",
+      team_invitation_code: code,
+      redirects: `/invite?code=${code}`,
+    });
+
+    expect(
+      accessInvitations.resolveTeamSignupInvitation,
+    ).toHaveBeenCalledWith("member@example.com", code);
+    expect(accessInvitations.resolveSignupInvitation).not.toHaveBeenCalled();
+    expect(stageStore.save).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        access_invitation_id: invitationId,
+        invited_organization: organizationId,
+        invited_organization_role: "VIEWER",
+        redirect_path: `/invite?code=${code}`,
+      }),
+    );
+  });
+
+  it("이메일 확인 응답으로 조직 생성 단계 필요 여부와 이동 경로를 돌려준다", async () => {
+    const { service, stageStore } = createService();
+    const token = randomUUID();
+    stageStore.get.mockResolvedValue({
+      email: "member@example.com",
+      domain: "example.com",
+      email_verified: false,
+      invited_organization: randomUUID(),
+      invited_organization_role: "MEMBER",
+      redirect_path: "/dashboard",
+    });
+
+    await expect(service.verifyEmail(token)).resolves.toEqual({
+      success: true,
+      email: "member@example.com",
+      redirects: "/dashboard",
+      requiresOrganization: false,
+    });
+    expect(stageStore.markEmailVerified).toHaveBeenCalledWith(
+      token,
+      expect.objectContaining({ email: "member@example.com" }),
     );
   });
 
@@ -224,5 +353,85 @@ describe("AuthService 이메일 확인", () => {
     });
     expect(stageStore.save).not.toHaveBeenCalled();
     expect(mailer.sendMail).not.toHaveBeenCalled();
+  });
+});
+
+describe("AuthService 초대 가입", () => {
+  it("계정 생성 트랜잭션에서 초대를 수락한다", async () => {
+    const invitationId = randomUUID();
+    const userId = randomUUID();
+    const stageStore = {
+      get: jest.fn().mockResolvedValue({
+        email: "pilot@example.com",
+        domain: "example.com",
+        email_verified: true,
+        access_invitation_id: invitationId,
+      }),
+      save: jest.fn(),
+      markEmailVerified: jest.fn(),
+      remove: jest.fn().mockResolvedValue(undefined),
+    };
+    const userRepository = {
+      findOneBy: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockReturnValue({
+        id: userId,
+        email: "pilot@example.com",
+        name: "Pilot",
+      }),
+      save: jest.fn().mockImplementation(async (value) => value),
+    };
+    const accountRepository = {
+      create: jest.fn().mockImplementation((value) => value),
+      save: jest.fn().mockImplementation(async (value) => value),
+    };
+    const entitlementRepository = {
+      save: jest.fn().mockImplementation(async (value) => value),
+    };
+    const manager = {
+      query: jest.fn().mockResolvedValue(undefined),
+      getRepository: jest.fn((entity) => {
+        if (entity === UserEntity) return userRepository;
+        if (entity === UserAccountEntity) return accountRepository;
+        if (entity === UserEntitlementEntity) return entitlementRepository;
+        throw new Error("Unexpected repository");
+      }),
+    };
+    const dataSource = {
+      transaction: jest.fn(async (callback) => callback(manager)),
+    };
+    const accessInvitations = {
+      resolveSignupInvitation: jest.fn(),
+      acceptSignupInvitation: jest.fn().mockResolvedValue(undefined),
+      isBootstrapAdminEmail: jest.fn().mockReturnValue(false),
+      activateBootstrapAdmin: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new AuthService(
+      {
+        getRefreshSession: jest.fn(),
+        rotateRefresh: jest.fn(),
+        revokeRefresh: jest.fn(),
+        saveRefresh: jest.fn(),
+      } as never,
+      stageStore as never,
+      { createOrganization: jest.fn() } as never,
+      { sendMail: jest.fn() } as never,
+      dataSource as never,
+      accessInvitations as never,
+    );
+
+    await expect(
+      service.register({
+        token: randomUUID(),
+        name: "Pilot",
+        password: "password123",
+      }),
+    ).resolves.toEqual({ success: true });
+
+    expect(accessInvitations.acceptSignupInvitation).toHaveBeenCalledWith(
+      manager,
+      invitationId,
+      "pilot@example.com",
+      userId,
+    );
   });
 });

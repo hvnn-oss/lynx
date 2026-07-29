@@ -8,6 +8,7 @@ import {
 } from "@repo/database";
 import type { EntityManager } from "typeorm";
 import { AppDataSource } from "../../provider/database/typeorm-config.js";
+import { firewallNotificationService } from "../../common/services/firewall-notification.service.js";
 import type { IngestEvent } from "./event.schema.js";
 
 const UUID_PATTERN =
@@ -151,7 +152,7 @@ export class OpenAPIEventRepository {
   ) {
     const usage = event.payload.usage as Record<string, unknown> | undefined;
     const latency = Number(event.payload.latency);
-    const cost = Number(event.payload.cost);
+    const cost = this.optionalNumber(event.payload.cost);
     return AppDataSource.transaction(async (manager) => {
       const repository = manager.getRepository(EventEntity);
       const saved = await repository.save(
@@ -167,7 +168,7 @@ export class OpenAPIEventRepository {
             sessionId: event.sessionId ?? session.name,
           },
           latency: Number.isFinite(latency) ? latency : undefined,
-          cost: Number.isFinite(cost) ? cost : undefined,
+          cost: cost ?? undefined,
           timestamp: new Date(event.timestamp),
           session,
           run,
@@ -182,11 +183,32 @@ export class OpenAPIEventRepository {
         saved,
         event,
       );
+      const policyAction = String(event.payload.action ?? "");
+      if (event.eventType === "POLICY_EVALUATION" && policyAction === "BLOCK") {
+        await firewallNotificationService.enqueueConfigured(manager, {
+          workspaceId,
+          policyId:
+            typeof event.payload.policyId === "string"
+              ? event.payload.policyId
+              : null,
+          type: "firewall.blocked",
+          deduplicationKey: `firewall.blocked:${event.clientId}:${event.eventId}`,
+          data: {
+            action: policyAction,
+            toolName: event.payload.toolName,
+            reason: event.payload.reason,
+            runId: event.runId,
+            sessionId: event.sessionId,
+            agentId: event.agentId,
+            eventId: event.eventId,
+          },
+        });
+      }
 
       const promptTokens = this.number(usage?.promptTokens);
       const completionTokens = this.number(usage?.completionTokens);
       const totalTokens = this.number(usage?.totalTokens);
-      const costIncrement = Number.isFinite(cost) ? cost : 0;
+      const costIncrement = cost ?? 0;
       await manager
         .getRepository(RunEntity)
         .createQueryBuilder()
@@ -379,6 +401,18 @@ export class OpenAPIEventRepository {
   private number(value: unknown): number {
     const result = Number(value);
     return Number.isFinite(result) ? result : 0;
+  }
+
+  /** null이나 빈 값이 실제 0달러 비용으로 저장되지 않게 구분합니다. */
+  private optionalNumber(value: unknown): number | null {
+    if (
+      (typeof value !== "number" && typeof value !== "string") ||
+      value === ""
+    ) {
+      return null;
+    }
+    const number = Number(value);
+    return Number.isFinite(number) && number >= 0 ? number : null;
   }
 
   /** SDK 종료 상태를 저장 모델이 허용하는 값으로 정규화합니다. */

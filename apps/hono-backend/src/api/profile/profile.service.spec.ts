@@ -48,6 +48,34 @@ describe("ProfileService", () => {
     });
   });
 
+  it("저장된 이미지가 없으면 설정된 기본 사용자 이미지를 반환한다", async () => {
+    const { repository, images } = createDependencies();
+    const service = new ProfileService(
+      repository,
+      () => images,
+      "https://images.example.com/default-user.png",
+    );
+
+    await expect(service.getProfile(userId)).resolves.toMatchObject({
+      profileImageUrl: "https://images.example.com/default-user.png",
+    });
+    expect(images.getUrl).not.toHaveBeenCalled();
+  });
+
+  it("저장된 이미지가 없으면 설정된 기본 사용자 이미지를 반환한다", async () => {
+    const { repository, images } = createDependencies();
+    const service = new ProfileService(
+      repository,
+      () => images,
+      "https://images.example.com/default-user.png",
+    );
+
+    await expect(service.getProfile(userId)).resolves.toMatchObject({
+      profileImageUrl: "https://images.example.com/default-user.png",
+    });
+    expect(images.getUrl).not.toHaveBeenCalled();
+  });
+
   it("최초 이미지를 업로드하고 저장소 키를 사용자에게 연결한다", async () => {
     const { service, repository, images } = createDependencies();
 

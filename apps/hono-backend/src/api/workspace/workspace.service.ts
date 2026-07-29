@@ -21,6 +21,10 @@ import {
   apiKeyIssuancePolicy,
 } from "../../common/access-control/api-key-issuance.policy.js";
 import { openAPIEventService } from "../openapi/event.service.js";
+import {
+  ProductAccessService,
+  productAccessService,
+} from "../../common/access-control/product-access.service.js";
 
 type CreateWorkspaceInput = CreateWorkspaceDto & { userId: string };
 
@@ -30,6 +34,10 @@ export class WorkspaceService {
     private readonly repository: WorkspaceRepository = workspaceRepository,
     private readonly accessControl: AccessControlService = accessControlService,
     private readonly apiKeyPolicy: ApiKeyIssuancePolicy = apiKeyIssuancePolicy,
+    private readonly productAccess: Pick<
+      ProductAccessService,
+      "grantWorkspaceForUser"
+    > = productAccessService,
   ) {}
 
   /** Returns the bounded workspace selector data available to the user. */
@@ -54,6 +62,7 @@ export class WorkspaceService {
     });
 
     const workspace = await this.repository.createWorkspace(input);
+    await this.productAccess.grantWorkspaceForUser(input.userId, workspace.id);
     return {
       id: workspace.id,
       name: workspace.name,

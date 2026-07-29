@@ -1,0 +1,21 @@
+{
+  "create": {
+    "title": "워크스페이스 생성",
+    "description": "실행 기록과 정책을 관리할 첫 워크스페이스를 만듭니다.",
+    "organization": {
+      "label": "조직",
+      "description": "워크스페이스가 소속될 조직을 선택합니다."
+    },
+    "name": {
+      "label": "워크스페이스 이름",
+      "placeholder": "예: Production Agents"
+    },
+    "submit": "워크스페이스 생성",
+    "retry": "다시 시도",
+    "errors": {
+      "load": "조직 정보를 불러오지 못했습니다.",
+      "failed": "워크스페이스를 생성하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+      "noOrganization": "워크스페이스를 생성할 수 있는 조직이 없습니다. 조직 관리자에게 권한을 요청해 주세요."
+    }
+  }
+}

@@ -10,12 +10,68 @@ const factory = createFactory<AppEnv>();
 export function createPromptHandlers() {
   const list = factory.createHandlers(
     zValidator("param", promptContract.list.params!),
+    zValidator("query", promptContract.list.request),
     async (c) =>
       c.json(
         promptContract.list.response.parse(
           await promptService.list(
             c.get("currentUserId"),
             c.req.valid("param").workspaceId,
+            c.req.valid("query"),
+          ),
+        ),
+      ),
+  );
+  const getOperationsSummary = factory.createHandlers(
+    zValidator("param", promptContract.getOperationsSummary.params!),
+    async (c) =>
+      c.json(
+        promptContract.getOperationsSummary.response.parse(
+          await promptService.getOperationsSummary(
+            c.get("currentUserId"),
+            c.req.valid("param").workspaceId,
+          ),
+        ),
+      ),
+  );
+  const listDeploymentOperations = factory.createHandlers(
+    zValidator("param", promptContract.listDeploymentOperations.params!),
+    zValidator("query", promptContract.listDeploymentOperations.request),
+    async (c) =>
+      c.json(
+        promptContract.listDeploymentOperations.response.parse(
+          await promptService.listDeploymentOperations(
+            c.get("currentUserId"),
+            c.req.valid("param").workspaceId,
+            c.req.valid("query"),
+          ),
+        ),
+      ),
+  );
+  const listExperimentOperations = factory.createHandlers(
+    zValidator("param", promptContract.listExperimentOperations.params!),
+    zValidator("query", promptContract.listExperimentOperations.request),
+    async (c) =>
+      c.json(
+        promptContract.listExperimentOperations.response.parse(
+          await promptService.listExperimentOperations(
+            c.get("currentUserId"),
+            c.req.valid("param").workspaceId,
+            c.req.valid("query"),
+          ),
+        ),
+      ),
+  );
+  const listTargetAgents = factory.createHandlers(
+    zValidator("param", promptContract.listTargetAgents.params!),
+    zValidator("query", promptContract.listTargetAgents.request),
+    async (c) =>
+      c.json(
+        promptContract.listTargetAgents.response.parse(
+          await promptService.listTargetAgents(
+            c.get("currentUserId"),
+            c.req.valid("param").workspaceId,
+            c.req.valid("query"),
           ),
         ),
       ),
@@ -203,6 +259,21 @@ export function createPromptHandlers() {
       );
     },
   );
+  const getVersionPerformance = factory.createHandlers(
+    zValidator("param", promptContract.getVersionPerformance.params!),
+    async (c) => {
+      const params = c.req.valid("param");
+      return c.json(
+        promptContract.getVersionPerformance.response.parse(
+          await promptService.getVersionPerformance(
+            c.get("currentUserId"),
+            params.workspaceId,
+            params.promptId,
+          ),
+        ),
+      );
+    },
+  );
   const createExperiment = factory.createHandlers(
     zValidator("param", promptContract.createExperiment.params!),
     zValidator("json", promptContract.createExperiment.request),
@@ -257,6 +328,10 @@ export function createPromptHandlers() {
 
   return {
     list,
+    getOperationsSummary,
+    listDeploymentOperations,
+    listExperimentOperations,
+    listTargetAgents,
     get,
     create,
     update,
@@ -268,6 +343,7 @@ export function createPromptHandlers() {
     rollback,
     listDeployments,
     getVersionMetrics,
+    getVersionPerformance,
     createExperiment,
     listExperiments,
     updateExperimentStatus,

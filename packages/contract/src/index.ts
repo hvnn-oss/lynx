@@ -10,3 +10,7 @@ export * from "./dashboard.contract.js";
 export * from "./prompt.contract.js";
 export * from "./util/endpoint.js";
 export * from "./system.contract.js";
+export * from "./bootstrap.contract.js";
+export * from "./access.contract.js";
+export * from "./team-invitation.contract.js";
+export * from "./integration.contract.js";

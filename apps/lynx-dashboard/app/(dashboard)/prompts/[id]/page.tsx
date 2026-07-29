@@ -1,4 +1,4 @@
-import { PromptDetailScreen } from "@/components/screen/prompts/operations";
+import { PromptEditorScreen } from "@/components/screen/prompts/prompt-editor-screen";
 
 export default async function PromptDetailPage({
   params,
@@ -9,7 +9,7 @@ export default async function PromptDetailPage({
 
   return (
     <main className="min-h-full p-5">
-      <PromptDetailScreen promptId={id} />
+      <PromptEditorScreen promptId={id} />
     </main>
   );
 }

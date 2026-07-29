@@ -3,14 +3,18 @@ import {
   OpenAPIEventRepository,
   openAPIEventRepository,
 } from "./event.repository.js";
-import { firewallNotificationService } from "../../common/services/firewall-notification.service.js";
 import { promptRegressionService } from "../prompt/prompt-regression.service.js";
+import {
+  LlmCostService,
+  llmCostService,
+} from "../../common/services/llm-cost.service.js";
 
 /** SDK 이벤트 수집과 Run 조회 유스케이스를 처리합니다. */
 export class OpenAPIEventService {
   /** 테스트에서 저장소를 교체할 수 있도록 의존성을 주입받습니다. */
   constructor(
     private readonly repository: OpenAPIEventRepository = openAPIEventRepository,
+    private readonly costs: LlmCostService = llmCostService,
   ) {}
 
   /**
@@ -48,7 +52,11 @@ export class OpenAPIEventService {
         }
         const trustedEvent = {
           ...event,
-          payload: { ...event.payload, workspaceId, environment },
+          payload: this.costs.enrichPayload(event.eventType, {
+            ...event.payload,
+            workspaceId,
+            environment,
+          }),
         };
         const agent = await this.repository.findOrCreateAgent(
           workspaceId,
@@ -81,30 +89,6 @@ export class OpenAPIEventService {
             resolvedAgentId: agent.id,
           })
           .catch(() => undefined);
-        const policyPayload = trustedEvent.payload as Record<string, unknown>;
-        const policyAction = String(policyPayload.action ?? "");
-        if (
-          trustedEvent.eventType === "POLICY_EVALUATION" &&
-          (policyAction === "BLOCK" || policyAction === "REQUIRE_APPROVAL")
-        ) {
-          firewallNotificationService.notify({
-            workspaceId,
-            policyId:
-              typeof policyPayload.policyId === "string"
-                ? policyPayload.policyId
-                : null,
-            type: "firewall.blocked",
-            data: {
-              action: policyAction,
-              toolName: policyPayload.toolName,
-              reason: policyPayload.reason,
-              runId: trustedEvent.runId,
-              sessionId: trustedEvent.sessionId,
-              agentId: trustedEvent.agentId,
-              eventId: trustedEvent.eventId,
-            },
-          });
-        }
         accepted += 1;
       } catch (error) {
         if (event.eventId) {

@@ -62,4 +62,14 @@ describe("runtime config HTTP handlers", () => {
     expect(response.status).toBe(304);
     expect(await response.text()).toBe("");
   });
+
+  it("rejects an invalid SDK agentId before querying runtime config", async () => {
+    const response = await createApp().request(
+      openAPIContract.getRuntimeConfig.path,
+      { headers: { "X-Lynx-Agent-ID": "" } },
+    );
+
+    expect(response.status).toBe(400);
+    expect(mockedService.get).not.toHaveBeenCalled();
+  });
 });

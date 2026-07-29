@@ -39,7 +39,7 @@ return highest
 `;
 
 /** 로컬 계정의 비밀번호를 검증하고 공통 인증 신원을 만듭니다. */
-class LocalAuthService {
+export class LocalAuthService {
   constructor(
     private readonly repository: LocalAuthRepository = localAuthRepository,
     private readonly redis: RedisEvalClient = coreRedis,

@@ -1,6 +1,7 @@
 import { FirewallApprovalRequestEntity } from "@repo/database";
 import type { DecideFirewallApprovalDto } from "@repo/dto";
 import { AppDataSource } from "../../provider/database/typeorm-config.js";
+import { firewallNotificationService } from "../../common/services/firewall-notification.service.js";
 
 /** 운영자 승인 목록과 원자적인 승인 결정을 저장합니다. */
 export class FirewallApprovalRepository {
@@ -42,10 +43,22 @@ export class FirewallApprovalRepository {
         request.status === "EXPIRED"
           ? "Approval request expired."
           : (body.reason ?? null);
-      return {
-        request: await repository.save(request),
-        didDecide: true,
-      };
+      const saved = await repository.save(request);
+      await firewallNotificationService.enqueueConfigured(manager, {
+        workspaceId,
+        policyId: saved.reportedPolicyId,
+        type: "approval.decided",
+        deduplicationKey: `approval.decided:${saved.id}`,
+        data: {
+          approvalId: saved.id,
+          status: saved.status,
+          decidedAt: saved.decidedAt?.toISOString() ?? null,
+          decisionReason: saved.decisionReason,
+          toolName: saved.toolName,
+          runId: saved.runId,
+        },
+      });
+      return { request: saved, didDecide: true };
     });
   }
 }

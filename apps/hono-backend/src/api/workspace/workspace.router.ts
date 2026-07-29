@@ -1,6 +1,7 @@
 import { workspaceContract } from "@repo/contract";
 import { Hono } from "hono";
 import { requireAccessToken } from "../../common/middleware/access-token.middleware.js";
+import { requireProductAccess } from "../../common/middleware/product-access.middleware.js";
 import type { AppEnv } from "../../common/types/app-env.js";
 import { createWorkspaceHandlers } from "./workspace.handler.js";
 
@@ -10,6 +11,7 @@ export const workspaceRouter = new Hono<AppEnv>();
 
 // 워크스페이스 API는 인증된 사용자만 호출할 수 있습니다.
 workspaceRouter.use("*", requireAccessToken);
+workspaceRouter.use("*", requireProductAccess);
 workspaceRouter.on(
   workspaceContract.list.method,
   workspaceContract.list.path,

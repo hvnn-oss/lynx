@@ -1,6 +1,9 @@
 import DashboardLayout from "@/components/layout/global/layout";
 import SidebarInner from "@/components/layout/global/sidebar/sidebar-inner";
 import AuthGuard from "@/components/util/auth-guard";
+import WorkspaceGuard from "@/components/util/workspace-guard";
+import DashboardBootstrap from "@/components/util/dashboard-bootstrap";
+import { DashboardPageInfo } from "@/components/page-info";
 
 export default function DashboardPageLayout({
   children,
@@ -9,12 +12,17 @@ export default function DashboardPageLayout({
 }>) {
   return (
     <AuthGuard>
-      <DashboardLayout>
-        <div className="flex w-full h-full overflow-hidden">
-          <SidebarInner />
-          <div className="flex-1 min-h-0 overflow-y-scroll">{children}</div>
-        </div>
-      </DashboardLayout>
+      <DashboardBootstrap>
+        <WorkspaceGuard>
+          <DashboardLayout>
+            <DashboardPageInfo />
+            <div className="flex w-full h-full overflow-hidden">
+              <SidebarInner />
+              <div className="flex-1 min-h-0 overflow-y-scroll">{children}</div>
+            </div>
+          </DashboardLayout>
+        </WorkspaceGuard>
+      </DashboardBootstrap>
     </AuthGuard>
   );
 }

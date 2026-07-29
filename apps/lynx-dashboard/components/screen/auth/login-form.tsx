@@ -16,8 +16,9 @@ import { requestContract, setStoredAccessToken } from "@/lib/api";
 import axios from "axios";
 import { DashRing } from "@repo/ui/components/ui/dash-ring";
 import { authContract } from "@repo/contract";
+import { withRedirect } from "@/lib/safe-redirect";
 
-export default function LoginForm() {
+export default function LoginForm({ redirectTo }: { redirectTo: string }) {
   const t = useTranslations("auth");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -40,7 +41,7 @@ export default function LoginForm() {
         request: loginResult.data,
       });
       setStoredAccessToken(response.access_token);
-      window.location.href = "/dashboard";
+      window.location.href = redirectTo;
     } catch (err) {
       if (axios.isAxiosError(err)) {
         // Validation errors returned as array of objects in response.data.errors
@@ -124,7 +125,9 @@ export default function LoginForm() {
           </Link>
           <FieldDescription className="text-center">
             {t("common.dontHaveAccount")}{" "}
-            <Link href="/signup">{t("common.signupLink")}</Link>
+            <Link href={withRedirect("/signup", redirectTo)}>
+              {t("common.signupLink")}
+            </Link>
           </FieldDescription>
         </Field>
       </FieldGroup>

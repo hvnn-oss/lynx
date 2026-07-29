@@ -56,6 +56,12 @@ export class IssueActivityEntity {
   @Column({ type: "text", nullable: true })
   body!: string | null;
 
+  @Column({ type: "timestamptz", nullable: true })
+  editedAt!: Date | null;
+
+  @Column({ type: "timestamptz", nullable: true })
+  deletedAt!: Date | null;
+
   @Column({ type: "jsonb", nullable: true })
   metadata!: Record<string, unknown> | null;
 

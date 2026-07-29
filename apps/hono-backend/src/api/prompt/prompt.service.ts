@@ -3,6 +3,10 @@ import type {
   CreatePromptExperimentDto,
   CreatePromptVersionDto,
   DeployPromptDto,
+  PromptDeploymentOperationsQueryDto,
+  PromptExperimentOperationsQueryDto,
+  PromptListQueryDto,
+  PromptTargetAgentsQueryDto,
   UpdatePromptDto,
 } from "@repo/dto";
 import type {
@@ -20,6 +24,11 @@ import { BadRequestErrorException } from "../../common/exceptions/bad-request.js
 import { ConflictErrorException } from "../../common/exceptions/conflict.js";
 import { NotFoundErrorException } from "../../common/exceptions/not-found.js";
 import { createPromptLineDiff } from "../../common/prompt/line-diff.js";
+import {
+  DEFAULT_RUNTIME_CONFIG_REFRESH_INTERVAL_MS,
+  MINIMUM_RUNTIME_CONFIG_REFRESH_INTERVAL_MS,
+  RUNTIME_CONFIG_SERVER_CACHE_TTL_MS,
+} from "../../common/prompt/runtime-config.constants.js";
 import { runtimeConfigService } from "../openapi/runtime-config/runtime-config.service.js";
 import { PromptRepository, promptRepository } from "./prompt.repository.js";
 
@@ -31,12 +40,54 @@ export class PromptService {
   ) {}
 
   /** 워크스페이스 프롬프트 목록을 반환합니다. */
-  async list(userId: string, workspaceId: string) {
+  async list(userId: string, workspaceId: string, query: PromptListQueryDto) {
     await this.assertRead(userId, workspaceId);
+    const rows = await this.repository.list(workspaceId, query);
+    const hasNext = rows.length > query.limit;
+    const prompts = hasNext ? rows.slice(0, query.limit) : rows;
+    const promptIds = prompts.map((prompt) => prompt.id);
+    const [latestVersions, activeDeployments] = await Promise.all([
+      this.repository.listLatestVersions(workspaceId, promptIds),
+      this.repository.listActiveDeployments(workspaceId, promptIds),
+    ]);
+    const latestVersionByPromptId = new Map(
+      latestVersions.map((version) => [version.promptId, version]),
+    );
+    const deploymentsByPromptId = new Map<string, typeof activeDeployments>();
+    for (const deployment of activeDeployments) {
+      const current = deploymentsByPromptId.get(deployment.promptId) ?? [];
+      current.push(deployment);
+      deploymentsByPromptId.set(deployment.promptId, current);
+    }
     return {
-      items: (await this.repository.list(workspaceId)).map((prompt) =>
-        this.toPrompt(prompt),
-      ),
+      items: prompts.map((prompt) => {
+        const latestVersion = latestVersionByPromptId.get(prompt.id);
+        return {
+          ...this.toPrompt(prompt),
+          latestVersion: latestVersion
+            ? {
+                id: latestVersion.id,
+                version: latestVersion.version,
+                draftRevision: latestVersion.draftRevision,
+                createdAt: latestVersion.createdAt.toISOString(),
+              }
+            : null,
+          activeDeployments: (deploymentsByPromptId.get(prompt.id) ?? []).map(
+            (deployment) => ({
+              id: deployment.id,
+              versionId: deployment.versionId,
+              version: deployment.version.version,
+              environment: deployment.environment as "production" | "staging",
+              agentId: deployment.agentId,
+              agentName: deployment.agent?.name ?? null,
+              deployedAt: deployment.deployedAt.toISOString(),
+            }),
+          ),
+        };
+      }),
+      nextCursor: hasNext
+        ? this.encodeCursor(prompts.at(-1)!.updatedAt, prompts.at(-1)!.id)
+        : null,
     };
   }
 
@@ -224,6 +275,34 @@ export class PromptService {
     };
   }
 
+  /** 전체 프롬프트의 배포 이력을 한 번의 커서 조회로 반환합니다. */
+  async listDeploymentOperations(
+    userId: string,
+    workspaceId: string,
+    query: PromptDeploymentOperationsQueryDto,
+  ) {
+    await this.assertRead(userId, workspaceId);
+    const rows = await this.repository.listDeploymentOperations(
+      workspaceId,
+      query,
+    );
+    const hasNext = rows.length > query.limit;
+    const deployments = hasNext ? rows.slice(0, query.limit) : rows;
+    return {
+      items: deployments.map((deployment) => ({
+        ...this.toDeployment(deployment, deployment.version),
+        promptName: deployment.prompt.name,
+        agentName: deployment.agent?.name ?? null,
+      })),
+      nextCursor: hasNext
+        ? this.encodeCursor(
+            deployments.at(-1)!.deployedAt,
+            deployments.at(-1)!.id,
+          )
+        : null,
+    };
+  }
+
   /** 프롬프트 버전을 사용한 Run의 품질과 비용 지표를 집계합니다. */
   async getVersionMetrics(
     userId: string,
@@ -254,6 +333,51 @@ export class PromptService {
     };
   }
 
+  /** 프롬프트의 모든 버전 성능과 변경 영향 이슈를 한 번에 반환합니다. */
+  async getVersionPerformance(
+    userId: string,
+    workspaceId: string,
+    promptId: string,
+  ) {
+    await this.assertRead(userId, workspaceId);
+    await this.findPrompt(workspaceId, promptId);
+    const versions = await this.repository.listVersions(workspaceId, promptId);
+    const versionIds = versions.map((version) => version.id);
+    const [metricRows, issueRows] = await Promise.all([
+      this.repository.getVersionMetricsBatch(workspaceId, versionIds),
+      this.repository.countChangeImpactIssuesByVersion(workspaceId, versionIds),
+    ]);
+    const metricsByVersionId = new Map(
+      metricRows.map((metrics) => [metrics.versionId, metrics]),
+    );
+    const issueCountByVersionId = new Map(
+      issueRows.map((row) => [row.versionId, Number(row.issueCount)]),
+    );
+    return {
+      items: versions.map((version) => {
+        const metrics = metricsByVersionId.get(version.id);
+        const runCount = Number(metrics?.runCount ?? 0);
+        const successCount = Number(metrics?.successCount ?? 0);
+        const errorRunCount = Number(metrics?.errorRunCount ?? 0);
+        const totalCost = Number(metrics?.totalCost ?? 0);
+        return {
+          versionId: version.id,
+          version: version.version,
+          baseVersionId: version.baseVersionId,
+          createdAt: version.createdAt.toISOString(),
+          metrics: {
+            runCount,
+            successRate: runCount > 0 ? successCount / runCount : 0,
+            errorRate: runCount > 0 ? errorRunCount / runCount : 0,
+            totalCost,
+            averageCost: runCount > 0 ? totalCost / runCount : 0,
+          },
+          changeImpactIssueCount: issueCountByVersionId.get(version.id) ?? 0,
+        };
+      }),
+    };
+  }
+
   /** 검증된 버전 가중치로 A/B 실험을 생성합니다. */
   async createExperiment(
     userId: string,
@@ -263,6 +387,19 @@ export class PromptService {
   ) {
     await this.assertWrite(userId, workspaceId);
     await this.findPrompt(workspaceId, promptId);
+    if (
+      body.activate &&
+      !(await this.repository.findActiveDeployment(
+        workspaceId,
+        promptId,
+        body.environment,
+        body.agentId ?? null,
+      ))
+    ) {
+      throw new BadRequestErrorException(
+        "PROMPT_EXPERIMENT_REQUIRES_ACTIVE_DEPLOYMENT",
+      );
+    }
     let experiment: Awaited<ReturnType<PromptRepository["createExperiment"]>>;
     try {
       experiment = await this.repository.createExperiment(
@@ -292,6 +429,118 @@ export class PromptService {
     };
   }
 
+  /** 전체 A/B 실험과 변형별 성능·변경 영향 지표를 일괄 반환합니다. */
+  async listExperimentOperations(
+    userId: string,
+    workspaceId: string,
+    query: PromptExperimentOperationsQueryDto,
+  ) {
+    await this.assertRead(userId, workspaceId);
+    const rows = await this.repository.listExperimentOperations(
+      workspaceId,
+      query,
+    );
+    const hasNext = rows.length > query.limit;
+    const experiments = hasNext ? rows.slice(0, query.limit) : rows;
+    const versionIds = [
+      ...new Set(
+        experiments.flatMap((experiment) =>
+          experiment.variants.map((variant) => variant.versionId),
+        ),
+      ),
+    ];
+    const [versions, metricRows, issueRows] = await Promise.all([
+      this.repository.listVersionsByIds(workspaceId, versionIds),
+      this.repository.getVersionMetricsBatch(workspaceId, versionIds),
+      this.repository.countChangeImpactIssuesByVersion(workspaceId, versionIds),
+    ]);
+    const versionById = new Map(
+      versions.map((version) => [version.id, version]),
+    );
+    const metricsByVersionId = new Map(
+      metricRows.map((metrics) => [metrics.versionId, metrics]),
+    );
+    const issueCountByVersionId = new Map(
+      issueRows.map((row) => [row.versionId, Number(row.issueCount)]),
+    );
+    return {
+      items: experiments.map((experiment) => ({
+        ...this.toExperiment(experiment),
+        promptName: experiment.prompt.name,
+        agentName: experiment.agent?.name ?? null,
+        variants: experiment.variants.map((variant) => {
+          const version = versionById.get(variant.versionId);
+          const metrics = metricsByVersionId.get(variant.versionId);
+          const runCount = Number(metrics?.runCount ?? 0);
+          const successCount = Number(metrics?.successCount ?? 0);
+          const errorRunCount = Number(metrics?.errorRunCount ?? 0);
+          const totalCost = Number(metrics?.totalCost ?? 0);
+          return {
+            ...variant,
+            version: version?.version ?? "unknown",
+            metrics: {
+              runCount,
+              successRate: runCount > 0 ? successCount / runCount : 0,
+              errorRate: runCount > 0 ? errorRunCount / runCount : 0,
+              totalCost,
+              averageCost: runCount > 0 ? totalCost / runCount : 0,
+            },
+            changeImpactIssueCount:
+              issueCountByVersionId.get(variant.versionId) ?? 0,
+          };
+        }),
+      })),
+      nextCursor: hasNext
+        ? this.encodeCursor(
+            experiments.at(-1)!.createdAt,
+            experiments.at(-1)!.id,
+          )
+        : null,
+    };
+  }
+
+  /** 프롬프트 운영 현황과 SDK 설정 갱신 방식을 요약합니다. */
+  async getOperationsSummary(userId: string, workspaceId: string) {
+    await this.assertRead(userId, workspaceId);
+    const summary = await this.repository.getOperationsSummary(workspaceId);
+    const changedAt = summary.changedAt
+      ? new Date(summary.changedAt).toISOString()
+      : null;
+    return {
+      promptCount: summary.promptCount,
+      versionCount: summary.versionCount,
+      activeDeploymentCount: summary.activeDeploymentCount,
+      activeExperimentCount: summary.activeExperimentCount,
+      changeImpactIssueCount: summary.changeImpactIssueCount,
+      lastConfigurationChangedAt: changedAt,
+      sdkConfig: {
+        delivery: "PULL" as const,
+        defaultRefreshIntervalMs: DEFAULT_RUNTIME_CONFIG_REFRESH_INTERVAL_MS,
+        minimumRefreshIntervalMs: MINIMUM_RUNTIME_CONFIG_REFRESH_INTERVAL_MS,
+        serverCacheTtlMs: RUNTIME_CONFIG_SERVER_CACHE_TTL_MS,
+        acknowledgementTracking: false as const,
+      },
+    };
+  }
+
+  /** 전체 또는 특정 Agent 배포에 사용할 선택지를 반환합니다. */
+  async listTargetAgents(
+    userId: string,
+    workspaceId: string,
+    query: PromptTargetAgentsQueryDto,
+  ) {
+    await this.assertRead(userId, workspaceId);
+    return {
+      items: (await this.repository.listTargetAgents(workspaceId, query)).map(
+        (agent) => ({
+          id: agent.id,
+          name: agent.name,
+          clientAgentId: agent.clientAgentId ?? null,
+        }),
+      ),
+    };
+  }
+
   /** A/B 실험을 활성화, 일시 정지 또는 종료합니다. */
   async updateExperimentStatus(
     userId: string,
@@ -301,6 +550,27 @@ export class PromptService {
     status: "ACTIVE" | "PAUSED" | "COMPLETED",
   ) {
     await this.assertWrite(userId, workspaceId);
+    const current = await this.repository.findExperiment(
+      workspaceId,
+      promptId,
+      experimentId,
+    );
+    if (!current) {
+      throw new NotFoundErrorException("PROMPT_EXPERIMENT_NOT_FOUND");
+    }
+    if (
+      status === "ACTIVE" &&
+      !(await this.repository.findActiveDeployment(
+        workspaceId,
+        promptId,
+        current.environment,
+        current.agentId,
+      ))
+    ) {
+      throw new BadRequestErrorException(
+        "PROMPT_EXPERIMENT_REQUIRES_ACTIVE_DEPLOYMENT",
+      );
+    }
     let experiment: Awaited<
       ReturnType<PromptRepository["updateExperimentStatus"]>
     >;
@@ -421,6 +691,11 @@ export class PromptService {
       throw new ConflictErrorException(message);
     }
     throw error;
+  }
+
+  /** 최신순 페이지에서 안정적으로 이어 읽을 커서를 생성합니다. */
+  private encodeCursor(date: Date, id: string): string {
+    return `${date.toISOString()}|${id}`;
   }
 
   /** 프롬프트 조회 권한을 확인합니다. */

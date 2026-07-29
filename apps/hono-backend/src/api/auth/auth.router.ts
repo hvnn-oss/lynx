@@ -8,6 +8,11 @@ const authHandlers = createAuthHandlers();
 export const authRoute = new Hono<AppEnv>();
 
 authRoute.on(
+  authContract.signupPolicy.method,
+  authContract.signupPolicy.path,
+  ...authHandlers.signupPolicy,
+);
+authRoute.on(
   authContract.createEmailVerification.method,
   authContract.createEmailVerification.path,
   ...authHandlers.createEmailVerification,

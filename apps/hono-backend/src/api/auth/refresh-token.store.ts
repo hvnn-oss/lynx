@@ -10,7 +10,11 @@ const RefreshSessionSchema = z.object({
   sessionId: z.uuid(),
   userId: z.uuid(),
   secretHash: z.string().regex(/^[a-f0-9]{64}$/i),
-  previousSecretHash: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
+  previousSecretHash: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/i)
+    .optional(),
+  rotatedAt: z.number().int().nonnegative().optional(),
   createdAt: z.number().int().nonnegative(),
   ipAddress: z.string().optional(),
   userAgent: z.string().optional(),
@@ -26,8 +30,14 @@ end
 local session = cjson.decode(current)
 if session.secretHash ~= ARGV[1] then
   if session.previousSecretHash == ARGV[1] then
+    local rotatedAt = tonumber(session.rotatedAt or 0)
+    local now = tonumber(ARGV[4])
+    local grace = tonumber(ARGV[5])
+    if rotatedAt > 0 and now - rotatedAt <= grace then
+      return -2
+    end
     redis.call("DEL", KEYS[1])
-    return -2
+    return -3
   end
   return -1
 end
@@ -108,6 +118,8 @@ export class RefreshTokenStore {
       expectedSecretHash,
       JSON.stringify(replacement),
       env.REFRESH_TOKEN_TTL_SECONDS,
+      Math.floor(Date.now() / 1000),
+      env.REFRESH_TOKEN_REUSE_GRACE_SECONDS,
     );
 
     if (Number(result) !== 1) this.throwInvalidRefreshToken();

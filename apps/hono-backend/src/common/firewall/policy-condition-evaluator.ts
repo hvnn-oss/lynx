@@ -6,6 +6,7 @@ interface PolicySimulationContext {
     externalTarget?: string;
   };
   input?: unknown;
+  output?: unknown;
   state?: {
     callCount: number;
     totalCost: number;
@@ -14,14 +15,37 @@ interface PolicySimulationContext {
   };
 }
 
+export interface PolicyConditionTrace {
+  expression: string;
+  field: string;
+  operator: string;
+  expected: unknown;
+  actual: unknown;
+  matched: boolean;
+  negated: boolean;
+}
+
+export interface PolicyConditionEvaluation {
+  matched: boolean;
+  conditions: PolicyConditionTrace[];
+}
+
 const CONDITION_PATTERN =
-  /^\s*(tool\.(?:name|riskLevel|sideEffect|externalTarget)|state\.(?:callCount|totalCost|elapsedMs|loopCount)|input(?:\.[A-Za-z0-9_-]+)*)\s*(==|!=|>=|<=|>|<|contains)\s*(.+?)\s*$/;
+  /^\s*(tool\.(?:name|riskLevel|sideEffect|externalTarget)|state\.(?:callCount|totalCost|elapsedMs|loopCount)|(?:input|output)(?:\.[A-Za-z0-9_-]+)*)\s*(==|!=|>=|<=|>|<|contains)\s*(.+?)\s*$/;
 const UNSAFE_PATH_SEGMENTS = new Set(["__proto__", "prototype", "constructor"]);
 
-/** SDK와 동일한 제한된 조건 문법을 서버에서 안전하게 평가합니다. */
+/** SDK와 같은 제한된 조건 문법을 서버에서 안전하게 평가합니다. */
 export class PolicyConditionEvaluator {
-  /** 정책 조건 한 개가 주어진 도구 호출과 일치하는지 반환합니다. */
+  /** 정책 조건이 주어진 도구 호출과 일치하는지 반환합니다. */
   matches(condition: string, context: PolicySimulationContext): boolean {
+    return this.evaluate(condition, context).matched;
+  }
+
+  /** 최종 판단과 각 원자 조건의 비교 결과를 함께 반환합니다. */
+  evaluate(
+    condition: string,
+    context: PolicySimulationContext,
+  ): PolicyConditionEvaluation {
     return this.evaluateExpression(condition.trim(), context);
   }
 
@@ -29,33 +53,70 @@ export class PolicyConditionEvaluator {
   private evaluateExpression(
     expression: string,
     context: PolicySimulationContext,
-  ): boolean {
+  ): PolicyConditionEvaluation {
     const normalized = this.stripOuterParentheses(expression);
     const orParts = this.splitTopLevel(normalized, "OR");
     if (orParts.length > 1) {
-      return orParts.some((part) => this.evaluateExpression(part, context));
+      const results = orParts.map((part) =>
+        this.evaluateExpression(part, context),
+      );
+      return {
+        matched: results.some((result) => result.matched),
+        conditions: results.flatMap((result) => result.conditions),
+      };
     }
+
     const andParts = this.splitTopLevel(normalized, "AND");
     if (andParts.length > 1) {
-      return andParts.every((part) => this.evaluateExpression(part, context));
+      const results = andParts.map((part) =>
+        this.evaluateExpression(part, context),
+      );
+      return {
+        matched: results.every((result) => result.matched),
+        conditions: results.flatMap((result) => result.conditions),
+      };
     }
+
     if (/^NOT\s+/i.test(normalized)) {
-      return !this.evaluateExpression(
+      const result = this.evaluateExpression(
         normalized.replace(/^NOT\s+/i, ""),
         context,
       );
+      return {
+        matched: !result.matched,
+        conditions: result.conditions.map((condition) => ({
+          ...condition,
+          matched: !condition.matched,
+          negated: !condition.negated,
+        })),
+      };
     }
 
     const parsed = CONDITION_PATTERN.exec(normalized);
     if (!parsed) {
       throw new Error(`Unsupported Lynx policy condition: ${expression}`);
     }
+
     const actual = this.readPath(parsed[1]!, context);
     const expected = this.parseLiteral(parsed[3]!);
-    return this.compare(actual, parsed[2]!, expected);
+    const matched = this.compare(actual, parsed[2]!, expected);
+    return {
+      matched,
+      conditions: [
+        {
+          expression: normalized,
+          field: parsed[1]!,
+          operator: parsed[2]!,
+          expected,
+          actual: actual ?? null,
+          matched,
+          negated: false,
+        },
+      ],
+    };
   }
 
-  /** 따옴표와 괄호 밖에 있는 논리 연산자만 기준으로 분리합니다. */
+  /** 중첩된 괄호 밖의 논리 연산자만 기준으로 분리합니다. */
   private splitTopLevel(expression: string, operator: "AND" | "OR"): string[] {
     const parts: string[] = [];
     let depth = 0;
@@ -97,7 +158,7 @@ export class PolicyConditionEvaluator {
     return parts;
   }
 
-  /** 전체 표현식을 감싸는 바깥 괄호만 제거합니다. */
+  /** 전체 표현식을 감싸는 가장 바깥 괄호만 제거합니다. */
   private stripOuterParentheses(expression: string): string {
     let value = expression.trim();
     while (value.startsWith("(") && value.endsWith(")")) {
@@ -137,8 +198,19 @@ export class PolicyConditionEvaluator {
     if (path === "state.elapsedMs") return context.state?.elapsedMs ?? 0;
     if (path === "state.loopCount") return context.state?.loopCount ?? 0;
 
-    let value: unknown = context.input;
-    for (const segment of path.split(".").slice(1)) {
+    const [root, ...segments] = path.split(".");
+    let value: unknown = root === "output" ? context.output : context.input;
+    if (segments.length === 0) return value;
+
+    // 문자열 본문은 input.value/output.value라는 공통 경로로 평가합니다.
+    if (
+      segments.length === 1 &&
+      segments[0] === "value" &&
+      (value === null || typeof value !== "object")
+    ) {
+      return value;
+    }
+    for (const segment of segments) {
       if (UNSAFE_PATH_SEGMENTS.has(segment)) {
         throw new Error(`Unsafe Lynx policy path segment: ${segment}`);
       }
@@ -180,8 +252,9 @@ export class PolicyConditionEvaluator {
       }
       return Array.isArray(actual) && actual.includes(expected);
     }
-    if (typeof actual !== "number" || typeof expected !== "number")
+    if (typeof actual !== "number" || typeof expected !== "number") {
       return false;
+    }
     if (operator === ">") return actual > expected;
     if (operator === ">=") return actual >= expected;
     if (operator === "<") return actual < expected;

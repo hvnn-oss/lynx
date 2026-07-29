@@ -36,6 +36,11 @@ export interface RecordIssueInput {
   workspaceId: string;
   title: string;
   summary: string;
+  message?: {
+    titleKey: string;
+    summaryKey: string;
+    params: Record<string, unknown>;
+  };
   category: IssueCategory;
   severity: IssueSeverity;
   source: IssueSource;
@@ -77,6 +82,11 @@ export interface IssueRecordDetectionDecision {
   category?: IssueCategory;
   severity?: IssueSeverity;
   title?: string;
+  message?: {
+    titleKey: string;
+    summaryKey: string;
+    params: Record<string, unknown>;
+  };
   isBlocked?: boolean;
   stableFingerprint?: string;
   exactFingerprint?: string;

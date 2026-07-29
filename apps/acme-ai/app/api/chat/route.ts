@@ -228,6 +228,10 @@ export async function POST(request: NextRequest) {
         }
 
         try {
+          tracer.firewallInput(latestMessage.content, {
+            label: "orbit.chat.input",
+            riskLevel: "LOW",
+          });
           const toolContext =
             body.toolsEnabled === false
               ? undefined
@@ -256,6 +260,10 @@ export async function POST(request: NextRequest) {
             temperature: settings.temperature,
             maxTokens: settings.maxTokens,
             captureOutput: settings.captureOutput,
+          });
+          tracer.firewallOutput(result.text, {
+            label: "orbit.chat.output",
+            riskLevel: "LOW",
           });
 
           if (settings.memoryEnabled) {
@@ -410,6 +418,7 @@ function resolveModel(provider?: ProviderId, model?: string) {
   return selected;
 }
 
+/** 클라이언트 메시지를 Provider 공통 입력 필드로 제한하고 정규화합니다. */
 function normalizeMessages(
   messages: ChatRequest["messages"],
   contextMessages: number,
@@ -422,7 +431,11 @@ function normalizeMessages(
         message.content.trim().length > 0,
     )
     .slice(-contextMessages)
-    .map((message) => ({ ...message, content: message.content.trim() }));
+    .map((message) => ({
+      // 화면용 id 등 Provider 계약에 없는 필드는 외부 요청에 전달하지 않습니다.
+      role: message.role,
+      content: message.content.trim(),
+    }));
 }
 
 function appendToolContext(

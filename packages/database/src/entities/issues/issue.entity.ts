@@ -122,6 +122,15 @@ export class IssueEntity {
   @Column({ type: "text" })
   summary!: string;
 
+  @Column({ type: "varchar", length: 120, nullable: true })
+  titleKey!: string | null;
+
+  @Column({ type: "varchar", length: 120, nullable: true })
+  summaryKey!: string | null;
+
+  @Column({ type: "jsonb", nullable: true })
+  messageParams!: Record<string, unknown> | null;
+
   @Column({ type: "varchar", length: 40 })
   category!: IssueCategory;
 

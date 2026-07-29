@@ -7,6 +7,10 @@ import {
   isAccessTokenExpired,
   refreshAccessToken,
 } from "@/lib/api";
+import {
+  getCurrentRedirectPath,
+  withRedirect,
+} from "@/lib/safe-redirect";
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -39,7 +43,10 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
         if (isMounted) setIsAuthenticated(true);
       } catch {
         clearStoredAccessToken();
-        window.location.href = "/login";
+        window.location.href = withRedirect(
+          "/login",
+          getCurrentRedirectPath(),
+        );
       }
     };
 

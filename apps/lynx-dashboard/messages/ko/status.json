@@ -2,5 +2,80 @@
   "open": "열림",
   "investigating": "조사 중",
   "resolved": "해결됨",
-  "ignored": "무시됨"
+  "ignored": "무시됨",
+  "page": {
+    "title": "데이터 수집 상태",
+    "subtitle": "SDK 이벤트가 Lynx 서버와 데이터베이스에 정상적으로 저장되는지 확인합니다.",
+    "window": "최근 {hours}시간의 실제 저장 데이터를 기준으로 집계합니다.",
+    "health": {
+      "HEALTHY": {
+        "label": "정상 수집",
+        "title": "이벤트가 정상적으로 저장되고 있습니다",
+        "description": "최근 이벤트가 확인되었고 저장 지연도 정상 범위입니다."
+      },
+      "DELAYED": {
+        "label": "저장 지연",
+        "title": "이벤트 저장이 평소보다 지연되고 있습니다",
+        "description": "SDK 이벤트 시각부터 데이터베이스 저장까지의 p95 지연이 5초를 넘었습니다."
+      },
+      "INACTIVE": {
+        "label": "최근 수집 없음",
+        "title": "최근 15분 동안 저장된 이벤트가 없습니다",
+        "description": "트래픽이 있어야 하는 환경이라면 SDK 연결, API Key 및 서버 로그를 확인해 주세요."
+      },
+      "NO_DATA": {
+        "label": "데이터 없음",
+        "title": "아직 저장된 이벤트가 없습니다",
+        "description": "SDK에서 첫 이벤트를 전송하면 수집 상태와 저장 지연이 표시됩니다."
+      }
+    },
+    "metrics": {
+      "lastStoredAt": {
+        "label": "마지막 저장",
+        "description": "데이터베이스에 저장된 최신 이벤트",
+        "none": "-"
+      },
+      "storedEvents": {
+        "label": "저장 이벤트",
+        "description": "최근 {hours}시간 동안 저장된 이벤트"
+      },
+      "activeRuns": {
+        "label": "활성 Run",
+        "description": "최근 이벤트가 저장된 Run"
+      },
+      "activeAgents": {
+        "label": "활성 Agent",
+        "description": "최근 이벤트를 전송한 Agent"
+      },
+      "storageDelay": {
+        "label": "저장 지연 p95",
+        "description": "SDK 이벤트 시각부터 DB 저장까지"
+      }
+    },
+    "volume": {
+      "title": "시간대별 저장 이벤트",
+      "description": "최근 24시간 동안 데이터베이스에 저장된 이벤트 수입니다.",
+      "empty": "최근 24시간 동안 저장된 이벤트가 없습니다."
+    },
+    "sources": {
+      "title": "Agent·환경별 수집",
+      "description": "{environment} · 마지막 저장 {lastStoredAt}",
+      "eventCount": "{count}건",
+      "empty": "최근 이벤트를 전송한 Agent가 없습니다."
+    },
+    "eventTypes": {
+      "title": "이벤트 타입별 수집",
+      "eventCount": "{count}건",
+      "empty": "집계할 이벤트 타입이 없습니다."
+    },
+    "empty": {
+      "title": "사용 가능한 워크스페이스가 없습니다",
+      "description": "워크스페이스를 만든 뒤 SDK를 연결하면 수집 상태를 확인할 수 있습니다."
+    },
+    "error": {
+      "title": "수집 상태를 불러오지 못했습니다",
+      "description": "수집 상태 API 응답을 확인한 뒤 다시 시도해 주세요.",
+      "action": "다시 시도"
+    }
+  }
 }

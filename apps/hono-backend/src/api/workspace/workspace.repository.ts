@@ -1,6 +1,7 @@
 import { ERROR_CODES } from "@repo/constants";
 import {
   OrganizationEntity,
+  OrganizationPlanEntity,
   OrganizationUserEntity,
   WorkspaceApiKeyEntity,
   WorkspaceEntity,
@@ -136,21 +137,27 @@ export class WorkspaceRepository {
     return (result.affected ?? 0) > 0;
   }
 
-  /** 조직을 잠그고 요금제 정보와 함께 조회합니다. */
+  /** 조직 행만 잠근 뒤 요금제 정보는 별도로 조회합니다. */
   private async getLockedOrganization(
     manager: EntityManager,
     orgId: string,
   ): Promise<OrganizationEntity> {
     const organization = await manager
       .getRepository(OrganizationEntity)
-      .findOne({
-        where: { id: orgId },
-        relations: { plan: true },
-        lock: { mode: "pessimistic_write" },
-      });
+      .createQueryBuilder("organization")
+      .setLock("pessimistic_write")
+      .where("organization.id = :orgId", { orgId })
+      .getOne();
     if (!organization)
       throw new ForbiddenErrorException(ERROR_CODES.INVALID_ORG);
 
+    // 관계를 함께 잠그면 PostgreSQL의 outer join 잠금 제한에 걸리므로 분리합니다.
+    const plan = await manager
+      .getRepository(OrganizationPlanEntity)
+      .findOneBy({ id: organization.planId });
+    if (!plan) throw new ForbiddenErrorException(ERROR_CODES.INVALID_ORG);
+
+    organization.plan = plan;
     return organization;
   }
 

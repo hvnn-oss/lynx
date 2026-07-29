@@ -1,5 +1,6 @@
 import {
   OrganizationIdParamsSchema,
+  OrganizationListResponseSchema,
   OrganizationProfileResponseSchema,
   OrganizationMemberListResponseSchema,
   OrganizationResponseSchema,
@@ -7,6 +8,10 @@ import {
   RegisterOrganizationSchema,
   SuccessResponseSchema,
   UpdateOrganizationProfileSchema,
+  CreateTeamInvitationSchema,
+  CreateTeamInvitationResponseSchema,
+  TeamInvitationListResponseSchema,
+  TeamInvitationParamsSchema,
 } from "@repo/dto";
 import { defineEndpoint } from "./util/endpoint.js";
 
@@ -14,6 +19,12 @@ export const ORGANIZATION_BASE_PATH = "/organization";
 
 export const organizationContract = {
   basePath: ORGANIZATION_BASE_PATH,
+  list: defineEndpoint({
+    method: "GET",
+    path: "/list",
+    request: null,
+    response: OrganizationListResponseSchema,
+  }),
   create: defineEndpoint({
     method: "POST",
     path: "/create",
@@ -40,6 +51,27 @@ export const organizationContract = {
     params: OrganizationIdParamsSchema,
     request: null,
     response: OrganizationMemberListResponseSchema,
+  }),
+  createInvitation: defineEndpoint({
+    method: "POST",
+    path: "/:organizationId/invitations",
+    params: OrganizationIdParamsSchema,
+    request: CreateTeamInvitationSchema,
+    response: CreateTeamInvitationResponseSchema,
+  }),
+  listInvitations: defineEndpoint({
+    method: "GET",
+    path: "/:organizationId/invitations",
+    params: OrganizationIdParamsSchema,
+    request: null,
+    response: TeamInvitationListResponseSchema,
+  }),
+  revokeInvitation: defineEndpoint({
+    method: "DELETE",
+    path: "/:organizationId/invitations/:invitationId",
+    params: TeamInvitationParamsSchema,
+    request: null,
+    response: SuccessResponseSchema,
   }),
   uploadProfileImage: defineEndpoint({
     method: "PUT",

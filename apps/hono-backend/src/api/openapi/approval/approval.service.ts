@@ -4,7 +4,6 @@ import {
   OpenAPIApprovalRepository,
   openAPIApprovalRepository,
 } from "./approval.repository.js";
-import { firewallNotificationService } from "../../../common/services/firewall-notification.service.js";
 
 /** Creates SDK approval requests and returns their current status. */
 export class OpenAPIApprovalService {
@@ -24,21 +23,6 @@ export class OpenAPIApprovalService {
       body,
     );
     const request = created.request;
-    if (created.isNew) {
-      firewallNotificationService.notify({
-        workspaceId,
-        policyId: request.reportedPolicyId,
-        type: "approval.requested",
-        data: {
-          approvalId: request.id,
-          toolName: request.toolName,
-          runId: request.runId,
-          sessionId: request.sessionId,
-          agentId: request.agentId,
-          expiresAt: request.expiresAt.toISOString(),
-        },
-      });
-    }
     return this.toResponse(request);
   }
 

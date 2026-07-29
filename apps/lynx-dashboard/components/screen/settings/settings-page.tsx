@@ -1,31 +1,59 @@
 "use client";
 
-import { requestContract } from "@/lib/api";
+import { requestBinaryContract, requestContract } from "@/lib/api";
+import { useUserStore } from "@/stores/userStore";
 import {
   organizationContract,
   profileContract,
+  integrationContract,
   workspaceContract,
 } from "@repo/contract";
+import type {
+  DashboardBootstrapResponseDto,
+  SlackIntegrationResponseDto,
+  TeamInvitationResponseDto,
+  TeamInvitationRole,
+} from "@repo/dto";
+import {
+  SLACK_NOTIFICATION_EVENT_TYPE,
+  USER_PERMISSIONS,
+  type SlackNotificationEventType,
+} from "@repo/constants";
 import { Button } from "@repo/ui/components/ui/button";
 import { Input } from "@repo/ui/components/ui/input";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@repo/ui/components/ui/avatar";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@repo/ui/components/ui/select";
 import {
   AlertTriangle,
   Bell,
   Check,
   Copy,
   ExternalLink,
+  ImageUp,
   KeyRound,
   LockKeyhole,
   Plus,
   RefreshCw,
+  RotateCcw,
+  Send,
   ShieldCheck,
   Trash2,
-  UserRound,
   Users,
   Webhook,
 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export type SettingsPageKind =
   | "organization-general"
@@ -40,24 +68,15 @@ export type SettingsPageKind =
   | "openapi-ingestion"
   | "openapi-runtime-config";
 
-type Workspace = { id: string; name: string; orgId: string };
-type Profile = {
-  id: string;
-  email: string;
-  name: string;
-  profileImageUrl: string | null;
-};
-type Organization = {
-  id: string;
-  name: string;
-  profileImageUrl: string | null;
-  role: string;
-};
+type Workspace = DashboardBootstrapResponseDto["workspaces"][number];
+type Profile = DashboardBootstrapResponseDto["user"];
+type Organization = DashboardBootstrapResponseDto["organizations"][number];
 type Member = {
   id: number;
   userId: string;
   name: string;
   email: string;
+  profileImageUrl: string | null;
   role: string;
   joinedAt: string;
 };
@@ -72,13 +91,33 @@ type ApiKeyItem = {
   expiresAt: string | null;
   revokedAt: string | null;
 };
+type PendingProfileImage = {
+  file: File;
+  previewUrl: string;
+};
 
 export function SettingsPage({ kind }: { kind: SettingsPageKind }) {
   const t = useTranslations("settings");
+  const storedUser = useUserStore((state) => state.user);
+  const storedOrganizations = useUserStore((state) => state.organizations);
+  const storedWorkspaces = useUserStore((state) => state.workspaces);
+  const activeOrganizationId = useUserStore(
+    (state) => state.activeOrganizationId,
+  );
+  const setActiveOrganization = useUserStore(
+    (state) => state.setActiveOrganization,
+  );
+  const updateStoredUser = useUserStore((state) => state.updateUser);
+  const updateStoredOrganization = useUserStore(
+    (state) => state.updateOrganization,
+  );
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
+  const [teamInvitations, setTeamInvitations] = useState<
+    TeamInvitationResponseDto[]
+  >([]);
   const [apiKeys, setApiKeys] = useState<ApiKeyItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -87,45 +126,47 @@ export function SettingsPage({ kind }: { kind: SettingsPageKind }) {
     setIsLoading(true);
     setError(null);
     try {
-      const workspaceResponse = await requestContract({
-        basePath: workspaceContract.basePath,
-        endpoint: workspaceContract.list,
-      });
-      const selectedWorkspace = workspaceResponse.items[0] ?? null;
+      const selectedOrganization =
+        storedOrganizations.find((item) => item.id === activeOrganizationId) ??
+        storedOrganizations[0] ??
+        null;
+      const selectedWorkspace =
+        storedWorkspaces.find(
+          (item) => item.orgId === selectedOrganization?.id,
+        ) ?? (selectedOrganization ? null : (storedWorkspaces[0] ?? null));
       setWorkspace(selectedWorkspace);
+      setProfile(storedUser);
+      setOrganization(selectedOrganization);
 
-      if (kind.startsWith("personal")) {
-        setProfile(
-          await requestContract({
-            basePath: profileContract.basePath,
-            endpoint: profileContract.get,
-          }),
-        );
-      }
-      if (kind.startsWith("organization") && selectedWorkspace) {
-        const organizationId = selectedWorkspace.orgId;
-        setOrganization(
-          await requestContract({
-            basePath: organizationContract.basePath,
-            endpoint: organizationContract.getProfile,
-            params: { organizationId },
-          }),
-        );
+      if (kind.startsWith("organization") && selectedOrganization) {
+        const organizationId = selectedOrganization.id;
         if (kind === "organization-members") {
-          const response = await requestContract({
-            basePath: organizationContract.basePath,
-            endpoint: organizationContract.listMembers,
-            params: { organizationId },
-          });
-          setMembers(response.items);
+          const [memberResponse, invitationResponse] = await Promise.all([
+            requestContract({
+              basePath: organizationContract.basePath,
+              endpoint: organizationContract.listMembers,
+              params: { organizationId },
+            }),
+            requestContract({
+              basePath: organizationContract.basePath,
+              endpoint: organizationContract.listInvitations,
+              params: { organizationId },
+            }),
+          ]);
+          setMembers(memberResponse.items);
+          setTeamInvitations(invitationResponse.items);
         }
         if (kind === "organization-api-keys") {
-          const response = await requestContract({
-            basePath: workspaceContract.basePath,
-            endpoint: workspaceContract.listApiKeys,
-            params: { workspaceId: selectedWorkspace.id },
-          });
-          setApiKeys(response.items);
+          if (selectedWorkspace) {
+            const response = await requestContract({
+              basePath: workspaceContract.basePath,
+              endpoint: workspaceContract.listApiKeys,
+              params: { workspaceId: selectedWorkspace.id },
+            });
+            setApiKeys(response.items);
+          } else {
+            setApiKeys([]);
+          }
         }
       }
     } catch (caught) {
@@ -164,16 +205,51 @@ export function SettingsPage({ kind }: { kind: SettingsPageKind }) {
   if (kind === "organization-general") {
     return (
       <OrganizationGeneral
+        key={organization?.id}
         organization={organization}
-        onSaved={setOrganization}
+        organizations={storedOrganizations}
+        onSelected={(organizationId) => {
+          const selectedOrganization =
+            storedOrganizations.find((item) => item.id === organizationId) ??
+            null;
+          setActiveOrganization(organizationId);
+          setOrganization(selectedOrganization);
+          setWorkspace(
+            storedWorkspaces.find((item) => item.orgId === organizationId) ??
+              null,
+          );
+        }}
+        onSaved={(nextOrganization) => {
+          setOrganization(nextOrganization);
+          updateStoredOrganization(nextOrganization);
+        }}
       />
     );
   }
   if (kind === "organization-members") {
-    return <OrganizationMembers members={members} />;
+    return (
+      <OrganizationMembers
+        organization={organization}
+        members={members}
+        invitations={teamInvitations}
+        onReload={load}
+      />
+    );
   }
   if (kind === "organization-integrations") {
-    return <OrganizationIntegrations />;
+    return (
+      <OrganizationIntegrations
+        workspace={workspace}
+        workspaces={storedWorkspaces.filter(
+          (item) => item.orgId === organization?.id,
+        )}
+        onWorkspaceSelected={(workspaceId) =>
+          setWorkspace(
+            storedWorkspaces.find((item) => item.id === workspaceId) ?? null,
+          )
+        }
+      />
+    );
   }
   if (kind === "organization-api-keys") {
     return (
@@ -188,7 +264,15 @@ export function SettingsPage({ kind }: { kind: SettingsPageKind }) {
     return <OrganizationSecurity organization={organization} />;
   }
   if (kind === "personal-general") {
-    return <PersonalGeneral profile={profile} onSaved={setProfile} />;
+    return (
+      <PersonalGeneral
+        profile={profile}
+        onSaved={(nextProfile) => {
+          setProfile(nextProfile);
+          updateStoredUser(nextProfile);
+        }}
+      />
+    );
   }
   if (kind === "personal-security") return <PersonalSecurity />;
   if (kind === "personal-preferences") return <PersonalPreferences />;
@@ -200,14 +284,21 @@ export function SettingsPage({ kind }: { kind: SettingsPageKind }) {
 
 function OrganizationGeneral({
   organization,
+  organizations,
+  onSelected,
   onSaved,
 }: {
   organization: Organization | null;
+  organizations: Organization[];
+  onSelected: (organizationId: string) => void;
   onSaved: (organization: Organization) => void;
 }) {
   const t = useTranslations("settings");
+  const profileT = useTranslations("profileSettings");
   const [name, setName] = useState(organization?.name ?? "");
   const [status, setStatus] = useState("");
+  const { pendingImage, selectImage, clearPendingImage } =
+    usePendingProfileImage();
   if (!organization) return <EmptyWorkspace />;
   return (
     <SettingsShell
@@ -215,6 +306,31 @@ function OrganizationGeneral({
       description={t("organization.generalDescription")}
     >
       <SettingsPanel>
+        {organizations.length > 1 ? (
+          <FormField label={profileT("organizationLabel")}>
+            <Select
+              value={organization.id}
+              onValueChange={(value) => onSelected(value ?? organization.id)}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {organizations.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+        ) : null}
+        <ProfileImageEditor
+          name={name}
+          imageUrl={organization.profileImageUrl}
+          previewUrl={pendingImage?.previewUrl ?? null}
+          onSelect={selectImage}
+        />
         <FormField label={t("organization.name")}>
           <Input
             value={name}
@@ -226,13 +342,28 @@ function OrganizationGeneral({
         <SaveRow
           status={status}
           onSave={async () => {
-            const response = await requestContract({
+            let nextOrganization = await requestContract({
               basePath: organizationContract.basePath,
               endpoint: organizationContract.updateProfile,
               params: { organizationId: organization.id },
               request: { name },
             });
-            onSaved(response);
+
+            if (pendingImage) {
+              const image = await requestBinaryContract({
+                basePath: organizationContract.basePath,
+                endpoint: organizationContract.uploadProfileImage,
+                params: { organizationId: organization.id },
+                body: pendingImage.file,
+              });
+              nextOrganization = {
+                ...nextOrganization,
+                profileImageUrl: image.profileImageUrl,
+              };
+            }
+
+            onSaved(nextOrganization);
+            clearPendingImage();
             setStatus(t("saved"));
           }}
         />
@@ -241,25 +372,168 @@ function OrganizationGeneral({
   );
 }
 
-function OrganizationMembers({ members }: { members: Member[] }) {
+function OrganizationMembers({
+  organization,
+  members,
+  invitations,
+  onReload,
+}: {
+  organization: Organization | null;
+  members: Member[];
+  invitations: TeamInvitationResponseDto[];
+  onReload: () => Promise<void>;
+}) {
   const t = useTranslations("settings");
+  const inviteT = useTranslations("teamInviteSettings");
+  const [isCreating, setIsCreating] = useState(false);
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<TeamInvitationRole>(
+    USER_PERMISSIONS.MEMBER,
+  );
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [inviteError, setInviteError] = useState("");
+  const [createdInvitationUrl, setCreatedInvitationUrl] = useState("");
+
+  async function createInvitation() {
+    if (!organization) return;
+    setIsSubmitting(true);
+    setInviteError("");
+    try {
+      const invitation = await requestContract({
+        basePath: organizationContract.basePath,
+        endpoint: organizationContract.createInvitation,
+        params: { organizationId: organization.id },
+        request: { email, role },
+      });
+      setCreatedInvitationUrl(invitation.invitationUrl);
+      setEmail("");
+      setRole(USER_PERMISSIONS.MEMBER);
+      await onReload();
+    } catch (error) {
+      setInviteError(getErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
     <SettingsShell
       title={t("organization.membersTitle")}
       description={t("organization.membersDescription")}
       action={
-        <Button disabled>
+        <Button
+          disabled={!organization}
+          onClick={() => setIsCreating((value) => !value)}
+        >
           <Plus className="size-4" />
-          {t("organization.member")}
+          {inviteT("inviteMember")}
         </Button>
       }
     >
+      {isCreating ? (
+        <SettingsPanel>
+          {createdInvitationUrl ? (
+            <>
+              <p className="text-sm font-medium">{inviteT("linkReady")}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {inviteT("linkDescription")}
+              </p>
+              <div className="mt-4 flex gap-2">
+                <Input readOnly value={createdInvitationUrl} />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  title={inviteT("copyLink")}
+                  onClick={() =>
+                    void navigator.clipboard.writeText(createdInvitationUrl)
+                  }
+                >
+                  <Copy className="size-4" />
+                </Button>
+              </div>
+              <div className="mt-4 flex justify-end border-t pt-4">
+                <Button
+                  onClick={() => {
+                    setCreatedInvitationUrl("");
+                    setIsCreating(false);
+                  }}
+                >
+                  {inviteT("done")}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="grid gap-4 sm:grid-cols-[1fr_180px]">
+                <FormField label={inviteT("email")}>
+                  <Input
+                    type="email"
+                    value={email}
+                    placeholder="member@example.com"
+                    onChange={(event) => setEmail(event.target.value)}
+                  />
+                </FormField>
+                <FormField label={inviteT("role")}>
+                  <Select
+                    value={role}
+                    onValueChange={(value) =>
+                      setRole(
+                        value === USER_PERMISSIONS.ADMIN
+                          ? USER_PERMISSIONS.ADMIN
+                          : value === USER_PERMISSIONS.VIEWER
+                            ? USER_PERMISSIONS.VIEWER
+                            : USER_PERMISSIONS.MEMBER,
+                      )
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={USER_PERMISSIONS.ADMIN}>
+                        {inviteT("roles.ADMIN")}
+                      </SelectItem>
+                      <SelectItem value={USER_PERMISSIONS.MEMBER}>
+                        {inviteT("roles.MEMBER")}
+                      </SelectItem>
+                      <SelectItem value={USER_PERMISSIONS.VIEWER}>
+                        {inviteT("roles.VIEWER")}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FormField>
+              </div>
+              {inviteError ? (
+                <p className="text-sm text-destructive">{inviteError}</p>
+              ) : null}
+              <div className="flex justify-end gap-2 border-t pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsCreating(false)}
+                >
+                  {inviteT("cancel")}
+                </Button>
+                <Button
+                  disabled={!email || isSubmitting}
+                  onClick={() => void createInvitation()}
+                >
+                  {isSubmitting ? inviteT("sending") : inviteT("send")}
+                </Button>
+              </div>
+            </>
+          )}
+        </SettingsPanel>
+      ) : null}
+
       <SettingsPanel className="divide-y p-0">
         {members.map((member) => (
           <div key={member.id} className="flex items-center gap-4 px-4 py-3">
-            <div className="flex size-9 items-center justify-center rounded-full bg-muted">
-              <UserRound className="size-4" />
-            </div>
+            <Avatar>
+              {member.profileImageUrl ? (
+                <AvatarImage src={member.profileImageUrl} alt={member.name} />
+              ) : null}
+              <AvatarFallback>{getInitials(member.name)}</AvatarFallback>
+            </Avatar>
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-medium">{member.name}</div>
               <div className="truncate text-xs text-muted-foreground">
@@ -273,42 +547,499 @@ function OrganizationMembers({ members }: { members: Member[] }) {
           </div>
         ))}
       </SettingsPanel>
+
+      {invitations.length > 0 ? (
+        <section>
+          <h2 className="mb-2 text-sm font-medium">
+            {inviteT("invitationHistory")}
+          </h2>
+          <SettingsPanel className="divide-y p-0">
+            {invitations.map((invitation) => (
+              <div
+                key={invitation.id}
+                className="flex items-center gap-4 px-4 py-3"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">
+                    {invitation.email}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {inviteT("expires", {
+                      date: new Date(invitation.expiresAt).toLocaleString(),
+                    })}
+                  </div>
+                </div>
+                <Badge>{inviteT(`roles.${invitation.role}`)}</Badge>
+                <Badge>{inviteT(`status.${invitation.status}`)}</Badge>
+                {invitation.status === "PENDING" ? (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    title={inviteT("revoke")}
+                    onClick={async () => {
+                      if (!organization) return;
+                      await requestContract({
+                        basePath: organizationContract.basePath,
+                        endpoint: organizationContract.revokeInvitation,
+                        params: {
+                          organizationId: organization.id,
+                          invitationId: invitation.id,
+                        },
+                      });
+                      await onReload();
+                    }}
+                  >
+                    <Trash2 className="size-4 text-destructive" />
+                  </Button>
+                ) : null}
+              </div>
+            ))}
+          </SettingsPanel>
+        </section>
+      ) : null}
     </SettingsShell>
   );
 }
 
-function OrganizationIntegrations() {
+function OrganizationIntegrations({
+  workspace,
+  workspaces,
+  onWorkspaceSelected,
+}: {
+  workspace: Workspace | null;
+  workspaces: Workspace[];
+  onWorkspaceSelected: (workspaceId: string) => void;
+}) {
   const t = useTranslations("settings");
-  const integrations = [
-    ["Slack", t("organization.slackDescription"), Bell],
-    ["Webhook", t("organization.webhookDescription"), Webhook],
-    ["PagerDuty", t("organization.pagerdutyDescription"), AlertTriangle],
-  ] as const;
+  const queryClient = useQueryClient();
+  const workspaceId = workspace?.id ?? "";
+  const slack = useQuery({
+    queryKey: ["settings", "integrations", "slack", workspaceId],
+    enabled: Boolean(workspaceId),
+    queryFn: () =>
+      requestContract({
+        basePath: integrationContract.basePath,
+        endpoint: integrationContract.getSlack,
+        params: { workspaceId },
+      }),
+    refetchInterval: (query) =>
+      query.state.data?.deliveries.some((delivery) =>
+        ["PENDING", "PROCESSING", "RETRY_SCHEDULED"].includes(delivery.status),
+      )
+        ? 2_000
+        : false,
+  });
+
+  if (!workspace) return <EmptyWorkspace />;
+
+  async function updateSlackCache(next: SlackIntegrationResponseDto) {
+    queryClient.setQueryData(
+      ["settings", "integrations", "slack", workspaceId],
+      next,
+    );
+  }
+
   return (
     <SettingsShell
       title={t("organization.integrationsTitle")}
       description={t("organization.integrationsDescription")}
     >
-      <div className="grid gap-3">
-        {integrations.map(([name, description, Icon]) => (
-          <SettingsPanel key={name} className="flex items-center gap-4">
-            <div className="flex size-10 items-center justify-center rounded-lg border">
-              <Icon className="size-5" />
-            </div>
-            <div className="flex-1">
-              <div className="text-sm font-medium">{name}</div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                {description}
-              </div>
-            </div>
-            <Badge>{t("organization.notConnected")}</Badge>
-            <Button variant="outline" disabled>
-              {t("organization.configure")}
-            </Button>
-          </SettingsPanel>
-        ))}
-      </div>
+      {workspaces.length > 1 ? (
+        <SettingsPanel>
+          <FormField label={t("organization.integrationWorkspace")}>
+            <Select
+              value={workspace.id}
+              onValueChange={(value) =>
+                onWorkspaceSelected(value ?? workspace.id)
+              }
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {workspaces.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+        </SettingsPanel>
+      ) : null}
+
+      {slack.isPending ? (
+        <div className="h-48 animate-pulse rounded-lg border bg-muted/40" />
+      ) : slack.isError ? (
+        <SettingsPanel className="flex items-center justify-between gap-4">
+          <span className="text-sm text-destructive">
+            {getErrorMessage(slack.error)}
+          </span>
+          <Button variant="outline" onClick={() => void slack.refetch()}>
+            <RefreshCw className="size-4" />
+            {t("retry")}
+          </Button>
+        </SettingsPanel>
+      ) : slack.data ? (
+        <SlackIntegrationEditor
+          key={workspaceId}
+          workspaceId={workspaceId}
+          integration={slack.data}
+          onChanged={updateSlackCache}
+          onReload={() => slack.refetch()}
+        />
+      ) : null}
+
+      <SettingsPanel className="flex items-center gap-4">
+        <div className="flex size-10 items-center justify-center rounded-lg border">
+          <Webhook className="size-5" />
+        </div>
+        <div className="flex-1">
+          <div className="text-sm font-medium">{t("organization.webhook")}</div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {t("organization.webhookDescription")}
+          </div>
+        </div>
+        <Badge>{t("organization.policyWebhook")}</Badge>
+      </SettingsPanel>
+
+      <SettingsPanel className="flex items-center gap-4">
+        <div className="flex size-10 items-center justify-center rounded-lg border">
+          <AlertTriangle className="size-5" />
+        </div>
+        <div className="flex-1">
+          <div className="text-sm font-medium">
+            {t("organization.pagerduty")}
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {t("organization.pagerdutyDescription")}
+          </div>
+        </div>
+        <Badge>{t("organization.comingSoon")}</Badge>
+      </SettingsPanel>
     </SettingsShell>
+  );
+}
+
+function SlackIntegrationEditor({
+  workspaceId,
+  integration,
+  onChanged,
+  onReload,
+}: {
+  workspaceId: string;
+  integration: SlackIntegrationResponseDto;
+  onChanged: (integration: SlackIntegrationResponseDto) => Promise<void>;
+  onReload: () => Promise<unknown>;
+}) {
+  const t = useTranslations("settings");
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [displayName, setDisplayName] = useState(integration.displayName ?? "");
+  const [isEnabled, setIsEnabled] = useState(integration.isEnabled);
+  const [eventTypes, setEventTypes] = useState<SlackNotificationEventType[]>(
+    integration.eventTypes,
+  );
+  const [pendingAction, setPendingAction] = useState<
+    "save" | "test" | "delete" | string | null
+  >(null);
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
+
+  function toggleEvent(type: SlackNotificationEventType, checked: boolean) {
+    setEventTypes((current) =>
+      checked
+        ? [...new Set([...current, type])]
+        : current.filter((item) => item !== type),
+    );
+  }
+
+  async function runAction(
+    action: NonNullable<typeof pendingAction>,
+    operation: () => Promise<void>,
+  ) {
+    setPendingAction(action);
+    setError("");
+    setStatus("");
+    try {
+      await operation();
+    } catch (caught) {
+      setError(getErrorMessage(caught));
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  return (
+    <SettingsPanel>
+      <div className="flex items-start gap-4 border-b pb-4">
+        <div className="flex size-10 items-center justify-center rounded-lg border">
+          <Bell className="size-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-semibold">{t("organization.slack")}</h2>
+            <Badge>
+              {integration.isConfigured
+                ? integration.isEnabled
+                  ? t("organization.connected")
+                  : t("organization.disabled")
+                : t("organization.notConnected")}
+            </Badge>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {t("organization.slackDescription")}
+          </p>
+          {integration.destination ? (
+            <p className="mt-2 font-mono text-xs text-muted-foreground">
+              {integration.destination}
+            </p>
+          ) : null}
+        </div>
+        <Button variant="outline" asChild>
+          <a href="https://api.slack.com/apps" target="_blank" rel="noreferrer">
+            <ExternalLink className="size-4" />
+            {t("organization.openSlackApps")}
+          </a>
+        </Button>
+      </div>
+
+      <div className="grid gap-x-4 pt-4 sm:grid-cols-2">
+        <FormField label={t("organization.slackWebhookUrl")}>
+          <Input
+            type="password"
+            autoComplete="off"
+            value={webhookUrl}
+            placeholder={
+              integration.isConfigured
+                ? t("organization.slackWebhookPreserved")
+                : "https://hooks.slack.com/services/..."
+            }
+            onChange={(event) => setWebhookUrl(event.target.value)}
+          />
+          <p className="mt-2 text-xs text-muted-foreground">
+            {t("organization.slackWebhookHint")}
+          </p>
+        </FormField>
+        <FormField label={t("organization.slackDisplayName")}>
+          <Input
+            value={displayName}
+            placeholder="#lynx-alerts"
+            onChange={(event) => setDisplayName(event.target.value)}
+          />
+        </FormField>
+      </div>
+
+      <div className="border-t py-4">
+        <div className="mb-3 text-sm font-medium">
+          {t("organization.slackNotifications")}
+        </div>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {(
+            [
+              [
+                SLACK_NOTIFICATION_EVENT_TYPE.FIREWALL_BLOCKED,
+                t("organization.firewallBlocked"),
+              ],
+              [
+                SLACK_NOTIFICATION_EVENT_TYPE.APPROVAL_REQUESTED,
+                t("organization.approvalRequested"),
+              ],
+              [
+                SLACK_NOTIFICATION_EVENT_TYPE.APPROVAL_DECIDED,
+                t("organization.approvalDecided"),
+              ],
+            ] as Array<[SlackNotificationEventType, string]>
+          ).map(([type, label]) => (
+            <label
+              key={type}
+              className="flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm"
+            >
+              <input
+                type="checkbox"
+                className="size-4 accent-foreground"
+                checked={eventTypes.includes(type)}
+                onChange={(event) => toggleEvent(type, event.target.checked)}
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div className="border-t py-4">
+        <ToggleRow
+          title={t("organization.slackEnabled")}
+          checked={isEnabled}
+          onChange={setIsEnabled}
+        />
+        <p className="px-4 text-xs text-muted-foreground">
+          {t("organization.slackEnabledDescription")}
+        </p>
+      </div>
+
+      <div className="border-t pt-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-medium">
+              {t("organization.recentSlackDeliveries")}
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {t("organization.recentSlackDeliveriesDescription")}
+            </p>
+          </div>
+          {integration.isConfigured ? (
+            <Button
+              variant="outline"
+              disabled={pendingAction !== null}
+              onClick={() =>
+                void runAction("test", async () => {
+                  const result = await requestContract({
+                    basePath: integrationContract.basePath,
+                    endpoint: integrationContract.testSlack,
+                    params: { workspaceId },
+                  });
+                  await onChanged({
+                    ...integration,
+                    deliveries: [
+                      result.delivery,
+                      ...integration.deliveries,
+                    ].slice(0, 10),
+                  });
+                  setStatus(t("organization.slackTestQueued"));
+                })
+              }
+            >
+              <Send className="size-4" />
+              {pendingAction === "test"
+                ? t("organization.testing")
+                : t("organization.sendTest")}
+            </Button>
+          ) : null}
+        </div>
+
+        {integration.deliveries.length ? (
+          <div className="divide-y rounded-md border">
+            {integration.deliveries.slice(0, 5).map((delivery) => (
+              <div
+                key={delivery.id}
+                className="flex items-center gap-3 px-3 py-2.5"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-xs font-medium">
+                    {delivery.eventType}
+                  </div>
+                  <div className="mt-1 text-[11px] text-muted-foreground">
+                    {new Date(delivery.createdAt).toLocaleString()} ·{" "}
+                    {t("organization.deliveryAttempt", {
+                      current: delivery.attemptCount,
+                      max: delivery.maxAttempts,
+                    })}
+                    {delivery.responseStatus
+                      ? ` · HTTP ${delivery.responseStatus}`
+                      : ""}
+                  </div>
+                  {delivery.lastError ? (
+                    <p className="mt-1 truncate text-[11px] text-destructive">
+                      {delivery.lastError}
+                    </p>
+                  ) : null}
+                </div>
+                <Badge>{delivery.status}</Badge>
+                {["FAILED", "RETRY_SCHEDULED"].includes(delivery.status) ? (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title={t("organization.retryDelivery")}
+                    disabled={pendingAction !== null}
+                    onClick={() =>
+                      void runAction(delivery.id, async () => {
+                        await requestContract({
+                          basePath: integrationContract.basePath,
+                          endpoint: integrationContract.retrySlackDelivery,
+                          params: {
+                            workspaceId,
+                            deliveryId: delivery.id,
+                          },
+                        });
+                        await onReload();
+                      })
+                    }
+                  >
+                    <RotateCcw className="size-4" />
+                  </Button>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">
+            {t("organization.noSlackDeliveries")}
+          </p>
+        )}
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+        <span
+          className={`text-xs ${error ? "text-destructive" : "text-emerald-700"}`}
+        >
+          {error || status}
+        </span>
+        <div className="flex gap-2">
+          {integration.isConfigured ? (
+            <Button
+              variant="outline"
+              disabled={pendingAction !== null}
+              onClick={() => {
+                if (
+                  !window.confirm(t("organization.disconnectSlackConfirmation"))
+                ) {
+                  return;
+                }
+                void runAction("delete", async () => {
+                  await requestContract({
+                    basePath: integrationContract.basePath,
+                    endpoint: integrationContract.deleteSlack,
+                    params: { workspaceId },
+                  });
+                  await onReload();
+                });
+              }}
+            >
+              <Trash2 className="size-4" />
+              {t("organization.disconnect")}
+            </Button>
+          ) : null}
+          <Button
+            disabled={
+              pendingAction !== null ||
+              (!integration.isConfigured && !webhookUrl.trim())
+            }
+            onClick={() =>
+              void runAction("save", async () => {
+                const next = await requestContract({
+                  basePath: integrationContract.basePath,
+                  endpoint: integrationContract.updateSlack,
+                  params: { workspaceId },
+                  request: {
+                    ...(webhookUrl.trim()
+                      ? { webhookUrl: webhookUrl.trim() }
+                      : {}),
+                    displayName: displayName.trim() || null,
+                    isEnabled,
+                    eventTypes,
+                  },
+                });
+                setWebhookUrl("");
+                await onChanged(next);
+                setStatus(t("saved"));
+              })
+            }
+          >
+            {pendingAction === "save" ? t("saving") : t("save")}
+          </Button>
+        </div>
+      </div>
+    </SettingsPanel>
   );
 }
 
@@ -368,21 +1099,25 @@ function OrganizationApiKeys({
             />
           </FormField>
           <FormField label={t("organization.environment")}>
-            <select
+            <Select
               value={environment}
-              onChange={(event) =>
+              onValueChange={(value) =>
                 setEnvironment(
                   workspaceContract.createApiKey.request.shape.environment.parse(
-                    event.target.value,
+                    value,
                   ),
                 )
               }
-              className="h-9 rounded-md border bg-background px-3 text-sm"
             >
-              <option value="development">Development</option>
-              <option value="staging">Staging</option>
-              <option value="production">Production</option>
-            </select>
+              <SelectTrigger className="h-9 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="development">Development</SelectItem>
+                <SelectItem value="staging">Staging</SelectItem>
+                <SelectItem value="production">Production</SelectItem>
+              </SelectContent>
+            </Select>
           </FormField>
           <div className="sm:col-span-2 flex justify-end">
             <Button onClick={() => void createKey()}>
@@ -529,6 +1264,8 @@ function PersonalGeneral({
   const t = useTranslations("settings");
   const [name, setName] = useState(profile?.name ?? "");
   const [status, setStatus] = useState("");
+  const { pendingImage, selectImage, clearPendingImage } =
+    usePendingProfileImage();
   if (!profile) return null;
   return (
     <SettingsShell
@@ -536,6 +1273,12 @@ function PersonalGeneral({
       description={t("personal.generalDescription")}
     >
       <SettingsPanel>
+        <ProfileImageEditor
+          name={name}
+          imageUrl={profile.profileImageUrl}
+          previewUrl={pendingImage?.previewUrl ?? null}
+          onSelect={selectImage}
+        />
         <FormField label={t("personal.name")}>
           <Input
             value={name}
@@ -547,12 +1290,26 @@ function PersonalGeneral({
         <SaveRow
           status={status}
           onSave={async () => {
-            const response = await requestContract({
+            let nextProfile = await requestContract({
               basePath: profileContract.basePath,
               endpoint: profileContract.update,
               request: { name },
             });
-            onSaved(response);
+
+            if (pendingImage) {
+              const image = await requestBinaryContract({
+                basePath: profileContract.basePath,
+                endpoint: profileContract.uploadImage,
+                body: pendingImage.file,
+              });
+              nextProfile = {
+                ...nextProfile,
+                profileImageUrl: image.profileImageUrl,
+              };
+            }
+
+            onSaved(nextProfile);
+            clearPendingImage();
             setStatus(t("saved"));
           }}
         />
@@ -732,6 +1489,92 @@ function OpenApiRuntimeConfig() {
       </SettingsPanel>
     </SettingsShell>
   );
+}
+
+function ProfileImageEditor({
+  name,
+  imageUrl,
+  previewUrl,
+  onSelect,
+}: {
+  name: string;
+  imageUrl: string | null;
+  previewUrl: string | null;
+  onSelect: (file: File) => void;
+}) {
+  const t = useTranslations("profileSettings");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function handleFile(file: File | undefined) {
+    if (!file) return;
+    onSelect(file);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  const displayedImageUrl = previewUrl ?? imageUrl;
+
+  return (
+    <div className="mb-5 flex items-center gap-4 border-b pb-5">
+      <Avatar className="size-16">
+        {displayedImageUrl ? (
+          <AvatarImage src={displayedImageUrl} alt={name} />
+        ) : null}
+        <AvatarFallback className="text-base">
+          {getInitials(name)}
+        </AvatarFallback>
+      </Avatar>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium">{t("imageLabel")}</div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {t("imageDescription")}
+        </p>
+        {previewUrl ? (
+          <p className="mt-1 text-xs text-amber-700">{t("previewPending")}</p>
+        ) : null}
+      </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        className="hidden"
+        onChange={(event) => handleFile(event.target.files?.[0])}
+      />
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => fileInputRef.current?.click()}
+      >
+        <ImageUp className="size-4" />
+        {t("changeImage")}
+      </Button>
+    </div>
+  );
+}
+
+/** 선택한 이미지는 저장 전까지 브라우저 메모리에서만 미리보기로 유지합니다. */
+function usePendingProfileImage() {
+  const [pendingImage, setPendingImage] = useState<PendingProfileImage | null>(
+    null,
+  );
+
+  useEffect(() => {
+    return () => {
+      if (pendingImage) URL.revokeObjectURL(pendingImage.previewUrl);
+    };
+  }, [pendingImage]);
+
+  function selectImage(file: File) {
+    setPendingImage({
+      file,
+      previewUrl: URL.createObjectURL(file),
+    });
+  }
+
+  function clearPendingImage() {
+    setPendingImage(null);
+  }
+
+  return { pendingImage, selectImage, clearPendingImage };
 }
 
 function SettingsShell({
@@ -924,4 +1767,15 @@ function getErrorMessage(error: unknown) {
     if (data.message) return data.message;
   }
   return error instanceof Error ? error.message : "Request failed.";
+}
+
+function getInitials(name: string) {
+  return (
+    name
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("") || "LY"
+  );
 }

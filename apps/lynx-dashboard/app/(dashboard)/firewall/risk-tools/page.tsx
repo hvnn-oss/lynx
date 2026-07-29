@@ -1,9 +1,5 @@
-import { RiskToolsScreen } from "@/components/screen/firewall/operations";
+import { redirect } from "next/navigation";
 
 export default function RiskToolsPage() {
-  return (
-    <main className="min-h-full p-5">
-      <RiskToolsScreen />
-    </main>
-  );
+  redirect("/firewall/approvals");
 }

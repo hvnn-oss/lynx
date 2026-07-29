@@ -3,7 +3,7 @@ import type { OpenAPIApprovalRepository } from "./approval.repository.js";
 import { OpenAPIApprovalService } from "./approval.service.js";
 
 jest.mock("../../../common/services/firewall-notification.service.js", () => ({
-  firewallNotificationService: { notify: jest.fn() },
+  firewallNotificationService: { enqueueConfigured: jest.fn() },
 }));
 
 describe("OpenAPIApprovalService", () => {

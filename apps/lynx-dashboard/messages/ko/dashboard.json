@@ -2,7 +2,7 @@
   "title": "대시보드",
   "empty": "표시할 데이터가 없습니다.",
   "overview": {
-    "title": "Run 운영 개요",
+    "title": "운영 개요",
     "subtitle": "Agent 실행 상태와 실패, 지연 시간, 비용, 위험 신호를 한 흐름에서 확인합니다.",
     "metrics": {
       "sample": {
@@ -113,6 +113,12 @@
       "title": "비활성 agent",
       "subtitle": "최근 실행이 없거나 SDK heartbeat가 끊긴 agent를 확인합니다."
     }
+  },
+  "noData": {
+    "title": "수집된 데이터가 없습니다.",
+    "description": "SDK를 연결해 실행을 기록한 뒤 다시 확인해 주세요.",
+    "connect": "SDK 연결하기",
+    "refresh": "새로고침"
   },
   "ui": {
     "see_more": "더 확인하기",

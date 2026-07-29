@@ -1,5 +1,5 @@
-import { DashboardOperationalPage } from "@/components/screen/dashboard/operational-page";
+import { DashboardSessionsScreen } from "@/components/screen/dashboard/sessions";
 
 export default function DashboardSessionsCompletedPage() {
-  return <DashboardOperationalPage kind="sessionsCompleted" />;
+  return <DashboardSessionsScreen scope="COMPLETED" />;
 }

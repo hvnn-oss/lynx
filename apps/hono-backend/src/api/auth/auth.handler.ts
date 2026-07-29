@@ -18,6 +18,14 @@ const REFRESH_TOKEN_COOKIE_PATH = "/";
  * @returns 라우터에 등록할 회원가입, 로그인, 토큰 갱신, 로그아웃 핸들러입니다.
  */
 export function createAuthHandlers() {
+  /** 현재 서버가 초대 전용 가입인지 공개 가입인지 반환합니다. */
+  const signupPolicy = factory.createHandlers(async (c) =>
+    c.json(
+      authContract.signupPolicy.response.parse(authService.getSignupPolicy()),
+      200,
+    ),
+  );
+
   /** 이메일 확인 링크를 만들고 가입 이메일로 전송합니다. */
   const createEmailVerification = factory.createHandlers(
     zValidator("json", authContract.createEmailVerification.request),
@@ -128,6 +136,7 @@ export function createAuthHandlers() {
     logout,
     refresh,
     signUp,
+    signupPolicy,
     verifyEmailToken,
   };
 }

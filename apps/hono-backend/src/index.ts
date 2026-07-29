@@ -5,7 +5,9 @@ import { serve, type ServerType } from "@hono/node-server";
 import { AppDataSource } from "./provider/database/typeorm-config.js";
 import { app } from "./app.js";
 import { logger } from "./common/logger/logger.js";
+import { env } from "./common/config/config.js";
 import { issueRecordWorker } from "./common/services/issue-record-worker.js";
+import { webhookDeliveryWorker } from "./common/services/webhook-delivery-worker.js";
 
 let server: ServerType | undefined;
 
@@ -19,6 +21,7 @@ async function bootstrap(): Promise<void> {
   );
   await AppDataSource.initialize();
   issueRecordWorker.start();
+  webhookDeliveryWorker.start();
 
   logger.info(
     {
@@ -27,7 +30,7 @@ async function bootstrap(): Promise<void> {
     "database connection initialized",
   );
 
-  server = serve({ fetch: app.fetch, port: 8000 }, (info) => {
+  server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
     logger.info(
       {
         event: "application.started",
@@ -52,6 +55,7 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   );
 
   issueRecordWorker.stop();
+  await webhookDeliveryWorker.stop();
   server?.close();
 
   if (AppDataSource.isInitialized) {
@@ -95,6 +99,7 @@ bootstrap().catch(async (error: unknown) => {
   );
 
   issueRecordWorker.stop();
+  await webhookDeliveryWorker.stop();
   if (AppDataSource.isInitialized) {
     await AppDataSource.destroy();
   }

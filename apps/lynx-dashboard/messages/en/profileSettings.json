@@ -1,0 +1,8 @@
+{
+  "imageLabel": "Profile image",
+  "imageDescription": "Use a JPG, PNG, WebP, or GIF image.",
+  "organizationLabel": "Organization to edit",
+  "changeImage": "Change image",
+  "uploading": "Uploading",
+  "previewPending": "Save changes to apply this image."
+}

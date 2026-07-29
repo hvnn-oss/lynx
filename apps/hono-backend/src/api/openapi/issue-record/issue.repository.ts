@@ -20,6 +20,11 @@ export interface PersistIssueInput {
   exactFingerprint: string;
   title: string;
   summary: string;
+  message?: {
+    titleKey: string;
+    summaryKey: string;
+    params: Record<string, unknown>;
+  };
   category: IssueEntity["category"];
   severity: IssueEntity["severity"];
   source: IssueEntity["source"];
@@ -107,6 +112,9 @@ export class IssueRepository {
         exactFingerprintVersion: ISSUE_FINGERPRINT_VERSION.V1,
         title: input.title,
         summary: input.summary,
+        titleKey: input.message?.titleKey ?? null,
+        summaryKey: input.message?.summaryKey ?? null,
+        messageParams: () => ":messageParams",
         category: input.category,
         severity: input.severity,
         status: ISSUE_STATUS.OPEN,
@@ -130,6 +138,7 @@ export class IssueRepository {
         resolvedAt: null,
         resolvedByUserId: null,
       })
+      .setParameter("messageParams", input.message?.params ?? null)
       .orIgnore()
       .returning(["id"])
       .execute();

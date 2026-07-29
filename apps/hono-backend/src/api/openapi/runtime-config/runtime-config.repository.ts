@@ -1,4 +1,5 @@
 import {
+  AgentEntity,
   FirewallPolicyRevisionEntity,
   PromptDeploymentEntity,
   PromptExperimentEntity,
@@ -6,9 +7,43 @@ import {
 } from "@repo/database";
 import { In } from "typeorm";
 import { AppDataSource } from "../../../provider/database/typeorm-config.js";
+import { isUuid } from "../../../common/util/agent-identifier.js";
 
 /** SDK에 배포할 프롬프트와 정책을 워크스페이스 경계 안에서 조회합니다. */
 export class RuntimeConfigRepository {
+  /**
+   * SDK의 agentId를 워크스페이스 내부 Agent UUID로 해석합니다.
+   *
+   * SDK는 서버 UUID를 알 필요가 없으므로 일반적으로 clientAgentId를 보냅니다.
+   * UUID가 전달된 경우에는 이전 클라이언트와의 호환성을 위해 두 필드를 모두 확인합니다.
+   */
+  async resolveAgentId(
+    workspaceId: string,
+    agentIdentifier?: string,
+  ): Promise<string | undefined> {
+    if (!agentIdentifier) return undefined;
+
+    const repository = AppDataSource.getRepository(AgentEntity);
+    const agentByClientId = await repository.findOne({
+      where: {
+        clientAgentId: agentIdentifier,
+        workspace: { id: workspaceId },
+      },
+      select: { id: true },
+    });
+    if (agentByClientId) return agentByClientId.id;
+    if (!isUuid(agentIdentifier)) return undefined;
+
+    const agentByInternalId = await repository.findOne({
+      where: {
+        id: agentIdentifier,
+        workspace: { id: workspaceId },
+      },
+      select: { id: true },
+    });
+    return agentByInternalId?.id;
+  }
+
   /**
    * 환경과 Agent 범위에 적용되는 활성 프롬프트 배포를 조회합니다.
    *
@@ -79,8 +114,8 @@ export class RuntimeConfigRepository {
   }
 
   /** 워크스페이스에서 활성화된 방화벽 정책만 조회합니다. */
-  listPolicies(workspaceId: string) {
-    return AppDataSource.getRepository(FirewallPolicyRevisionEntity)
+  listPolicies(workspaceId: string, environment: string, agentId?: string) {
+    const query = AppDataSource.getRepository(FirewallPolicyRevisionEntity)
       .createQueryBuilder("revision")
       .innerJoinAndSelect("revision.policy", "policy")
       .innerJoin("policy.workspace", "workspace")
@@ -88,8 +123,19 @@ export class RuntimeConfigRepository {
       .andWhere("policy.activated = true")
       .andWhere("policy.deletedAt IS NULL")
       .andWhere("revision.revision = policy.deployedRevision")
-      .orderBy("policy.id", "ASC")
-      .getMany();
+      .andWhere(
+        "(cardinality(revision.environments) = 0 OR :environment = ANY(revision.environments))",
+        { environment },
+      );
+    if (agentId) {
+      query.andWhere(
+        "(cardinality(revision.agentIds) = 0 OR :agentId = ANY(revision.agentIds))",
+        { agentId },
+      );
+    } else {
+      query.andWhere("cardinality(revision.agentIds) = 0");
+    }
+    return query.orderBy("policy.id", "ASC").getMany();
   }
 }
 

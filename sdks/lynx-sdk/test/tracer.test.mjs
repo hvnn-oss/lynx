@@ -67,6 +67,27 @@ test("uses the hosted Lynx API endpoint by default", async () => {
   assert.equal(requestedUrl, "https://api.lynxops.co/openapi/v1/events/batch");
 });
 
+test("keeps agentId as a string and rejects unsafe values", async () => {
+  const tracer = createTracer({ agentId: "orbit-assistant" });
+  await assert.rejects(
+    tracer.run(
+      { agentName: "OrbitAssistant", agentId: "orbit\nassistant" },
+      async () => {},
+    ),
+    /agentId must not contain control characters/,
+  );
+  await tracer.shutdown();
+
+  assert.throws(
+    () => createTracer({ agentId: " orbit-assistant " }),
+    /agentId must not have leading or trailing whitespace/,
+  );
+  assert.throws(
+    () => createTracer({ agentId: "orbit\nassistant" }),
+    /agentId must not contain control characters/,
+  );
+});
+
 test("sends API keys only through X-API-Key", async () => {
   let requestedHeaders;
   globalThis.fetch = async (_url, init) => {
@@ -341,11 +362,13 @@ test("nested instrumented tools inherit the outer tool span", async () => {
   const events = batches.flat();
   const outerStart = events.find(
     (event) =>
-      event.eventType === "TOOL_CALL" && event.payload.toolName === "outer-tool",
+      event.eventType === "TOOL_CALL" &&
+      event.payload.toolName === "outer-tool",
   );
   const innerStart = events.find(
     (event) =>
-      event.eventType === "TOOL_CALL" && event.payload.toolName === "inner-tool",
+      event.eventType === "TOOL_CALL" &&
+      event.payload.toolName === "inner-tool",
   );
 
   assert.ok(outerStart);
@@ -670,6 +693,55 @@ test("instrumentLLM captures OpenAI Responses API calls", async () => {
   assert.equal(llmEvents[1].payload.usage.totalTokens, 20);
 });
 
+test("instrumentLLM captures a directly wrapped provider function", async () => {
+  const batches = [];
+  globalThis.fetch = async (_url, init) => {
+    batches.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+
+  const tracer = createTracer();
+  const callProvider = tracer.instrumentLLM(
+    async (input) => ({
+      text: "hello",
+      usage: {
+        promptTokens: input.promptTokens,
+        completionTokens: 8,
+        totalTokens: input.promptTokens + 8,
+      },
+    }),
+    {
+      modelLabel: "custom.provider.generate",
+      customRule: {
+        extractInput: ([input]) => input,
+        extractOutput: (result) => ({ text: result.text }),
+        extractUsage: (result) => result.usage,
+        estimateCost: (_model, promptTokens, completionTokens) =>
+          (promptTokens + completionTokens) / 1_000,
+      },
+    },
+  );
+
+  await tracer.run("SupportAgent", async () => {
+    await callProvider({
+      provider: "openai",
+      model: "gpt-4.1-mini",
+      promptTokens: 12,
+    });
+  });
+  await tracer.shutdown();
+
+  const llmEvents = batches
+    .flat()
+    .filter((event) => event.eventType === "LLM_CALL");
+  assert.equal(llmEvents.length, 2);
+  assert.equal(llmEvents[0].payload.path, "call");
+  assert.equal(llmEvents[1].payload.model, "gpt-4.1-mini");
+  assert.equal(llmEvents[1].payload.usage.totalTokens, 20);
+  assert.equal(llmEvents[1].payload.cost, 0.02);
+  assert.equal(llmEvents[1].payload.costSource, "CLIENT_ESTIMATED");
+});
+
 test("instrumentLLM closes streaming spans after iteration completes", async () => {
   const batches = [];
   globalThis.fetch = async (_url, init) => {
@@ -690,7 +762,9 @@ test("instrumentLLM closes streaming spans after iteration completes", async () 
 
   await tracer.run("SupportAgent", async () => {
     const chunks = [];
-    for await (const chunk of await client.streamText({ model: "test-model" })) {
+    for await (const chunk of await client.streamText({
+      model: "test-model",
+    })) {
       chunks.push(chunk);
     }
     assert.equal(chunks.join(""), "hello world");
@@ -700,7 +774,10 @@ test("instrumentLLM closes streaming spans after iteration completes", async () 
   const llmEvents = batches
     .flat()
     .filter((event) => event.eventType === "LLM_CALL");
-  assert.deepEqual(llmEvents.map((event) => event.payload.phase), ["start", "end"]);
+  assert.deepEqual(
+    llmEvents.map((event) => event.payload.phase),
+    ["start", "end"],
+  );
   assert.equal(llmEvents[1].payload.spanId, llmEvents[0].payload.spanId);
   assert.equal(llmEvents[1].payload.latency >= 5, true);
 });

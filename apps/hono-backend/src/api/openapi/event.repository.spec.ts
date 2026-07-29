@@ -8,10 +8,18 @@ import {
 } from "@repo/database";
 import type { EntityManager, Repository } from "typeorm";
 import { AppDataSource } from "../../provider/database/typeorm-config.js";
+import { firewallNotificationService } from "../../common/services/firewall-notification.service.js";
 import { OpenAPIEventRepository } from "./event.repository.js";
 
+jest.mock("../../common/services/firewall-notification.service.js", () => ({
+  firewallNotificationService: { enqueueConfigured: jest.fn() },
+}));
+
 describe("OpenAPIEventRepository", () => {
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.clearAllMocks();
+  });
 
   it("비허용 정책 평가 이벤트와 violation을 같은 트랜잭션에 저장한다", async () => {
     const savedEvent = { id: "event-db-id" } as EventEntity;
@@ -89,6 +97,14 @@ describe("OpenAPIEventRepository", () => {
       }),
     );
     expect(violationRepository.save).toHaveBeenCalledTimes(1);
+    expect(firewallNotificationService.enqueueConfigured).toHaveBeenCalledWith(
+      manager,
+      expect.objectContaining({
+        policyId: "7",
+        type: "firewall.blocked",
+        deduplicationKey: "firewall.blocked:sdk-instance:client-event-id",
+      }),
+    );
   });
 
   it("ALLOW 정책 평가는 violation으로 저장하지 않는다", async () => {
@@ -138,5 +154,8 @@ describe("OpenAPIEventRepository", () => {
     );
 
     expect(violationRepository.save).not.toHaveBeenCalled();
+    expect(
+      firewallNotificationService.enqueueConfigured,
+    ).not.toHaveBeenCalled();
   });
 });

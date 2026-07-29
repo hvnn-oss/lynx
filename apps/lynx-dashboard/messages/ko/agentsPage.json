@@ -1,0 +1,62 @@
+{
+  "pages": {
+    "overview": {
+      "title": "Agent 개요",
+      "description": "등록된 Agent의 최근 Run 활동과 실패 상태를 확인합니다."
+    },
+    "active": {
+      "title": "활성 Agent",
+      "description": "최근 24시간 동안 하나 이상의 Run이 시작된 Agent를 확인합니다."
+    },
+    "inactive": {
+      "title": "비활성 Agent",
+      "description": "최근 24시간 동안 시작된 Run이 없는 Agent를 확인합니다."
+    }
+  },
+  "metrics": {
+    "agents": {
+      "label": "Agent",
+      "description": "선택한 범위의 등록 Agent"
+    },
+    "active": {
+      "label": "활성",
+      "description": "최근 {hours}시간 동안 Run이 있음"
+    },
+    "inactive": {
+      "label": "비활성",
+      "description": "최근 {hours}시간 동안 Run이 없음"
+    },
+    "running": {
+      "label": "진행 중 Run",
+      "description": "최근 Run 중 현재 진행 상태"
+    },
+    "failed": {
+      "label": "실패 Run",
+      "description": "최근 Run 중 실패 상태"
+    }
+  },
+  "list": {
+    "title": "Agent 상태",
+    "description": "{model} · Run {runs}개 · 마지막 실행 {lastRunAt} · {cost}",
+    "never": "실행 기록 없음",
+    "empty": "선택한 범위에 표시할 Agent가 없습니다.",
+    "status": {
+      "ACTIVE": "활성",
+      "INACTIVE": "비활성"
+    }
+  },
+  "volume": {
+    "title": "Agent별 Run",
+    "description": "최근 {hours}시간 동안 Agent별로 시작된 Run 수입니다.",
+    "empty": "집계할 Run이 없습니다."
+  },
+  "empty": {
+    "workspaceTitle": "사용 가능한 워크스페이스가 없습니다",
+    "workspaceDescription": "워크스페이스를 만든 뒤 SDK를 연결하면 Agent 데이터를 확인할 수 있습니다."
+  },
+  "error": {
+    "title": "Agent 데이터를 불러오지 못했습니다",
+    "description": "Agent 대시보드 API와 워크스페이스 권한을 확인해 주세요.",
+    "action": "다시 시도"
+  }
+}

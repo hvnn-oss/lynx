@@ -1,6 +1,7 @@
 import { promptContract } from "@repo/contract";
 import { Hono } from "hono";
 import { requireAccessToken } from "../../common/middleware/access-token.middleware.js";
+import { requireProductAccess } from "../../common/middleware/product-access.middleware.js";
 import type { AppEnv } from "../../common/types/app-env.js";
 import { createPromptHandlers } from "./prompt.handler.js";
 
@@ -10,10 +11,31 @@ const handlers = createPromptHandlers();
 export const promptRouter = new Hono<AppEnv>();
 
 promptRouter.use("*", requireAccessToken);
+promptRouter.use("*", requireProductAccess);
 promptRouter.on(
   promptContract.list.method,
   promptContract.list.path,
   ...handlers.list,
+);
+promptRouter.on(
+  promptContract.getOperationsSummary.method,
+  promptContract.getOperationsSummary.path,
+  ...handlers.getOperationsSummary,
+);
+promptRouter.on(
+  promptContract.listDeploymentOperations.method,
+  promptContract.listDeploymentOperations.path,
+  ...handlers.listDeploymentOperations,
+);
+promptRouter.on(
+  promptContract.listExperimentOperations.method,
+  promptContract.listExperimentOperations.path,
+  ...handlers.listExperimentOperations,
+);
+promptRouter.on(
+  promptContract.listTargetAgents.method,
+  promptContract.listTargetAgents.path,
+  ...handlers.listTargetAgents,
 );
 promptRouter.on(
   promptContract.get.method,
@@ -54,6 +76,11 @@ promptRouter.on(
   promptContract.getVersionMetrics.method,
   promptContract.getVersionMetrics.path,
   ...handlers.getVersionMetrics,
+);
+promptRouter.on(
+  promptContract.getVersionPerformance.method,
+  promptContract.getVersionPerformance.path,
+  ...handlers.getVersionPerformance,
 );
 promptRouter.on(
   promptContract.deploy.method,

@@ -14,6 +14,7 @@ import { OverviewLoading } from "./overview-loading";
 import { OverviewMetrics } from "./overview-metrics";
 import { OverviewTrends } from "./overview-trends";
 import { RecentIssues } from "./recent-issues";
+import { NoDataScreen } from "../../no-data";
 
 export function DashboardOverviewScreen() {
   const { data, isPending, isError, refetch } = useDashboardOverview();
@@ -33,7 +34,7 @@ export function DashboardOverviewScreen() {
   if (isPending) return <OverviewLoading />;
   if (isError) return <OverviewError onRetry={() => void refetch()} />;
   if (!data || (!data.overview.hasData && data.runs.items.length === 0))
-    return <div />;
+    return <NoDataScreen />;
 
   return (
     <div className="space-y-8">

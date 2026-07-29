@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import {
   AgentEntity,
+  IssueEntity,
   PromptDeploymentEntity,
   PromptEntity,
   PromptExperimentEntity,
@@ -11,6 +12,10 @@ import type {
   CreatePromptExperimentDto,
   CreatePromptVersionDto,
   DeployPromptDto,
+  PromptDeploymentOperationsQueryDto,
+  PromptExperimentOperationsQueryDto,
+  PromptListQueryDto,
+  PromptTargetAgentsQueryDto,
   UpdatePromptDto,
 } from "@repo/dto";
 import { In, IsNull, type Repository } from "typeorm";
@@ -18,11 +23,86 @@ import { AppDataSource } from "../../provider/database/typeorm-config.js";
 
 /** 프롬프트 초안, 불변 버전, 배포 및 실험 저장을 담당합니다. */
 export class PromptRepository {
-  /** 삭제되지 않은 워크스페이스 프롬프트를 조회합니다. */
-  list(workspaceId: string) {
-    return AppDataSource.getRepository(PromptEntity).find({
-      where: { workspaceId, deletedAt: IsNull() },
-      order: { updatedAt: "DESC" },
+  /** 검색과 운영 상태 필터를 적용한 프롬프트 커서 페이지를 조회합니다. */
+  list(workspaceId: string, input: PromptListQueryDto) {
+    const query = AppDataSource.getRepository(PromptEntity)
+      .createQueryBuilder("prompt")
+      .where('prompt."workspaceId" = :workspaceId', { workspaceId })
+      .andWhere('prompt."deletedAt" IS NULL')
+      .orderBy("prompt.updatedAt", "DESC")
+      .addOrderBy("prompt.id", "DESC")
+      .take(input.limit + 1);
+
+    if (input.search) {
+      query.andWhere(
+        "(prompt.name ILIKE :search OR prompt.description ILIKE :search)",
+        { search: `%${input.search}%` },
+      );
+    }
+    if (input.cursor) {
+      const [updatedAt, id] = input.cursor.split("|");
+      query.andWhere(
+        '(prompt."updatedAt" < :updatedAt OR (prompt."updatedAt" = :updatedAt AND prompt.id < :id))',
+        { updatedAt, id },
+      );
+    }
+
+    const activeDeployment = query
+      .subQuery()
+      .select("1")
+      .from(PromptDeploymentEntity, "activeDeployment")
+      .where('activeDeployment."promptId" = prompt.id')
+      .andWhere('activeDeployment."workspaceId" = :workspaceId')
+      .andWhere('activeDeployment."active" = true');
+    if (input.environment) {
+      activeDeployment.andWhere(
+        'activeDeployment."environment" = :deploymentEnvironment',
+        { deploymentEnvironment: input.environment },
+      );
+    }
+    if (input.deployment === "DEPLOYED") {
+      query.andWhere(`EXISTS ${activeDeployment.getQuery()}`);
+    } else if (input.deployment === "UNDEPLOYED") {
+      query.andWhere(`NOT EXISTS ${activeDeployment.getQuery()}`);
+    } else if (input.deployment === "DRAFT_CHANGED") {
+      query.andWhere(
+        `NOT EXISTS ${query
+          .subQuery()
+          .select("1")
+          .from(PromptVersionEntity, "latestVersion")
+          .where('latestVersion."promptId" = prompt.id')
+          .andWhere('latestVersion."draftRevision" = prompt."draftRevision"')
+          .getQuery()}`,
+      );
+    }
+    return query.getMany();
+  }
+
+  /** 목록에 표시할 프롬프트별 최신 불변 버전을 한 번에 조회합니다. */
+  listLatestVersions(workspaceId: string, promptIds: string[]) {
+    if (promptIds.length === 0) return Promise.resolve([]);
+    return AppDataSource.getRepository(PromptVersionEntity)
+      .createQueryBuilder("version")
+      .distinctOn(["version.promptId"])
+      .innerJoin("version.workspace", "workspace")
+      .where("workspace.id = :workspaceId", { workspaceId })
+      .andWhere('version."promptId" IN (:...promptIds)', { promptIds })
+      .orderBy("version.promptId", "ASC")
+      .addOrderBy("version.createdAt", "DESC")
+      .getMany();
+  }
+
+  /** 목록에 표시할 활성 배포와 버전·Agent 이름을 한 번에 조회합니다. */
+  listActiveDeployments(workspaceId: string, promptIds: string[]) {
+    if (promptIds.length === 0) return Promise.resolve([]);
+    return AppDataSource.getRepository(PromptDeploymentEntity).find({
+      where: {
+        workspaceId,
+        promptId: In(promptIds),
+        active: true,
+      },
+      relations: { version: true, agent: true },
+      order: { deployedAt: "DESC" },
     });
   }
 
@@ -251,9 +331,53 @@ export class PromptRepository {
   listDeployments(workspaceId: string, promptId: string) {
     return AppDataSource.getRepository(PromptDeploymentEntity).find({
       where: { workspaceId, promptId },
-      relations: { version: true },
+      relations: { version: true, agent: true },
       order: { deployedAt: "DESC" },
     });
+  }
+
+  /** 워크스페이스 전체 배포 이력을 검색 가능한 커서 페이지로 조회합니다. */
+  listDeploymentOperations(
+    workspaceId: string,
+    input: PromptDeploymentOperationsQueryDto,
+  ) {
+    const query = AppDataSource.getRepository(PromptDeploymentEntity)
+      .createQueryBuilder("deployment")
+      .innerJoinAndSelect("deployment.prompt", "prompt")
+      .innerJoinAndSelect("deployment.version", "version")
+      .leftJoinAndSelect("deployment.agent", "agent")
+      .where('deployment."workspaceId" = :workspaceId', { workspaceId })
+      .andWhere('prompt."deletedAt" IS NULL')
+      .orderBy("deployment.deployedAt", "DESC")
+      .addOrderBy("deployment.id", "DESC")
+      .take(input.limit + 1);
+    if (input.promptId) {
+      query.andWhere('deployment."promptId" = :promptId', {
+        promptId: input.promptId,
+      });
+    }
+    if (input.search) {
+      query.andWhere(
+        "(prompt.name ILIKE :search OR version.version ILIKE :search OR agent.name ILIKE :search)",
+        { search: `%${input.search}%` },
+      );
+    }
+    if (input.environment) {
+      query.andWhere("deployment.environment = :environment", {
+        environment: input.environment,
+      });
+    }
+    if (input.active !== undefined) {
+      query.andWhere("deployment.active = :active", { active: input.active });
+    }
+    if (input.cursor) {
+      const [deployedAt, id] = input.cursor.split("|");
+      query.andWhere(
+        '(deployment."deployedAt" < :deployedAt OR (deployment."deployedAt" = :deployedAt AND deployment.id < :id))',
+        { deployedAt, id },
+      );
+    }
+    return query.getMany();
   }
 
   /** A/B 실험을 생성하고 선택적으로 즉시 활성화합니다. */
@@ -311,6 +435,85 @@ export class PromptRepository {
     });
   }
 
+  /** 상태 변경 전에 실험의 환경과 Agent 범위를 조회합니다. */
+  findExperiment(workspaceId: string, promptId: string, experimentId: string) {
+    return AppDataSource.getRepository(PromptExperimentEntity).findOneBy({
+      id: experimentId,
+      workspaceId,
+      promptId,
+    });
+  }
+
+  /** 실험 범위에 기준이 될 활성 프롬프트 배포가 있는지 확인합니다. */
+  findActiveDeployment(
+    workspaceId: string,
+    promptId: string,
+    environment: string,
+    agentId: string | null,
+  ) {
+    return AppDataSource.getRepository(PromptDeploymentEntity).findOneBy({
+      workspaceId,
+      promptId,
+      environment,
+      agentId: agentId ?? IsNull(),
+      active: true,
+    });
+  }
+
+  /** 워크스페이스 전체 실험을 검색 가능한 커서 페이지로 조회합니다. */
+  listExperimentOperations(
+    workspaceId: string,
+    input: PromptExperimentOperationsQueryDto,
+  ) {
+    const query = AppDataSource.getRepository(PromptExperimentEntity)
+      .createQueryBuilder("experiment")
+      .innerJoinAndSelect("experiment.prompt", "prompt")
+      .leftJoinAndSelect("experiment.agent", "agent")
+      .where('experiment."workspaceId" = :workspaceId', { workspaceId })
+      .andWhere('prompt."deletedAt" IS NULL')
+      .orderBy("experiment.createdAt", "DESC")
+      .addOrderBy("experiment.id", "DESC")
+      .take(input.limit + 1);
+    if (input.promptId) {
+      query.andWhere('experiment."promptId" = :promptId', {
+        promptId: input.promptId,
+      });
+    }
+    if (input.search) {
+      query.andWhere(
+        "(experiment.name ILIKE :search OR prompt.name ILIKE :search OR agent.name ILIKE :search)",
+        { search: `%${input.search}%` },
+      );
+    }
+    if (input.environment) {
+      query.andWhere("experiment.environment = :environment", {
+        environment: input.environment,
+      });
+    }
+    if (input.status) {
+      query.andWhere("experiment.status = :status", { status: input.status });
+    }
+    if (input.cursor) {
+      const [createdAt, id] = input.cursor.split("|");
+      query.andWhere(
+        '(experiment."createdAt" < :createdAt OR (experiment."createdAt" = :createdAt AND experiment.id < :id))',
+        { createdAt, id },
+      );
+    }
+    return query.getMany();
+  }
+
+  /** 여러 실험 변형에서 참조하는 버전을 한 번에 조회합니다. */
+  listVersionsByIds(workspaceId: string, versionIds: string[]) {
+    if (versionIds.length === 0) return Promise.resolve([]);
+    return AppDataSource.getRepository(PromptVersionEntity).find({
+      where: {
+        id: In(versionIds),
+        workspace: { id: workspaceId },
+      },
+    });
+  }
+
   /** 실험 상태를 변경하고 같은 범위의 활성 실험을 하나로 제한합니다. */
   updateExperimentStatus(
     workspaceId: string,
@@ -335,9 +538,9 @@ export class PromptRepository {
           experiment.agentId,
           experiment.id,
         );
-        experiment.startedAt ??= new Date();
+        experiment.startedAt = new Date();
         experiment.endedAt = null;
-      } else if (status === "COMPLETED") {
+      } else {
         experiment.endedAt = new Date();
       }
       experiment.status = status;
@@ -389,6 +592,165 @@ export class PromptRepository {
       [workspaceId, versionId, from ?? null, to ?? null],
     );
     return rows[0]!;
+  }
+
+  /** 여러 프롬프트 버전의 Run 지표를 한 SQL로 집계합니다. */
+  async getVersionMetricsBatch(workspaceId: string, versionIds: string[]) {
+    if (versionIds.length === 0) return [];
+    return AppDataSource.query<
+      Array<{
+        versionId: string;
+        runCount: string;
+        successCount: string;
+        errorRunCount: string;
+        totalCost: string;
+      }>
+    >(
+      `
+        WITH matched_runs AS (
+          SELECT DISTINCT
+            prompt_version.value AS "versionId",
+            run.id,
+            run.status,
+            run."totalCost"
+          FROM "run" run
+          INNER JOIN "event" event ON event."runId" = run.id
+          CROSS JOIN LATERAL jsonb_array_elements_text(
+            COALESCE(event.payload->'promptVersionIds', '[]'::jsonb)
+          ) AS prompt_version(value)
+          WHERE run."workspaceId" = $1
+            AND prompt_version.value = ANY($2::text[])
+        ),
+        error_runs AS (
+          SELECT DISTINCT
+            prompt_version.value AS "versionId",
+            event."runId"
+          FROM "event" event
+          CROSS JOIN LATERAL jsonb_array_elements_text(
+            COALESCE(event.payload->'promptVersionIds', '[]'::jsonb)
+          ) AS prompt_version(value)
+          WHERE prompt_version.value = ANY($2::text[])
+            AND event."eventType" = 'ERROR'
+        )
+        SELECT
+          matched_runs."versionId",
+          COUNT(*)::text AS "runCount",
+          COUNT(*) FILTER (
+            WHERE matched_runs.status = 'COMPLETED'
+          )::text AS "successCount",
+          COUNT(*) FILTER (
+            WHERE matched_runs.status = 'FAILED'
+              OR EXISTS (
+                SELECT 1
+                FROM error_runs
+                WHERE error_runs."versionId" = matched_runs."versionId"
+                  AND error_runs."runId" = matched_runs.id
+              )
+          )::text AS "errorRunCount",
+          COALESCE(SUM(matched_runs."totalCost"), 0)::text AS "totalCost"
+        FROM matched_runs
+        GROUP BY matched_runs."versionId"
+      `,
+      [workspaceId, versionIds],
+    );
+  }
+
+  /** 버전별 변경 영향 이슈 개수를 한 번에 집계합니다. */
+  async countChangeImpactIssuesByVersion(
+    workspaceId: string,
+    versionIds: string[],
+  ) {
+    if (versionIds.length === 0) return [];
+    return AppDataSource.getRepository(IssueEntity)
+      .createQueryBuilder("issue")
+      .select('issue."representativePromptVersionId"', "versionId")
+      .addSelect("COUNT(*)", "issueCount")
+      .where('issue."workspaceId" = :workspaceId', { workspaceId })
+      .andWhere("issue.category = 'PROMPT_REGRESSION'")
+      .andWhere('issue."representativePromptVersionId" IN (:...versionIds)', {
+        versionIds,
+      })
+      .groupBy('issue."representativePromptVersionId"')
+      .getRawMany<{ versionId: string; issueCount: string }>();
+  }
+
+  /** 프롬프트 운영 상단 지표와 마지막 설정 변경 시각을 집계합니다. */
+  async getOperationsSummary(workspaceId: string) {
+    const [
+      promptCount,
+      versionCount,
+      activeDeploymentCount,
+      activeExperimentCount,
+      changeImpactIssueCount,
+      changedRows,
+    ] = await Promise.all([
+      AppDataSource.getRepository(PromptEntity).countBy({
+        workspaceId,
+        deletedAt: IsNull(),
+      }),
+      AppDataSource.getRepository(PromptVersionEntity)
+        .createQueryBuilder("version")
+        .innerJoin("version.workspace", "workspace")
+        .where("workspace.id = :workspaceId", { workspaceId })
+        .getCount(),
+      AppDataSource.getRepository(PromptDeploymentEntity).countBy({
+        workspaceId,
+        active: true,
+      }),
+      AppDataSource.getRepository(PromptExperimentEntity).countBy({
+        workspaceId,
+        status: "ACTIVE",
+      }),
+      AppDataSource.getRepository(IssueEntity).countBy({
+        workspaceId,
+        category: "PROMPT_REGRESSION",
+      }),
+      AppDataSource.query<Array<{ changedAt: Date | string | null }>>(
+        `
+          SELECT MAX(changed_at) AS "changedAt"
+          FROM (
+            SELECT deployment."deployedAt" AS changed_at
+            FROM "prompt_deployment" deployment
+            WHERE deployment."workspaceId" = $1
+            UNION ALL
+            SELECT GREATEST(
+              experiment."createdAt",
+              COALESCE(experiment."startedAt", experiment."createdAt"),
+              COALESCE(experiment."endedAt", experiment."createdAt")
+            ) AS changed_at
+            FROM "prompt_experiment" experiment
+            WHERE experiment."workspaceId" = $1
+          ) changes
+        `,
+        [workspaceId],
+      ),
+    ]);
+    return {
+      promptCount,
+      versionCount,
+      activeDeploymentCount,
+      activeExperimentCount,
+      changeImpactIssueCount,
+      changedAt: changedRows[0]?.changedAt ?? null,
+    };
+  }
+
+  /** 배포와 실험 대상으로 선택할 Agent를 이름순으로 조회합니다. */
+  listTargetAgents(workspaceId: string, input: PromptTargetAgentsQueryDto) {
+    const query = AppDataSource.getRepository(AgentEntity)
+      .createQueryBuilder("agent")
+      .innerJoin("agent.workspace", "workspace")
+      .where("workspace.id = :workspaceId", { workspaceId })
+      .orderBy("agent.name", "ASC")
+      .addOrderBy("agent.id", "ASC")
+      .take(input.limit);
+    if (input.search) {
+      query.andWhere(
+        "(agent.name ILIKE :search OR agent.clientAgentId ILIKE :search)",
+        { search: `%${input.search}%` },
+      );
+    }
+    return query.getMany();
   }
 
   /** 같은 범위에 이미 활성화된 실험을 일시 정지합니다. */

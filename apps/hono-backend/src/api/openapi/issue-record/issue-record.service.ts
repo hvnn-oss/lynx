@@ -7,6 +7,7 @@ import {
 } from "@repo/constants";
 import type { IssueRecordEntity } from "@repo/database";
 import type { IssueRecordDetectionDecision } from "../../../common/types/issue.js";
+import { renderIssueMessage } from "../../../common/services/issue-message.service.js";
 import { IssueService, issueService } from "./issue.service.js";
 import {
   IssueRecordRepository,
@@ -98,10 +99,15 @@ export class IssueRecordService {
         return true;
       }
 
-      const result = await this.issues.record({
-        workspaceId: claimed.record.workspaceId,
+      const renderedMessage = renderIssueMessage(decision.message, "en", {
         title: decision.title ?? claimed.record.detectionType,
         summary: decision.summary,
+      });
+      const result = await this.issues.record({
+        workspaceId: claimed.record.workspaceId,
+        title: renderedMessage.title,
+        summary: renderedMessage.summary,
+        message: decision.message,
         category: decision.category ?? ISSUE_CATEGORY.MODEL_ERROR,
         severity: decision.severity ?? ISSUE_SEVERITY.WARNING,
         source:
@@ -192,6 +198,11 @@ export class IssueRecordService {
         reasonCode: "FIREWALL_BLOCKED",
         title: "Firewall blocked an agent action",
         summary: "The SDK firewall blocked a policy-violating agent action.",
+        message: {
+          titleKey: "issue.firewall.block.title",
+          summaryKey: "issue.firewall.block.summary",
+          params: this.createMessageParams(record),
+        },
         category: ISSUE_CATEGORY.FIREWALL,
         severity: ISSUE_SEVERITY.CRITICAL,
         isBlocked: true,
@@ -204,6 +215,11 @@ export class IssueRecordService {
         reasonCode: "FIREWALL_WARNING",
         title: "Firewall detected a risky agent action",
         summary: "The SDK firewall reported a risky agent action.",
+        message: {
+          titleKey: "issue.firewall.warn.title",
+          summaryKey: "issue.firewall.warn.summary",
+          params: this.createMessageParams(record),
+        },
         category: ISSUE_CATEGORY.FIREWALL,
         severity: ISSUE_SEVERITY.WARNING,
         isBlocked: false,
@@ -216,6 +232,11 @@ export class IssueRecordService {
         reasonCode: "AGENT_LOOP_DETECTED",
         title: "Repeated agent loop detected",
         summary: "The SDK detected repeated agent behavior in one execution.",
+        message: {
+          titleKey: "issue.loop.detected.title",
+          summaryKey: "issue.loop.detected.summary",
+          params: this.createMessageParams(record),
+        },
         category: ISSUE_CATEGORY.LOOP,
         severity: ISSUE_SEVERITY.WARNING,
         isBlocked: false,
@@ -229,6 +250,11 @@ export class IssueRecordService {
         title: "Prompt version performance regressed",
         summary:
           "The deployed prompt version crossed a configured success, error, or cost regression threshold.",
+        message: {
+          titleKey: "issue.prompt.regression.title",
+          summaryKey: "issue.prompt.regression.summary",
+          params: this.createMessageParams(record),
+        },
         category: ISSUE_CATEGORY.PROMPT_REGRESSION,
         severity: ISSUE_SEVERITY.WARNING,
         isBlocked: false,
@@ -263,6 +289,30 @@ export class IssueRecordService {
     return Array.isArray(value)
       ? value.filter((item): item is string => typeof item === "string")
       : [];
+  }
+
+  /** 제목과 요약 렌더링에 필요한 안전한 구조화 값만 record에서 선택합니다. */
+  private createMessageParams(
+    record: IssueRecordEntity,
+  ): Record<string, unknown> {
+    return Object.fromEntries(
+      Object.entries({
+        toolName: this.readString(record.payload.toolName),
+        policyName: this.readString(record.payload.policyName),
+        condition: this.readString(record.payload.condition),
+        reason: this.readString(record.payload.reason),
+        label: this.readString(record.payload.label),
+        eventType: this.readString(record.payload.eventType),
+        loopCount: this.readNumber(record.payload.loopCount),
+      }).filter((entry) => entry[1] !== undefined),
+    );
+  }
+
+  /** 유한한 숫자 payload만 메시지 파라미터로 사용합니다. */
+  private readNumber(value: unknown): number | undefined {
+    return typeof value === "number" && Number.isFinite(value)
+      ? value
+      : undefined;
   }
 
   /** 재시도 진단에 저장할 안정적인 오류 코드를 만듭니다. */

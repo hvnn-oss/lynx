@@ -17,7 +17,9 @@ class AuthRepository {
     if (!foundUser) {
       throw Error("Could not find user.");
     }
-    const loginInfo = await accountRepository.findOneBy({ user: foundUser });
+    const loginInfo = await accountRepository.findOneBy({
+      user: { id: foundUser.id },
+    });
     if (!loginInfo) {
       throw Error("Could not find user's account info.");
     }

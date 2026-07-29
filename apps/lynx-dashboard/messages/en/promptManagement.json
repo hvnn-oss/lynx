@@ -1,0 +1,239 @@
+{
+  "catalog": {
+    "title": "Prompt library",
+    "subtitle": "Create prompt drafts and continue into version and deployment management.",
+    "create": "Add prompt",
+    "createFirst": "Create first prompt",
+    "searchPlaceholder": "Search names or descriptions",
+    "searchLabel": "Search prompts",
+    "empty": "No prompts yet.",
+    "emptyHint": "Create a prompt, save its draft, and turn it into an immutable deployable version.",
+    "noSearchResults": "No matching prompts.",
+    "noSearchResultsHint": "Try another search term or return to the full prompt list.",
+    "noDescription": "No description",
+    "draftRevision": "Draft r{revision}",
+    "updatedAt": "Updated {date}",
+    "more": "{count} more prompts",
+    "loadMore": "Load more",
+    "loadingMore": "Loading",
+    "filters": {
+      "allEnvironments": "All environments",
+      "allDeployments": "All deployment states",
+      "deployed": "Deployed",
+      "undeployed": "Not deployed",
+      "draftChanged": "Needs a new version"
+    },
+    "metrics": {
+      "total": "Total prompts",
+      "totalHint": "Stored in this workspace",
+      "activeDeployments": "Active deployments",
+      "activeDeploymentsHint": "Current environment and agent scopes",
+      "activeExperiments": "Active experiments",
+      "activeExperimentsHint": "Currently allocating traffic"
+    }
+  },
+  "create": {
+    "title": "New prompt",
+    "subtitle": "Register a stable name and initial draft, then manage versions and deployments.",
+    "submit": "Create prompt"
+  },
+  "tabs": {
+    "label": "Prompt management sections",
+    "draft": "Draft",
+    "versions": "Versions",
+    "deployment": "Deployment",
+    "performance": "Performance",
+    "experiments": "A/B experiments"
+  },
+  "editor": {
+    "title": "Edit prompt",
+    "subtitle": "Manage editable drafts separately from immutable deployable versions.",
+    "basicTitle": "Basic information",
+    "basicDescription": "Enter the SDK lookup name and an operator-friendly description.",
+    "name": "Prompt name",
+    "nameRequired": "Enter a prompt name.",
+    "description": "Description",
+    "draftTitle": "Current draft",
+    "draftDescription": "Save the draft, then promote it to an immutable deployable version.",
+    "contentPlaceholder": "Enter the prompt sent to the model or agent.",
+    "characterCount": "{count} characters",
+    "draftRevision": "Draft r{revision}",
+    "save": "Save draft",
+    "saving": "Saving",
+    "saved": "Draft saved.",
+    "created": "Prompt created.",
+    "conflict": "Another user updated this draft first. Reload the latest draft and review your changes.",
+    "saveFailed": "Could not save the prompt.",
+    "notFound": "Prompt not found.",
+    "delete": "Delete",
+    "deleteConfirm": "Delete this prompt? Existing versions and deployment history will be retained.",
+    "deleteFailed": "Could not delete the prompt.",
+    "metrics": {
+      "draft": "Draft status",
+      "saved": "Saved on the server",
+      "unsaved": "Has unsaved changes",
+      "versions": "Immutable versions",
+      "versionsHint": "Deployable snapshots",
+      "updated": "Last saved",
+      "updatedHint": "Most recent draft update"
+    }
+  },
+  "version": {
+    "openCreate": "Create version",
+    "createTitle": "Create immutable version",
+    "createDescription": "Promote the saved draft to an immutable deployment candidate.",
+    "label": "Version",
+    "labelPlaceholder": "For example, v1.0",
+    "base": "Base version",
+    "noBase": "No base version",
+    "changeReason": "Change reason",
+    "saveDraftFirst": "Save the current draft changes before creating a version.",
+    "create": "Create version",
+    "creating": "Creating",
+    "created": "Immutable version created.",
+    "draftChanged": "The draft changed. Reload and review the latest draft.",
+    "createFailed": "Could not create the version.",
+    "historyTitle": "Version history",
+    "historyDescription": "Review deployable versions promoted from this draft.",
+    "empty": "No immutable versions yet.",
+    "noChangeReason": "No change reason was recorded."
+  },
+  "compare": {
+    "title": "Compare versions",
+    "description": "Select two immutable versions of this prompt to review their changes.",
+    "before": "Previous version",
+    "after": "Comparison version",
+    "selectDifferent": "Select two different versions.",
+    "loading": "Calculating the version diff.",
+    "failed": "Could not load the version diff.",
+    "changedLines": "{count} changed lines"
+  },
+  "experiments": {
+    "title": "Prompt experiments",
+    "subtitle": "Review A/B traffic allocation by environment and agent scope.",
+    "empty": "No prompt experiments are registered.",
+    "description": "{prompt} · {environment} · {variants} versions",
+    "unknownPrompt": "Unknown prompt",
+    "search": "Search experiments or prompts",
+    "filters": {
+      "all": "All statuses"
+    },
+    "metrics": {
+      "active": "Active experiments",
+      "activeHint": "Currently allocating traffic",
+      "runs": "Runs in view",
+      "runsHint": "Variant total for the current result",
+      "issues": "Change impact issues",
+      "issuesHint": "Linked to versions in view"
+    },
+    "variantResult": "{runs} runs · {success} success · {errors} errors · {cost} average",
+    "status": {
+      "DRAFT": "Draft",
+      "ACTIVE": "Active",
+      "PAUSED": "Paused",
+      "COMPLETED": "Completed"
+    }
+  },
+  "operations": {
+    "loadFailed": "Some prompt operations data could not be loaded."
+  },
+  "deployment": {
+    "title": "Deployment operations",
+    "description": "Deploy immutable versions to Staging or Production for all or selected agents.",
+    "version": "Version",
+    "targetEnvironment": "Environment",
+    "targetAgent": "Target agent",
+    "allAgents": "All agents",
+    "environment": {
+      "staging": "Staging",
+      "production": "Production"
+    },
+    "reason": "Deployment reason",
+    "replaceHint": "This replaces the current active deployment in the same environment and agent scope.",
+    "deploy": "Deploy",
+    "deploying": "Deploying",
+    "deployed": "Prompt version deployed.",
+    "failed": "Could not deploy. Review the latest active deployment.",
+    "active": "Active",
+    "activeCount": "{count} active",
+    "notDeployed": "Not deployed",
+    "notDeployedHint": "This environment has no active deployment.",
+    "empty": "No deployment history yet.",
+    "rollback": "Roll back to this version",
+    "rollbackReason": "Rollback to {version}",
+    "rolledBack": "Rolled back to the selected version.",
+    "noReason": "No deployment reason"
+  },
+  "deploymentsPage": {
+    "title": "Prompt deployments",
+    "subtitle": "Review active deployments and rollback history across environment and agent scopes.",
+    "search": "Search prompt, version, or agent",
+    "empty": "No deployments match these filters.",
+    "filters": {
+      "active": "Active deployments",
+      "history": "Inactive history",
+      "all": "All history"
+    },
+    "metrics": {
+      "active": "Active deployments",
+      "activeHint": "Across all environments and agent scopes",
+      "lastChanged": "Last configuration change",
+      "lastChangedHint": "Most recent deployment or experiment change",
+      "sdkRefresh": "Default SDK refresh",
+      "sdkRefreshHint": "Configurable in the SDK"
+    }
+  },
+  "sdkRefresh": {
+    "title": "SDK configuration refresh",
+    "description": "How deployed changes reach SDK runtime configuration.",
+    "lastChanged": "Server configuration changed",
+    "noChanges": "No changes recorded",
+    "defaultInterval": "Default check interval",
+    "seconds": "{count} seconds",
+    "delivery": "Delivery",
+    "pull": "Periodic SDK pull",
+    "acknowledgementNotice": "The server cache is invalidated immediately after deployment. By default, SDKs use ETags to check for changes on their next refresh. Per-instance receipt acknowledgements are not sent to the server yet, so this screen does not claim that every SDK has applied the change."
+  },
+  "performance": {
+    "title": "Version performance",
+    "description": "Compare runs, success rate, error rate, cost, and linked change impact issues.",
+    "openIssues": "View change impact issues",
+    "empty": "No immutable versions to measure.",
+    "version": "Version",
+    "runs": "Runs",
+    "success": "Success",
+    "errors": "Errors",
+    "cost": "Total cost",
+    "issues": "Issues"
+  },
+  "experiment": {
+    "title": "A/B experiments",
+    "description": "Allocate traffic between two versions by environment and agent scope, then compare results.",
+    "name": "Experiment name",
+    "environment": "Environment",
+    "agent": "Target agent",
+    "firstVersion": "First version",
+    "secondVersion": "Second version",
+    "weight": "Traffic %",
+    "initialStatus": "Initial status",
+    "activationHint": "Starting immediately requires an active deployment in the same environment and agent scope.",
+    "create": "Create experiment",
+    "creating": "Creating",
+    "created": "A/B experiment created.",
+    "createFailed": "Could not create the experiment.",
+    "needVersions": "Create at least two immutable versions first.",
+    "differentVersions": "Select two different versions.",
+    "statusChanged": "Experiment status updated.",
+    "start": "Start",
+    "pause": "Pause",
+    "complete": "Complete",
+    "result": "{runs} runs · {success} success · {errors} errors · {cost} average"
+  },
+  "common": {
+    "loadFailed": "Could not load prompt data.",
+    "retryDescription": "Try again in a moment.",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "dismiss": "Dismiss message"
+  }
+}

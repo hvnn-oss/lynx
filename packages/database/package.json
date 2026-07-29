@@ -13,6 +13,10 @@
   },
   "scripts": {
     "build": "tsc",
+    "migration:run": "typeorm migration:run -d dist/data-source.js",
+    "migration:revert": "typeorm migration:revert -d dist/data-source.js",
+    "schema:drop": "typeorm schema:drop -d dist/data-source.js",
+    "db:reset": "pnpm schema:drop && pnpm migration:run && pnpm seed:plans",
     "seed:admin": "pnpm build && node dist/seeds/admin-user.seed.js",
     "seed:plans": "pnpm build && node dist/seeds/organization-plans.seed.js",
     "backfill:workspace-api-keys": "pnpm build && node dist/seeds/workspace-api-keys.backfill.js",

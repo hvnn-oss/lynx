@@ -1,4 +1,4 @@
-import { PromptDeploymentsScreen } from "@/components/screen/prompts/operations";
+import { PromptDeploymentsScreen } from "@/components/screen/prompts/prompt-deployments-screen";
 
 export default function PromptDeploymentsPage() {
   return (

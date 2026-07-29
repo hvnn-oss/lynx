@@ -91,7 +91,8 @@ function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
   return (
     value !== null &&
     (typeof value === "object" || typeof value === "function") &&
-    typeof (value as AsyncIterable<unknown>)[Symbol.asyncIterator] === "function"
+    typeof (value as AsyncIterable<unknown>)[Symbol.asyncIterator] ===
+      "function"
   );
 }
 
@@ -205,6 +206,141 @@ export function instrumentLLM<T extends object>(
     );
   };
 
+  /**
+   * Executes one intercepted LLM call and emits a matching start/end Span.
+   * Both direct functions and provider client methods use this path so their
+   * usage and error semantics remain identical.
+   */
+  const invokeInstrumented = async (
+    fn: (...args: any[]) => any,
+    thisArg: unknown,
+    args: any[],
+    callPath: string[],
+  ) => {
+    const context = LynxTracer.getStore();
+    const spanId = generateSpanId();
+    const parentSpanId = context?.spanId;
+    const childContext = createChildContext(context, spanId);
+    const startTime = Date.now();
+    const rawInput = customRule?.extractInput
+      ? customRule.extractInput(args)
+      : args[0];
+    const llmMetadata = extractLlmMetadata(rawInput, callPath);
+
+    if (context) {
+      tracer.captureInternal(
+        "LLM_CALL",
+        modelLabel,
+        {
+          input: rawInput,
+          path: callPath.join("."),
+          phase: "start",
+          spanId,
+          parentSpanId,
+          ...llmMetadata,
+        },
+        context,
+      );
+    }
+
+    try {
+      // Provider work starts inside the child context so nested async work
+      // inherits the LLM Span.
+      const result = childContext
+        ? LynxTracer.runWithContext(childContext, () =>
+            Reflect.apply(fn, thisArg, args),
+          )
+        : Reflect.apply(fn, thisArg, args);
+      const resolvedResult = isPromiseLike(result) ? await result : result;
+      const captureEnd = (output: unknown) => {
+        const latency = Date.now() - startTime;
+        const rawOutput = customRule?.extractOutput
+          ? customRule.extractOutput(output)
+          : output;
+        const usage = customRule?.extractUsage
+          ? customRule.extractUsage(output)
+          : extractTokenUsage(output);
+        const estimatedCost =
+          usage && llmMetadata.model && customRule?.estimateCost
+            ? customRule.estimateCost(
+                String(llmMetadata.model),
+                usage.promptTokens,
+                usage.completionTokens,
+              )
+            : undefined;
+        const cost =
+          typeof estimatedCost === "number" &&
+          Number.isFinite(estimatedCost) &&
+          estimatedCost >= 0
+            ? estimatedCost
+            : undefined;
+        if (!context) return;
+        tracer.captureInternal(
+          "LLM_CALL",
+          modelLabel,
+          {
+            output: rawOutput,
+            phase: "end",
+            spanId,
+            parentSpanId,
+            latency,
+            usage,
+            cost,
+            costSource: cost === undefined ? undefined : "CLIENT_ESTIMATED",
+            ...llmMetadata,
+          },
+          childContext ?? context,
+        );
+      };
+      const captureStreamError = (err: unknown) => {
+        if (!context) return;
+        const error = err as Error;
+        tracer.captureInternal(
+          "ERROR",
+          modelLabel,
+          {
+            error: error.message,
+            phase: "error",
+            spanId,
+            parentSpanId,
+            latency: Date.now() - startTime,
+          },
+          childContext ?? context,
+        );
+      };
+
+      // A streaming provider resolves before generation finishes. Keep its
+      // iterable shape and close the Span only after the consumer reaches EOF.
+      if (isAsyncIterable(resolvedResult)) {
+        return wrapAsyncIterable(
+          resolvedResult,
+          () => captureEnd(resolvedResult),
+          captureStreamError,
+        );
+      }
+      captureEnd(resolvedResult);
+      return resolvedResult;
+    } catch (err: unknown) {
+      const error = err as Error;
+      const latency = Date.now() - startTime;
+      if (context) {
+        tracer.captureInternal(
+          "ERROR",
+          modelLabel,
+          {
+            error: error.message,
+            phase: "error",
+            spanId,
+            parentSpanId,
+            latency,
+          },
+          childContext ?? context,
+        );
+      }
+      throw err;
+    }
+  };
+
   const createRecursiveProxy = (target: any, path: string[] = []): any => {
     if (
       target == null ||
@@ -214,6 +350,13 @@ export function instrumentLLM<T extends object>(
     }
 
     return new Proxy(target, {
+      // A direct function passed to instrumentLLM is itself the target call.
+      apply(fn, thisArg, args) {
+        if (path.length === 0) {
+          return invokeInstrumented(fn, thisArg, args, ["call"]);
+        }
+        return Reflect.apply(fn, thisArg, args);
+      },
       get(obj, prop) {
         if (typeof prop === "symbol") {
           return Reflect.get(obj, prop);
@@ -223,118 +366,8 @@ export function instrumentLLM<T extends object>(
         const newPath = [...path, prop];
 
         if (typeof val === "function" && isTargetLLMMethod(newPath)) {
-          return async function (this: any, ...args: any[]) {
-            const context = LynxTracer.getStore();
-            const spanId = generateSpanId();
-            const parentSpanId = context?.spanId;
-            const childContext = createChildContext(context, spanId);
-            const startTime = Date.now();
-
-            const rawInput = customRule?.extractInput
-              ? customRule.extractInput(args)
-              : args[0];
-            const llmMetadata = extractLlmMetadata(rawInput, newPath);
-
-            if (context) {
-              tracer.captureInternal(
-                "LLM_CALL",
-                modelLabel,
-                {
-                  input: rawInput,
-                  path: newPath.join("."),
-                  phase: "start",
-                  spanId,
-                  parentSpanId,
-                  ...llmMetadata,
-                },
-                context,
-              );
-            }
-
-            try {
-              // Create the provider Promise inside the child context. Async
-              // resources created by the provider then inherit the LLM Span,
-              // so nested tools and callbacks attach to the correct parent.
-              const result = childContext
-                ? LynxTracer.runWithContext(childContext, () =>
-                    Reflect.apply(val, obj, args),
-                  )
-                : Reflect.apply(val, obj, args);
-              const resolvedResult = isPromiseLike(result)
-                ? await result
-                : result;
-              const captureEnd = (output: unknown) => {
-                const latency = Date.now() - startTime;
-                const rawOutput = customRule?.extractOutput
-                  ? customRule.extractOutput(output)
-                  : output;
-                const usage = customRule?.extractUsage
-                  ? customRule.extractUsage(output)
-                  : extractTokenUsage(output);
-                if (!context) return;
-                tracer.captureInternal(
-                  "LLM_CALL",
-                  modelLabel,
-                  {
-                    output: rawOutput,
-                    phase: "end",
-                    spanId,
-                    parentSpanId,
-                    latency,
-                    usage,
-                    ...llmMetadata,
-                  },
-                  childContext ?? context,
-                );
-              };
-              const captureStreamError = (err: unknown) => {
-                if (!context) return;
-                const error = err as Error;
-                tracer.captureInternal(
-                  "ERROR",
-                  modelLabel,
-                  {
-                    error: error.message,
-                    phase: "error",
-                    spanId,
-                    parentSpanId,
-                    latency: Date.now() - startTime,
-                  },
-                  childContext ?? context,
-                );
-              };
-
-              // A streaming provider resolves before generation finishes. Keep
-              // its public iterable shape and close the Span only after the
-              // consumer reaches EOF or iteration throws.
-              if (isAsyncIterable(resolvedResult)) {
-                return wrapAsyncIterable(
-                  resolvedResult,
-                  () => captureEnd(resolvedResult),
-                  captureStreamError,
-                );
-              }
-              captureEnd(resolvedResult);
-              return resolvedResult;
-            } catch (err: unknown) {
-              const error = err as Error;
-              const latency = Date.now() - startTime;
-              if (context) {
-                tracer.captureInternal(
-                  "ERROR",
-                  modelLabel,
-                  {
-                    error: error.message,
-                    phase: "error",
-                    spanId,
-                    parentSpanId,
-                    latency,
-                  },
-                  childContext ?? context,
-                );
-              }
-              throw err;
-            }
+          return function (this: unknown, ...args: any[]) {
+            return invokeInstrumented(val, obj, args, newPath);
           };
         }
 

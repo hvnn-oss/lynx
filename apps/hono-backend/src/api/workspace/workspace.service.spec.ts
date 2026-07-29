@@ -11,6 +11,7 @@ import {
 import type { ApiKeyIssuancePolicy } from "../api-key/api-key-issuance.policy.js";
 import { apiKeyParser } from "../../common/util/api-key-parser.js";
 import { createHash } from "node:crypto";
+import type { ProductAccessService } from "../../common/access-control/product-access.service.js";
 
 describe("WorkspaceService", () => {
   it("returns the created workspace using the public response contract", async () => {
@@ -23,7 +24,15 @@ describe("WorkspaceService", () => {
     const accessControl = {
       assertOrganizationCapability: jest.fn().mockResolvedValue(undefined),
     } as unknown as AccessControlService;
-    const service = new WorkspaceService(repository, accessControl);
+    const productAccess = {
+      grantWorkspaceForUser: jest.fn().mockResolvedValue(undefined),
+    } as unknown as ProductAccessService;
+    const service = new WorkspaceService(
+      repository,
+      accessControl,
+      undefined,
+      productAccess,
+    );
     const input = {
       userId: "user-1",
       name: "Production",
@@ -41,6 +50,10 @@ describe("WorkspaceService", () => {
       organizationId: input.orgId,
       capability: CAPABILITIES.WORKSPACE_CREATE,
     });
+    expect(productAccess.grantWorkspaceForUser).toHaveBeenCalledWith(
+      input.userId,
+      "1fe94bb3-7297-4b42-a4fb-f4b04b6857ec",
+    );
   });
 
   it("returns the raw API key once and stores only its SHA-256 secret hash", async () => {

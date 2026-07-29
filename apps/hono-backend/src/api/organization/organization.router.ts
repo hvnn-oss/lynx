@@ -1,6 +1,7 @@
 import { organizationContract } from "@repo/contract";
 import { Hono } from "hono";
 import { requireAccessToken } from "../../common/middleware/access-token.middleware.js";
+import { requireProductAccess } from "../../common/middleware/product-access.middleware.js";
 import type { AppEnv } from "../../common/types/app-env.js";
 import { createOrgHandlers } from "./organization.handler.js";
 
@@ -10,6 +11,12 @@ export const orgRouter = new Hono<AppEnv>();
 
 // 조직 API는 인증된 사용자만 호출할 수 있습니다.
 orgRouter.use("*", requireAccessToken);
+orgRouter.use("*", requireProductAccess);
+orgRouter.on(
+  organizationContract.list.method,
+  organizationContract.list.path,
+  ...orgHandlers.listOrganizations,
+);
 orgRouter.on(
   organizationContract.create.method,
   organizationContract.create.path,
@@ -29,6 +36,21 @@ orgRouter.on(
   organizationContract.listMembers.method,
   organizationContract.listMembers.path,
   ...orgHandlers.listMembers,
+);
+orgRouter.on(
+  organizationContract.createInvitation.method,
+  organizationContract.createInvitation.path,
+  ...orgHandlers.createInvitation,
+);
+orgRouter.on(
+  organizationContract.listInvitations.method,
+  organizationContract.listInvitations.path,
+  ...orgHandlers.listInvitations,
+);
+orgRouter.on(
+  organizationContract.revokeInvitation.method,
+  organizationContract.revokeInvitation.path,
+  ...orgHandlers.revokeInvitation,
 );
 orgRouter.on(
   organizationContract.uploadProfileImage.method,

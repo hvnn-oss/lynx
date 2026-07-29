@@ -1,0 +1,54 @@
+{
+  "title": "비용 분석",
+  "description": "실제 Run에 누적된 비용과 토큰을 기준으로 비용 사용량을 확인합니다.",
+  "metrics": {
+    "today": {
+      "label": "오늘",
+      "description": "오늘 시작된 Run 비용"
+    },
+    "week": {
+      "label": "이번 주",
+      "description": "이번 주에 시작된 Run 비용"
+    },
+    "month": {
+      "label": "이번 달",
+      "description": "이번 달에 시작된 Run 비용"
+    },
+    "average": {
+      "label": "Run당 평균",
+      "description": "이번 달 Run 기준 평균 비용"
+    },
+    "tokens": {
+      "label": "이번 달 토큰",
+      "description": "이번 달 Run에 누적된 전체 토큰"
+    }
+  },
+  "trend": {
+    "title": "일별 비용",
+    "description": "최근 14일 동안 시작된 Run의 일별 비용입니다.",
+    "empty": "최근 14일 동안 기록된 비용이 없습니다."
+  },
+  "agents": {
+    "title": "비용 상위 Agent",
+    "description": "Run {runs}개 · 토큰 {tokens}",
+    "empty": "이번 달 비용이 기록된 Agent가 없습니다."
+  },
+  "pricing": {
+    "title": "비용 산정 범위",
+    "coverage": "산정률 {percentage}%",
+    "counts": "산정 {priced}건 · 미산정 {unpriced}건 · 추정값 {estimated}건",
+    "catalog": "가격표 {version}",
+    "complete": "이번 달 모든 LLM 호출의 비용을 산정했습니다.",
+    "incomplete": "미산정 호출은 비용 합계에서 제외됩니다. 모델 가격표 또는 실제 비용 제공이 필요합니다.",
+    "noCalls": "이번 달에 완료된 LLM 호출이 없습니다."
+  },
+  "empty": {
+    "workspaceTitle": "사용 가능한 워크스페이스가 없습니다",
+    "workspaceDescription": "워크스페이스를 만든 뒤 Run이 수집되면 비용을 확인할 수 있습니다."
+  },
+  "error": {
+    "title": "비용 데이터를 불러오지 못했습니다",
+    "description": "비용 대시보드 API와 워크스페이스 권한을 확인해 주세요.",
+    "action": "다시 시도"
+  }
+}
