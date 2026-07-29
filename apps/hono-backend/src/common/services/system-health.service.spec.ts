@@ -23,6 +23,8 @@ describe("SystemHealthService", () => {
     const result = await service.checkReadiness();
 
     expect(result.status).toBe("ok");
+    expect(result.releaseSha).toBe(env.RELEASE_SHA);
+    expect(result.deployedAt).toBe(env.DEPLOYED_AT);
     expect(result.processRole).toBe(env.LYNX_PROCESS_ROLE);
     expect(result.checks.database.status).toBe("up");
     expect(result.checks.redis.status).toBe("up");
@@ -46,6 +48,8 @@ describe("SystemHealthService", () => {
     const result = await service.checkReadiness();
 
     expect(result.status).toBe("unavailable");
+    expect(result.releaseSha).toBe(env.RELEASE_SHA);
+    expect(result.deployedAt).toBe(env.DEPLOYED_AT);
     expect(result.checks.database.status).toBe("down");
     expect(result.checks.redis.status).toBe("up");
     expect(result.operations.status).toBe("unknown");

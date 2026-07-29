@@ -8,6 +8,8 @@ export const PublicErrorResponseSchema = z.object({
 
 export const HealthResponseSchema = z.object({
   status: z.literal("ok"),
+  releaseSha: z.string().min(1),
+  deployedAt: z.string().datetime(),
 });
 
 export const DependencyHealthSchema = z.object({
@@ -17,6 +19,8 @@ export const DependencyHealthSchema = z.object({
 
 export const ReadinessResponseSchema = z.object({
   status: z.enum(["ok", "unavailable"]),
+  releaseSha: z.string().min(1),
+  deployedAt: z.string().datetime(),
   processRole: z.enum(["api", "worker", "all"]),
   checks: z.object({
     database: DependencyHealthSchema,

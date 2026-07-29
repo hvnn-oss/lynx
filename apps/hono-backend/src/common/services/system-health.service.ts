@@ -55,6 +55,8 @@ export class SystemHealthService {
         database.status === "up" && redis.status === "up"
           ? "ok"
           : "unavailable",
+      releaseSha: env.RELEASE_SHA,
+      deployedAt: env.DEPLOYED_AT,
       processRole: env.LYNX_PROCESS_ROLE,
       checks: { database, redis },
       operations: operationSummary,

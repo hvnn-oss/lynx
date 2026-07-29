@@ -46,6 +46,8 @@ const envSchema = z
     CORE_REDIS_TLS: booleanFromEnv.default(false),
 
     LYNX_PROCESS_ROLE: z.enum(["api", "worker", "all"]).default("all"),
+    RELEASE_SHA: optionalTrimmedString,
+    DEPLOYED_AT: z.string().datetime().optional(),
     HEALTH_CHECK_TIMEOUT_MS: z.coerce
       .number()
       .int()
@@ -270,6 +272,8 @@ if (!parsed.success) {
  */
 export const env = {
   ...parsed.data,
+  RELEASE_SHA: parsed.data.RELEASE_SHA ?? "local",
+  DEPLOYED_AT: parsed.data.DEPLOYED_AT ?? new Date().toISOString(),
   DATA_RETENTION_ENABLED:
     parsed.data.DATA_RETENTION_ENABLED ?? parsed.data.NODE_ENV === "production",
   SIGNUP_MODE:

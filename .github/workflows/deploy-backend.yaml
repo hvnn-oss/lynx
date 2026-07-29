@@ -163,6 +163,11 @@ jobs:
 
           echo "arn=${CURRENT_TASK_DEFINITION}" >> "$GITHUB_OUTPUT"
 
+      - name: Set release metadata
+        id: release-metadata
+        shell: bash
+        run: echo "deployed-at=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+
       - name: Render ECS task definition
         id: task-definition
         uses: aws-actions/amazon-ecs-render-task-definition@v1
@@ -170,6 +175,9 @@ jobs:
           task-definition-arn: ${{ steps.current-task-definition.outputs.arn }}
           container-name: ${{ env.ECS_CONTAINER_NAME }}
           image: ${{ steps.image.outputs.uri }}
+          environment-variables: |
+            RELEASE_SHA=${{ github.sha }}
+            DEPLOYED_AT=${{ steps.release-metadata.outputs.deployed-at }}
 
       - name: Run migrations and deploy ECS service
         id: deploy
@@ -218,6 +226,8 @@ jobs:
             echo "## Lynx backend deployment"
             echo
             echo "- Image: \`${{ steps.image.outputs.uri }}\`"
+            echo "- Release SHA: \`${{ github.sha }}\`"
+            echo "- Deployed at: \`${{ steps.release-metadata.outputs.deployed-at }}\`"
             echo "- Task definition: \`${{ steps.deploy.outputs.task-definition-arn }}\`"
             echo "- ECS service: \`${ECS_CLUSTER}/${ECS_SERVICE}\`"
             echo

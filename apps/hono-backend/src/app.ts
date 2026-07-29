@@ -42,6 +42,7 @@ import { systemHealthService } from "./common/services/system-health.service.js"
 import { adminRouter } from "./api/admin/admin.router.js";
 import { secureHeaders } from "hono/secure-headers";
 import { auditLogMiddleware } from "./common/middleware/audit-log.middleware.js";
+import { env } from "./common/config/config.js";
 
 /**
  * 공통 미들웨어와 기능별 라우터를 연결한 Hono 애플리케이션입니다.
@@ -51,6 +52,11 @@ import { auditLogMiddleware } from "./common/middleware/audit-log.middleware.js"
  */
 export const app = new Hono<AppEnv>();
 
+const releaseMetadata = {
+  releaseSha: env.RELEASE_SHA,
+  deployedAt: env.DEPLOYED_AT,
+};
+
 // 모든 요청에 추적 ID와 요청 전용 로거를 설정합니다.
 app.use("*", requestId());
 app.use("*", requestLoggerMiddleware);
@@ -59,10 +65,20 @@ app.use("*", auditLogMiddleware);
 
 /** 서버 프로세스가 요청을 처리할 수 있는지 확인합니다. */
 app.on(systemContract.health.method, systemContract.health.path, (c) =>
-  c.json(systemContract.health.response.parse({ status: "ok" })),
+  c.json(
+    systemContract.health.response.parse({
+      status: "ok",
+      ...releaseMetadata,
+    }),
+  ),
 );
 app.on(systemContract.liveness.method, systemContract.liveness.path, (c) =>
-  c.json(systemContract.liveness.response.parse({ status: "ok" })),
+  c.json(
+    systemContract.liveness.response.parse({
+      status: "ok",
+      ...releaseMetadata,
+    }),
+  ),
 );
 app.on(
   systemContract.readiness.method,
