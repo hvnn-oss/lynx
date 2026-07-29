@@ -27,19 +27,38 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  AWS_REGION: ap-northeast-2
-  AWS_DEPLOY_ROLE_ARN: arn:aws:iam::451978386033:role/LynxGitHubDeployRole
-  ECR_REPOSITORY: lynx/backend
+  AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+  BACKEND_ECR_REPOSITORY: ${{ vars.BACKEND_ECR_REPOSITORY }}
 
 jobs:
   publish:
     name: Verify and publish backend image
     runs-on: ubuntu-latest
+    environment: backend-deploy-prod
     timeout-minutes: 30
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Validate deployment variables
+        shell: bash
+        run: |
+          required_variables=(
+            AWS_ACCOUNT_ID
+            AWS_REGION
+            AWS_DEPLOY_ROLE_ARN
+            BACKEND_ECR_REPOSITORY
+          )
+
+          for variable_name in "${required_variables[@]}"; do
+            if [ -z "${!variable_name:-}" ]; then
+              echo "::error::Missing GitHub Actions variable: ${variable_name}"
+              exit 1
+            fi
+          done
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -63,7 +82,7 @@ jobs:
         with:
           role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: "451978386033"
+          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
           role-session-name: lynx-backend-${{ github.run_id }}
 
       - name: Sign in to Amazon ECR
@@ -74,7 +93,7 @@ jobs:
         id: image
         shell: bash
         run: |
-          IMAGE_URI="${{ steps.ecr.outputs.registry }}/${ECR_REPOSITORY}:${GITHUB_SHA}"
+          IMAGE_URI="${{ steps.ecr.outputs.registry }}/${BACKEND_ECR_REPOSITORY}:${GITHUB_SHA}"
           echo "uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
 
       - name: Check whether image already exists
