@@ -1,6 +1,7 @@
 import "reflect-metadata";
 
 export * from "./data-source.js";
+export * from "./certificate.js";
 
 // =====================================================
 // Entities

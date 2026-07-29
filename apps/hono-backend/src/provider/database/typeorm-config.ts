@@ -1,6 +1,9 @@
 import { DataSource } from "typeorm";
 import { env } from "../../common/config/config.js";
-import { AppDataSource as BaseDataSource } from "@repo/database";
+import {
+  AppDataSource as BaseDataSource,
+  normalizeCertificateBundle,
+} from "@repo/database";
 import type { DataSourceOptions } from "typeorm/browser";
 
 type PostgresDataSourceOptions = Extract<
@@ -32,7 +35,7 @@ const dbOptions = {
     ? {
         rejectUnauthorized: env.DATABASE_SSL_REJECT_UNAUTHORIZED,
         ...(env.DATABASE_SSL_CA
-          ? { ca: env.DATABASE_SSL_CA.replace(/\\n/g, "\n") }
+          ? { ca: normalizeCertificateBundle(env.DATABASE_SSL_CA) }
           : {}),
       }
     : false,

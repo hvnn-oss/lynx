@@ -43,6 +43,7 @@ import { OpenApiApiKeyUsageHourlyEntity } from "./entities/workspace/openapi-api
 import { InitialSchema1785054963677 } from "./migrations/1785054963677-initial-schema";
 import { AddOpenApiApiKeyUsage1785312000000 } from "./migrations/1785312000000-add-openapi-api-key-usage";
 import { loadDatabaseEnv } from "./load-env";
+import { normalizeCertificateBundle } from "./certificate";
 
 loadDatabaseEnv();
 
@@ -141,7 +142,7 @@ export const AppDataSource = new DataSource({
     ? {
         rejectUnauthorized: shouldRejectUnauthorizedDatabaseCertificate,
         ...(databaseSslCa
-          ? { ca: databaseSslCa.replace(/\\n/g, "\n") }
+          ? { ca: normalizeCertificateBundle(databaseSslCa) }
           : {}),
       }
     : false,
