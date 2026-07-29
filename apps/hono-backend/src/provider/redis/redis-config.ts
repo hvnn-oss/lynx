@@ -6,4 +6,5 @@ export const coreRedis = new Redis({
   host: env.CORE_REDIS_HOST,
   password: env.CORE_REDIS_PASSWORD,
   port: env.CORE_REDIS_PORT,
+  tls: env.CORE_REDIS_TLS ? {} : undefined,
 });

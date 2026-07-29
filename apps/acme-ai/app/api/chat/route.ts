@@ -39,6 +39,7 @@ type ProviderRequest = {
   systemPrompt: string;
   temperature: number;
   maxTokens: number;
+  captureInput: boolean;
   captureOutput: boolean;
 };
 type ProviderResult = {
@@ -65,7 +66,8 @@ const tracer = new LynxTracer({
   environment: process.env.LYNX_ENVIRONMENT ?? process.env.NODE_ENV,
   agentId: "orbit-assistant",
   appVersion: "orbit-chat-v1",
-  captureMode: "smart",
+  // The demo is an inspection target, so normal inputs and outputs stay visible.
+  captureMode: "full",
   runtimeConfig: {
     enabled: Boolean(lynxApiKey),
     refreshIntervalMs: 60_000,
@@ -92,8 +94,12 @@ const callModel = tracer.instrumentLLM(callProvider, {
     extractInput: ([request]) => ({
       provider: request.provider,
       model: request.model,
-      messages: request.messages,
-      systemPrompt: request.systemPrompt,
+      ...(request.captureInput
+        ? {
+            messages: request.messages,
+            systemPrompt: request.systemPrompt,
+          }
+        : { redacted: true }),
       temperature: request.temperature,
       maxTokens: request.maxTokens,
     }),
@@ -231,6 +237,7 @@ export async function POST(request: NextRequest) {
           tracer.firewallInput(latestMessage.content, {
             label: "orbit.chat.input",
             riskLevel: "LOW",
+            captureContent: settings.captureInput,
           });
           const toolContext =
             body.toolsEnabled === false
@@ -259,11 +266,13 @@ export async function POST(request: NextRequest) {
             messages: appendToolContext(messages, toolContext),
             temperature: settings.temperature,
             maxTokens: settings.maxTokens,
+            captureInput: settings.captureInput,
             captureOutput: settings.captureOutput,
           });
           tracer.firewallOutput(result.text, {
             label: "orbit.chat.output",
             riskLevel: "LOW",
+            captureContent: settings.captureOutput,
           });
 
           if (settings.memoryEnabled) {

@@ -13,8 +13,12 @@ export class InitialSchema1785054963677 implements MigrationInterface {
                 "action" character varying NOT NULL,
                 "targetType" character varying NOT NULL,
                 "targetId" character varying NOT NULL,
+                "workspaceId" uuid,
+                "organizationId" uuid,
+                "requestId" character varying(120),
                 "before" jsonb,
                 "after" jsonb,
+                "metadata" jsonb,
                 "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
                 CONSTRAINT "PK_9425be48a9c753f5753017c61b2" PRIMARY KEY ("id")
             )
@@ -58,7 +62,7 @@ export class InitialSchema1785054963677 implements MigrationInterface {
                 "totalPromptTokens" integer NOT NULL DEFAULT '0',
                 "totalCompletionTokens" integer NOT NULL DEFAULT '0',
                 "totalTokens" integer NOT NULL DEFAULT '0',
-                "totalCost" numeric(16, 6) NOT NULL DEFAULT '0',
+                "totalCost" numeric(20, 12) NOT NULL DEFAULT '0',
                 CONSTRAINT "PK_804c38ffba92002c6d2c646dd46" PRIMARY KEY ("id")
             )
         `);
@@ -78,7 +82,7 @@ export class InitialSchema1785054963677 implements MigrationInterface {
                 "schemaVersion" character varying(40),
                 "payload" jsonb,
                 "latency" integer,
-                "cost" numeric(10, 6),
+                "cost" numeric(20, 12),
                 "timestamp" TIMESTAMP NOT NULL,
                 "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
                 "sessionId" uuid,
@@ -211,7 +215,7 @@ export class InitialSchema1785054963677 implements MigrationInterface {
                 "totalPromptTokens" integer NOT NULL,
                 "totalCompletionTokens" integer NOT NULL,
                 "totalTokens" integer NOT NULL,
-                "totalCost" integer NOT NULL,
+                "totalCost" numeric(20, 12) NOT NULL DEFAULT '0',
                 "workspaceId" uuid,
                 "agentId" uuid,
                 "usedPromptId" uuid,
@@ -354,6 +358,9 @@ export class InitialSchema1785054963677 implements MigrationInterface {
                 "logOverageUnitPrice" numeric(12, 6),
                 "features" jsonb NOT NULL DEFAULT '{}',
                 "isActive" boolean NOT NULL DEFAULT true,
+                "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                CONSTRAINT "CHK_organization_plan_retention_days" CHECK ("retentionDays" >= 1),
                 CONSTRAINT "UQ_441b87555a7991f077892278a35" UNIQUE ("code"),
                 CONSTRAINT "PK_5057d4c67d87c89f2fa8d70196b" PRIMARY KEY ("id")
             )
@@ -803,6 +810,133 @@ export class InitialSchema1785054963677 implements MigrationInterface {
             CREATE INDEX "IDX_org_creation_event_user_created" ON "organization_creation_event" ("userId", "createdAt")
         `);
     await queryRunner.query(`
+            CREATE TABLE "webhook_delivery" (
+                "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
+                "eventId" uuid NOT NULL,
+                "deduplicationKey" character varying(255) NOT NULL,
+                "workspaceId" uuid NOT NULL,
+                "policyId" bigint,
+                "policyRevision" integer,
+                "destinationUrl" text NOT NULL,
+                "eventType" character varying(80) NOT NULL,
+                "provider" character varying(24) NOT NULL DEFAULT 'GENERIC',
+                "occurredAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+                "data" jsonb NOT NULL,
+                "status" character varying(24) NOT NULL DEFAULT 'PENDING',
+                "attemptCount" integer NOT NULL DEFAULT '0',
+                "maxAttempts" integer NOT NULL DEFAULT '8',
+                "nextAttemptAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                "lockedAt" TIMESTAMP WITH TIME ZONE,
+                "lockedBy" character varying(120),
+                "lastAttemptAt" TIMESTAMP WITH TIME ZONE,
+                "responseStatus" integer,
+                "lastError" character varying(1000),
+                "deliveredAt" TIMESTAMP WITH TIME ZONE,
+                "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                CONSTRAINT "PK_webhook_delivery" PRIMARY KEY ("id"),
+                CONSTRAINT "UQ_webhook_delivery_event_id" UNIQUE ("eventId"),
+                CONSTRAINT "UQ_webhook_delivery_deduplication_key" UNIQUE ("deduplicationKey"),
+                CONSTRAINT "FK_webhook_delivery_workspace"
+                    FOREIGN KEY ("workspaceId") REFERENCES "workspace"("id") ON DELETE CASCADE,
+                CONSTRAINT "FK_webhook_delivery_policy"
+                    FOREIGN KEY ("policyId") REFERENCES "firewall-policy"("id") ON DELETE SET NULL
+            )
+        `);
+    await queryRunner.query(`
+            CREATE INDEX "IDX_webhook_delivery_dispatch"
+            ON "webhook_delivery" ("status", "nextAttemptAt")
+        `);
+    await queryRunner.query(`
+            CREATE INDEX "IDX_webhook_delivery_workspace_created"
+            ON "webhook_delivery" ("workspaceId", "createdAt")
+        `);
+    await queryRunner.query(`
+            CREATE INDEX "IDX_webhook_delivery_policy_created"
+            ON "webhook_delivery" ("policyId", "createdAt")
+        `);
+    await queryRunner.query(`
+            CREATE INDEX "IDX_webhook_delivery_workspace_provider_created"
+            ON "webhook_delivery" ("workspaceId", "provider", "createdAt")
+        `);
+    await queryRunner.query(`
+            CREATE TABLE "slack_integration" (
+                "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
+                "workspaceId" uuid NOT NULL,
+                "webhookUrlCiphertext" text NOT NULL,
+                "displayName" character varying(80),
+                "isEnabled" boolean NOT NULL DEFAULT true,
+                "eventTypes" jsonb NOT NULL,
+                "updatedByUserId" uuid,
+                "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                CONSTRAINT "PK_slack_integration" PRIMARY KEY ("id"),
+                CONSTRAINT "UQ_slack_integration_workspace" UNIQUE ("workspaceId"),
+                CONSTRAINT "FK_slack_integration_workspace"
+                    FOREIGN KEY ("workspaceId") REFERENCES "workspace"("id") ON DELETE CASCADE
+            )
+        `);
+    await queryRunner.query(`
+            CREATE TABLE "product_access_grant" (
+                "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
+                "subjectType" character varying NOT NULL,
+                "subjectId" uuid NOT NULL,
+                "capability" character varying NOT NULL DEFAULT 'LYNX_CORE',
+                "status" character varying NOT NULL DEFAULT 'ACTIVE',
+                "grantedByUserId" uuid,
+                "grantedAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+                "expiresAt" TIMESTAMP WITH TIME ZONE,
+                "metadata" jsonb,
+                "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
+                "updatedAt" TIMESTAMP NOT NULL DEFAULT now(),
+                CONSTRAINT "PK_product_access_grant" PRIMARY KEY ("id")
+            )
+        `);
+    await queryRunner.query(`
+            CREATE UNIQUE INDEX "UQ_product_access_grant_subject_capability"
+            ON "product_access_grant" ("subjectType", "subjectId", "capability")
+        `);
+    await queryRunner.query(`
+            CREATE INDEX "IDX_product_access_grant_lookup"
+            ON "product_access_grant" ("subjectType", "subjectId", "status")
+        `);
+    await queryRunner.query(`
+            CREATE TABLE "access_invitation" (
+                "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
+                "email" character varying(320) NOT NULL,
+                "tokenHash" character(64) NOT NULL,
+                "targetType" character varying NOT NULL DEFAULT 'PRODUCT',
+                "targetId" uuid,
+                "role" character varying,
+                "status" character varying NOT NULL DEFAULT 'PENDING',
+                "invitedByUserId" uuid NOT NULL,
+                "acceptedByUserId" uuid,
+                "expiresAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+                "acceptedAt" TIMESTAMP WITH TIME ZONE,
+                "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
+                "updatedAt" TIMESTAMP NOT NULL DEFAULT now(),
+                CONSTRAINT "PK_access_invitation" PRIMARY KEY ("id"),
+                CONSTRAINT "UQ_access_invitation_token_hash" UNIQUE ("tokenHash")
+            )
+        `);
+    await queryRunner.query(`
+            CREATE INDEX "IDX_access_invitation_email_status"
+            ON "access_invitation" ("email", "status")
+        `);
+    await queryRunner.query(`
+            CREATE INDEX "IDX_access_invitation_created"
+            ON "access_invitation" ("createdAt", "id")
+        `);
+    await queryRunner.query(`
+            CREATE UNIQUE INDEX "UQ_access_invitation_pending_target"
+            ON "access_invitation" (
+                LOWER("email"),
+                "targetType",
+                COALESCE("targetId", '00000000-0000-0000-0000-000000000000'::uuid)
+            )
+            WHERE "status" = 'PENDING'
+        `);
+    await queryRunner.query(`
             ALTER TABLE "oidc-account"
             ADD CONSTRAINT "FK_8b391bb81c014f8bdc1056569ad" FOREIGN KEY ("userAccountId") REFERENCES "user-account"("id") ON DELETE NO ACTION ON UPDATE NO ACTION
         `);
@@ -1166,6 +1300,29 @@ export class InitialSchema1785054963677 implements MigrationInterface {
             ON "admin_audit_log" ("targetType", "targetId")
         `);
     await queryRunner.query(`
+            CREATE INDEX "IDX_admin_audit_log_created"
+            ON "admin_audit_log" ("createdAt" DESC, "id" DESC)
+        `);
+    await queryRunner.query(`
+            CREATE INDEX "IDX_admin_audit_log_action_created"
+            ON "admin_audit_log" ("action", "createdAt" DESC)
+        `);
+    await queryRunner.query(`
+            CREATE INDEX "IDX_admin_audit_log_request"
+            ON "admin_audit_log" ("requestId")
+            WHERE "requestId" IS NOT NULL
+        `);
+    await queryRunner.query(`
+            CREATE INDEX "IDX_admin_audit_log_workspace_created"
+            ON "admin_audit_log" ("workspaceId", "createdAt" DESC)
+            WHERE "workspaceId" IS NOT NULL
+        `);
+    await queryRunner.query(`
+            CREATE INDEX "IDX_admin_audit_log_organization_created"
+            ON "admin_audit_log" ("organizationId", "createdAt" DESC)
+            WHERE "organizationId" IS NOT NULL
+        `);
+    await queryRunner.query(`
             CREATE INDEX "IDX_agent_workspace_name"
             ON "agent" ("workspaceId", "name")
         `);
@@ -1520,6 +1677,18 @@ export class InitialSchema1785054963677 implements MigrationInterface {
         `);
     await queryRunner.query(`
             DROP INDEX "public"."IDX_org_creation_event_user_created"
+        `);
+    await queryRunner.query(`
+            DROP TABLE "access_invitation"
+        `);
+    await queryRunner.query(`
+            DROP TABLE "product_access_grant"
+        `);
+    await queryRunner.query(`
+            DROP TABLE "slack_integration"
+        `);
+    await queryRunner.query(`
+            DROP TABLE "webhook_delivery"
         `);
     await queryRunner.query(`
             DROP TABLE "organization_creation_event"

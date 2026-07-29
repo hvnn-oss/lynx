@@ -40,11 +40,6 @@ import { RunEntity } from "./entities/run/run.entity";
 import { WorkspaceApiKeyEntity } from "./entities/workspace/workspace-api-key.entity";
 import { WorkspaceMembershipEntity } from "./entities/workspace/workspace-membership.entity";
 import { InitialSchema1785054963677 } from "./migrations/1785054963677-initial-schema";
-import { ImproveCostPrecision1785225600000 } from "./migrations/1785225600000-improve-cost-precision";
-import { AddWebhookDeliveryOutbox1785312000000 } from "./migrations/1785312000000-add-webhook-delivery-outbox";
-import { AddSlackIntegration1785315600000 } from "./migrations/1785315600000-add-slack-integration";
-import { AddPilotAccessControl1785398400000 } from "./migrations/1785398400000-add-pilot-access-control";
-import { ExpandAccessInvitationTargets1785402000000 } from "./migrations/1785402000000-expand-access-invitation-targets";
 import { loadDatabaseEnv } from "./load-env";
 
 loadDatabaseEnv();
@@ -151,13 +146,6 @@ export const AppDataSource = new DataSource({
     RunEntity,
     FilterPolicyEntity,
   ],
-  migrations: [
-    InitialSchema1785054963677,
-    ImproveCostPrecision1785225600000,
-    AddWebhookDeliveryOutbox1785312000000,
-    AddSlackIntegration1785315600000,
-    AddPilotAccessControl1785398400000,
-    ExpandAccessInvitationTargets1785402000000,
-  ],
+  migrations: [InitialSchema1785054963677],
   subscribers: [],
 });

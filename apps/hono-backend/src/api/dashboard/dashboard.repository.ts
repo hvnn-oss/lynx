@@ -65,6 +65,7 @@ export interface DashboardSessionMetricsRow {
   failedCount: string;
   runningCount: string;
   averageDurationMs: string | null;
+  averageElapsedDurationMs: string | null;
   averageCost: string | null;
   blockedCount: string;
 }
@@ -75,8 +76,10 @@ export interface DashboardSessionRow {
   name: string;
   status: string;
   startedAt: Date | string;
+  lastActivityAt: Date | string;
   endedAt: Date | string | null;
   durationMs: string | null;
+  elapsedDurationMs: string | null;
   cost: string;
   runCount: string;
   totalTokens?: string;

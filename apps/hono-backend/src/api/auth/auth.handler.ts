@@ -57,10 +57,7 @@ export function createAuthHandlers() {
     zValidator("json", authContract.signUp.request),
     async (c) => {
       const response = await authService.register(c.req.valid("json"));
-      return c.json(
-        authContract.signUp.response.parse(response),
-        201,
-      );
+      return c.json(authContract.signUp.response.parse(response), 201);
     },
   );
 
@@ -78,6 +75,7 @@ export function createAuthHandlers() {
         await authService.complete(completeInput);
 
       setRefreshTokenCookie(c, refresh_token);
+      c.header("Cache-Control", "no-store");
 
       return c.json(
         authContract.login.response.parse({
@@ -95,13 +93,12 @@ export function createAuthHandlers() {
     async (c) => {
       const refreshToken = getCookie(c, "rid");
       if (!refreshToken) {
-        throw new UnauthorizedErrorException(
-          ERROR_CODES.INVALID_REFRESH_TOKEN,
-        );
+        throw new UnauthorizedErrorException(ERROR_CODES.INVALID_REFRESH_TOKEN);
       }
       const { access_token, refresh_token } =
         await authService.refresh(refreshToken);
       setRefreshTokenCookie(c, refresh_token);
+      c.header("Cache-Control", "no-store");
 
       return c.json(
         authContract.refresh.response.parse({ success: true, access_token }),
@@ -123,10 +120,7 @@ export function createAuthHandlers() {
         path: REFRESH_TOKEN_COOKIE_PATH,
       });
 
-      return c.json(
-        authContract.logout.response.parse({ success: true }),
-        200,
-      );
+      return c.json(authContract.logout.response.parse({ success: true }), 200);
     },
   );
 

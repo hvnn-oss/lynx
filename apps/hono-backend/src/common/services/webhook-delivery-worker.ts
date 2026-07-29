@@ -39,7 +39,6 @@ export class WebhookDeliveryWorker {
     this.timer = setInterval(() => {
       void this.runOnce();
     }, env.FIREWALL_WEBHOOK_POLL_INTERVAL_MS);
-    this.timer.unref?.();
     void this.runOnce();
   }
 

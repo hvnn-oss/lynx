@@ -1,10 +1,10 @@
 import { z } from "zod";
 
-export const OrganizationPlanCodeSchema = z.enum([
-  "FREE",
-  "PRO",
-  "ENTERPRISE",
-]);
+export const OrganizationPlanCodeSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z][A-Z0-9_]{1,39}$/);
 
 export const OrganizationPlanSchema = z.object({
   id: z.uuid(),

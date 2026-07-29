@@ -1,16 +1,14 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { getDashboardOverview, listAvailableWorkspaces } from "@/lib/dashboard";
+import { getDashboardOverview } from "@/lib/dashboard";
 import { listWorkspaceRuns } from "@/lib/runs";
+import { useCurrentWorkspace } from "@/hooks/use-current-workspace";
 
 export function useDashboardOverview() {
-  const workspaces = useQuery({
-    queryKey: ["workspaces", "available"],
-    queryFn: listAvailableWorkspaces,
-  });
-  const workspaceId = workspaces.data?.items[0]?.id ?? "";
-  const hasWorkspace = workspaceId.length > 0;
+  const workspace = useCurrentWorkspace();
+  const workspaceId = workspace.workspaceId;
+  const hasWorkspace = workspace.hasWorkspace;
   const overview = useQuery({
     queryKey: ["dashboard", "overview", workspaceId],
     queryFn: () => getDashboardOverview(workspaceId),
@@ -29,12 +27,12 @@ export function useDashboardOverview() {
         : undefined,
     workspaceId,
     isPending:
-      workspaces.isPending ||
+      workspace.isPending ||
       (hasWorkspace && (overview.isPending || runs.isPending)),
-    isError: workspaces.isError || overview.isError || runs.isError,
+    isError: workspace.isError || overview.isError || runs.isError,
     refetch: async () => {
       await Promise.all([
-        workspaces.refetch(),
+        workspace.refetch(),
         overview.refetch(),
         runs.refetch(),
       ]);

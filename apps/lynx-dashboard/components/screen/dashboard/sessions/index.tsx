@@ -126,7 +126,9 @@ function SessionMetrics({ data }: { data: DashboardSessionsResponseDto }) {
       <DashboardMetricCard
         label={t("duration.label")}
         value={formatDuration(data.metrics.averageDurationMs)}
-        description={t("duration.description")}
+        description={t("duration.description", {
+          elapsed: formatDuration(data.metrics.averageElapsedDurationMs),
+        })}
       />
       <DashboardMetricCard
         label={t("cost.label")}
@@ -161,7 +163,15 @@ function SessionList({ data }: { data: DashboardSessionsResponseDto }) {
             description={t("description", {
               agent: session.agent.name,
               runs: session.runCount,
-              duration: formatDuration(session.durationMs),
+              activeDuration: formatDuration(session.durationMs),
+              elapsedDuration: formatDuration(session.elapsedDurationMs),
+              lastActivity: format.dateTime(
+                new Date(session.lastActivityAt),
+                {
+                  dateStyle: "short",
+                  timeStyle: "short",
+                },
+              ),
               cost: format.number(session.cost, {
                 style: "currency",
                 currency: "USD",

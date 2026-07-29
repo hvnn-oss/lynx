@@ -56,6 +56,7 @@ function createService(input?: {
       failedCount: "1",
       runningCount: "0",
       averageDurationMs: "1500.4",
+      averageElapsedDurationMs: "2500.4",
       averageCost: "0.25",
       blockedCount: "1",
     }),
@@ -71,8 +72,10 @@ function createService(input?: {
         name: "session-1",
         status: "FAILED",
         startedAt: "2026-07-27T00:00:00.000Z",
+        lastActivityAt: "2026-07-27T00:00:02.500Z",
         endedAt: "2026-07-27T00:00:01.500Z",
         durationMs: "1500",
+        elapsedDurationMs: "2500",
         cost: "0.25",
         runCount: "2",
         agentId: "120e4bb6-7d97-41f1-a0d5-304a379b332a",
@@ -135,8 +138,10 @@ function createService(input?: {
         name: "session-1",
         status: "COMPLETED",
         startedAt: "2026-07-27T00:00:00.000Z",
+        lastActivityAt: "2026-07-27T00:00:01.500Z",
         endedAt: "2026-07-27T00:00:01.500Z",
         durationMs: "1500",
+        elapsedDurationMs: "1500",
         cost: "0.25",
         runCount: "1",
         totalTokens: "120",
@@ -283,6 +288,7 @@ describe("DashboardService", () => {
       failedCount: 1,
       runningCount: 0,
       averageDurationMs: 1500,
+      averageElapsedDurationMs: 2500,
       averageCost: 0.25,
       blockedCount: 1,
     });
@@ -291,6 +297,9 @@ describe("DashboardService", () => {
         sessionId: "session-1",
         status: "FAILED",
         runCount: 2,
+        lastActivityAt: "2026-07-27T00:00:02.500Z",
+        durationMs: 1500,
+        elapsedDurationMs: 2500,
       }),
     );
     expect(repository.getSessionMetrics).toHaveBeenCalledWith(
@@ -365,6 +374,13 @@ describe("DashboardService", () => {
 
     expect(session.events).toHaveLength(1);
     expect(session.totalTokens).toBe(120);
+    expect(session).toEqual(
+      expect.objectContaining({
+        lastActivityAt: "2026-07-27T00:00:01.500Z",
+        durationMs: 1500,
+        elapsedDurationMs: 1500,
+      }),
+    );
     expect(agent.metrics).toEqual(
       expect.objectContaining({
         runCount: 4,

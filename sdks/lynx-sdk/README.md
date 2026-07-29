@@ -223,6 +223,11 @@ lynx.outcome({
 });
 ```
 
+Root `run()` calls automatically record a technical `COMPLETED` or `FAILED`
+outcome when `outcome()` is omitted. Use `outcome()` when business success can
+differ from whether the callback returned or threw; an explicit outcome
+suppresses the automatic one.
+
 ## Record LLM calls
 
 Use `instrumentLLM()` to wrap a model client. The returned proxy preserves the

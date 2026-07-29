@@ -15,8 +15,8 @@ import {
   getDashboardSessionsFailed,
   getDashboardSessionsOverview,
   getDashboardSessionDetail,
-  listAvailableWorkspaces,
 } from "@/lib/dashboard";
+import { useCurrentWorkspace } from "@/hooks/use-current-workspace";
 
 const SESSION_QUERY = {
   ALL: getDashboardSessionsOverview,
@@ -69,12 +69,9 @@ function useWorkspaceDashboardQuery<T>(
   queryKey: string[],
   query: (workspaceId: string) => Promise<T>,
 ) {
-  const workspaces = useQuery({
-    queryKey: ["workspaces", "available"],
-    queryFn: listAvailableWorkspaces,
-  });
-  const workspaceId = workspaces.data?.items[0]?.id ?? "";
-  const hasWorkspace = workspaceId.length > 0;
+  const workspace = useCurrentWorkspace();
+  const workspaceId = workspace.workspaceId;
+  const hasWorkspace = workspace.hasWorkspace;
   const page = useQuery({
     queryKey: [...queryKey, workspaceId],
     queryFn: () => query(workspaceId),
@@ -84,10 +81,10 @@ function useWorkspaceDashboardQuery<T>(
   return {
     data: page.data,
     hasWorkspace,
-    isPending: workspaces.isPending || (hasWorkspace && page.isPending),
-    isError: workspaces.isError || page.isError,
+    isPending: workspace.isPending || (hasWorkspace && page.isPending),
+    isError: workspace.isError || page.isError,
     refetch: async () => {
-      await Promise.all([workspaces.refetch(), page.refetch()]);
+      await Promise.all([workspace.refetch(), page.refetch()]);
     },
   };
 }

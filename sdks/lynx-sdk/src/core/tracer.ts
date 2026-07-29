@@ -378,6 +378,9 @@ export class LynxTracer {
       workspaceId,
       agentId,
       sessionId,
+      outcomeState: parentContext?.outcomeState ?? {
+        hasRecordedOutcome: false,
+      },
       eventCounts: parentContext?.eventCounts ?? {},
       firewallState: parentContext?.firewallState ?? {
         startedAt: Date.now(),
@@ -419,6 +422,26 @@ export class LynxTracer {
           },
           currentContext,
         );
+        if (
+          !parentContext &&
+          !currentContext.outcomeState?.hasRecordedOutcome
+        ) {
+          if (currentContext.outcomeState) {
+            currentContext.outcomeState.hasRecordedOutcome = true;
+          }
+          this.captureInternal(
+            "SESSION_OUTCOME",
+            "run.outcome:auto",
+            {
+              status: "COMPLETED",
+              businessStatus: "UNKNOWN",
+              reason: "The root run completed without an explicit outcome.",
+              automatic: true,
+              latency,
+            },
+            currentContext,
+          );
+        }
 
         return result;
       } catch (err: any) {
@@ -435,6 +458,27 @@ export class LynxTracer {
           },
           currentContext,
         );
+        if (
+          !parentContext &&
+          !currentContext.outcomeState?.hasRecordedOutcome
+        ) {
+          if (currentContext.outcomeState) {
+            currentContext.outcomeState.hasRecordedOutcome = true;
+          }
+          this.captureInternal(
+            "SESSION_OUTCOME",
+            "run.outcome:auto",
+            {
+              status: "FAILED",
+              businessStatus: "UNKNOWN",
+              reason: err.message,
+              error: err.message,
+              automatic: true,
+              latency,
+            },
+            currentContext,
+          );
+        }
         throw err;
       } finally {
         if (this.getFlushOnRunEnd()) {
@@ -595,7 +639,18 @@ export class LynxTracer {
    * @param options Outcome status, business status, reason, impact, and metadata.
    */
   outcome(options: LynxOutcomeOptions): void {
-    this.capture("SESSION_OUTCOME", "session.outcome", options);
+    const context = LynxTracer.storage.getStore();
+    if (!context) {
+      console.warn(
+        "[LynxTracer] Warning: outcome was captured outside a LynxTracer context!",
+      );
+      return;
+    }
+
+    if (context.outcomeState) {
+      context.outcomeState.hasRecordedOutcome = true;
+    }
+    this.captureInternal("SESSION_OUTCOME", "session.outcome", options, context);
   }
 
   /**
@@ -662,6 +717,7 @@ export class LynxTracer {
     // when the current context is sampled out, so failures remain debuggable.
     const isError =
       eventType === "ERROR" ||
+      (eventType === "SESSION_OUTCOME" && payload?.status === "FAILED") ||
       (payload && (payload.error || "error" in payload));
     if (context.sampled === false && !isError) {
       return;
@@ -1015,7 +1071,11 @@ export class LynxTracer {
       decision = this.decisionFromPolicyError(error, metadata);
     }
 
-    const content = phase === "INPUT" ? { input: value } : { output: value };
+    const contentKey = phase === "INPUT" ? "input" : "output";
+    const content =
+      options.captureContent === false
+        ? { [contentKey]: { redacted: true } }
+        : { [contentKey]: value };
     this.capture("POLICY_EVALUATION", `policy:${label}`, {
       ...content,
       phase,

@@ -23,6 +23,20 @@ description: "위험한 도구 호출이 실행되기 전에 로컬 정책을 �
 
 정책 판단은 세션에 함께 기록됩니다. 차단 판단이 나오면 SDK는 `LynxPolicyError`를 던집니다.
 
+## 입력과 출력 검사
+
+모델 호출 전에는 `firewallInput()`, 생성 결과를 사용자에게 반환하기 전에는
+`firewallOutput()`을 사용합니다. 관리형 정책은 원본 값을 로컬에서 평가합니다.
+정책 평가에는 원본이 필요하지만 정책 이벤트에 본문을 저장하면 안 되는 경우
+`captureContent: false`를 설정하세요.
+
+```ts
+lynx.firewallInput(userMessage, {
+  label: "chat.input",
+  captureContent: false,
+});
+```
+
 ## 예시
 
 ```ts

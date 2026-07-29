@@ -28,10 +28,40 @@ const envSchema = z
     DATABASE_SYNCHRONIZE: booleanFromEnv.default(false),
     DATABASE_POOL_SIZE: z.coerce.number().int().positive().default(10),
     DATABASE_LOGGING: booleanFromEnv.default(false),
+    DATABASE_SSL: booleanFromEnv.default(false),
+    DATABASE_SSL_REJECT_UNAUTHORIZED: booleanFromEnv.default(true),
+    DATABASE_SSL_CA: z.string().optional(),
 
     CORE_REDIS_HOST: z.string().trim().min(1),
     CORE_REDIS_PORT: z.coerce.number().int().positive(),
     CORE_REDIS_PASSWORD: z.string().optional(),
+    CORE_REDIS_TLS: booleanFromEnv.default(false),
+
+    LYNX_PROCESS_ROLE: z.enum(["api", "worker", "all"]).default("all"),
+    HEALTH_CHECK_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(100)
+      .max(10_000)
+      .default(2_000),
+    DATA_RETENTION_ENABLED: booleanFromEnv.optional(),
+    DATA_RETENTION_POLL_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .min(60_000)
+      .default(6 * 60 * 60 * 1_000),
+    DATA_RETENTION_BATCH_SIZE: z.coerce
+      .number()
+      .int()
+      .min(10)
+      .max(5_000)
+      .default(500),
+    DATA_RETENTION_MAX_BATCHES_PER_RUN: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .default(20),
 
     JWT_SECRET: z.string().trim().min(32),
     ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive(),
@@ -176,6 +206,8 @@ if (!parsed.success) {
  */
 export const env = {
   ...parsed.data,
+  DATA_RETENTION_ENABLED:
+    parsed.data.DATA_RETENTION_ENABLED ?? parsed.data.NODE_ENV === "production",
   SIGNUP_MODE:
     parsed.data.SIGNUP_MODE ??
     (parsed.data.NODE_ENV === "production"

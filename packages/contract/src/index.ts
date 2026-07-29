@@ -14,3 +14,4 @@ export * from "./bootstrap.contract.js";
 export * from "./access.contract.js";
 export * from "./team-invitation.contract.js";
 export * from "./integration.contract.js";
+export * from "./admin.contract.js";

@@ -2,10 +2,11 @@
   "session": {
     "title": "Session details",
     "description": "Inspect the real event timeline for a session.",
-    "header": "{agent} · started {startedAt}",
+    "header": "{agent} · started {startedAt} · last active {lastActivityAt}",
     "metrics": {
       "status": "Status",
-      "duration": "Duration",
+      "duration": "Active execution time",
+      "elapsedDuration": "{duration} elapsed from the first to the last run",
       "runs": "Runs",
       "tokens": "Tokens",
       "cost": "Cost",
@@ -13,9 +14,25 @@
     },
     "events": {
       "title": "Event timeline",
+      "subtitle": "Inspect the input, output, tool arguments, and result for {count} events.",
       "description": "{type} · {timestamp}",
       "empty": "No events were stored.",
-      "more": "Only the first 100 events are shown."
+      "more": "Only the first 100 events are shown.",
+      "summaryTab": "Summary",
+      "rawTab": "Raw JSON",
+      "input": "Input",
+      "output": "Output",
+      "arguments": "Tool arguments",
+      "error": "Error",
+      "usage": "Token usage",
+      "metadata": "Additional data",
+      "eventId": "Event ID",
+      "latency": "Latency",
+      "cost": "Cost",
+      "notCollected": "This data was not collected or was omitted by the collection policy.",
+      "copy": "Copy JSON",
+      "copied": "Copied",
+      "securityNote": "Inputs, outputs, and tool arguments may contain sensitive data. Verify masking before sharing them."
     },
     "error": {
       "title": "Could not load the session",

@@ -2,10 +2,11 @@
   "session": {
     "title": "Session 상세",
     "description": "Session의 실제 이벤트 타임라인을 확인합니다.",
-    "header": "{agent} · 시작 {startedAt}",
+    "header": "{agent} · 시작 {startedAt} · 마지막 활동 {lastActivityAt}",
     "metrics": {
       "status": "상태",
-      "duration": "실행 시간",
+      "duration": "활성 실행 시간",
+      "elapsedDuration": "첫 Run부터 마지막 Run까지 전체 경과 {duration}",
       "runs": "Run",
       "tokens": "토큰",
       "cost": "비용",
@@ -13,9 +14,25 @@
     },
     "events": {
       "title": "이벤트 타임라인",
+      "subtitle": "{count}개 이벤트의 입력, 출력, Tool 인자와 처리 결과를 확인합니다.",
       "description": "{type} · {timestamp}",
       "empty": "저장된 이벤트가 없습니다.",
-      "more": "최대 100개 이벤트만 표시합니다."
+      "more": "최대 100개 이벤트만 표시합니다.",
+      "summaryTab": "요약",
+      "rawTab": "Raw JSON",
+      "input": "입력",
+      "output": "출력",
+      "arguments": "Tool 인자",
+      "error": "오류",
+      "usage": "토큰 사용량",
+      "metadata": "추가 정보",
+      "eventId": "이벤트 ID",
+      "latency": "지연 시간",
+      "cost": "비용",
+      "notCollected": "수집되지 않았거나 수집 정책에 따라 저장되지 않았습니다.",
+      "copy": "JSON 복사",
+      "copied": "복사됨",
+      "securityNote": "입력·출력과 Tool 인자에는 민감정보가 포함될 수 있습니다. 공유하기 전에 마스킹 상태를 확인하세요."
     },
     "error": {
       "title": "Session을 불러오지 못했습니다",

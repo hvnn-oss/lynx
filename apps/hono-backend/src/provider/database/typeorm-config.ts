@@ -28,6 +28,14 @@ const dbOptions = {
   logging: env.DATABASE_LOGGING,
   synchronize: env.DATABASE_SYNCHRONIZE,
   poolSize: env.DATABASE_POOL_SIZE,
+  ssl: env.DATABASE_SSL
+    ? {
+        rejectUnauthorized: env.DATABASE_SSL_REJECT_UNAUTHORIZED,
+        ...(env.DATABASE_SSL_CA
+          ? { ca: env.DATABASE_SSL_CA.replace(/\\n/g, "\n") }
+          : {}),
+      }
+    : false,
 } satisfies PostgresDataSourceOptions;
 
 /** Hono 백엔드 환경 설정을 적용한 PostgreSQL 데이터 소스입니다. */

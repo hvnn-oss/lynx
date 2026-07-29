@@ -8,6 +8,7 @@ import { logger } from "./common/logger/logger.js";
 import { env } from "./common/config/config.js";
 import { issueRecordWorker } from "./common/services/issue-record-worker.js";
 import { webhookDeliveryWorker } from "./common/services/webhook-delivery-worker.js";
+import { dataRetentionWorker } from "./common/services/data-retention-worker.js";
 
 let server: ServerType | undefined;
 
@@ -20,21 +21,37 @@ async function bootstrap(): Promise<void> {
     "initializing database connection",
   );
   await AppDataSource.initialize();
-  issueRecordWorker.start();
-  webhookDeliveryWorker.start();
+  if (runsWorkers()) {
+    issueRecordWorker.start();
+    webhookDeliveryWorker.start();
+    dataRetentionWorker.start();
+  }
 
   logger.info(
     {
       event: "database.initialized",
+      processRole: env.LYNX_PROCESS_ROLE,
     },
     "database connection initialized",
   );
+
+  if (!runsApi()) {
+    logger.info(
+      {
+        event: "worker.started",
+        processRole: env.LYNX_PROCESS_ROLE,
+      },
+      "worker process started",
+    );
+    return;
+  }
 
   server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
     logger.info(
       {
         event: "application.started",
         port: info.port,
+        processRole: env.LYNX_PROCESS_ROLE,
       },
       "application started",
     );
@@ -54,8 +71,13 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
     "application shutdown started",
   );
 
-  issueRecordWorker.stop();
-  await webhookDeliveryWorker.stop();
+  if (runsWorkers()) {
+    issueRecordWorker.stop();
+    await Promise.all([
+      webhookDeliveryWorker.stop(),
+      dataRetentionWorker.stop(),
+    ]);
+  }
   server?.close();
 
   if (AppDataSource.isInitialized) {
@@ -98,11 +120,26 @@ bootstrap().catch(async (error: unknown) => {
     "failed to start application",
   );
 
-  issueRecordWorker.stop();
-  await webhookDeliveryWorker.stop();
+  if (runsWorkers()) {
+    issueRecordWorker.stop();
+    await Promise.all([
+      webhookDeliveryWorker.stop(),
+      dataRetentionWorker.stop(),
+    ]);
+  }
   if (AppDataSource.isInitialized) {
     await AppDataSource.destroy();
   }
 
   process.exit(1);
 });
+
+/** 현재 프로세스가 HTTP 요청을 처리해야 하는지 반환합니다. */
+function runsApi(): boolean {
+  return env.LYNX_PROCESS_ROLE !== "worker";
+}
+
+/** 현재 프로세스가 비동기 작업을 실행해야 하는지 반환합니다. */
+function runsWorkers(): boolean {
+  return env.LYNX_PROCESS_ROLE !== "api";
+}

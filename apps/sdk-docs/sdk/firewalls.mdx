@@ -23,6 +23,20 @@ You provide a `beforeCall` callback. The SDK calls it before the tool runs. The 
 
 The decision is recorded as part of the session. If the decision blocks the call, the SDK throws `LynxPolicyError`.
 
+## Input and output boundaries
+
+Use `firewallInput()` before generation and `firewallOutput()` before returning
+generated content. Managed policies are evaluated against the original value
+locally. Set `captureContent: false` when the value may be used for policy
+evaluation but must not be attached to policy events.
+
+```ts
+lynx.firewallInput(userMessage, {
+  label: "chat.input",
+  captureContent: false,
+});
+```
+
 ## Example
 
 ```ts

@@ -24,10 +24,13 @@ export class DashboardSessionRepository {
           AVG(rollup."durationMs") FILTER (
             WHERE rollup."durationMs" IS NOT NULL
           )::text AS "averageDurationMs",
+          AVG(rollup."elapsedDurationMs") FILTER (
+            WHERE rollup."elapsedDurationMs" IS NOT NULL
+          )::text AS "averageElapsedDurationMs",
           AVG(rollup.cost)::text AS "averageCost",
           COALESCE(SUM(rollup."blockedCount"), 0)::text AS "blockedCount"
         FROM rollup
-        WHERE rollup."startedAt" >= now() - interval '24 hours'
+        WHERE rollup."lastActivityAt" >= now() - interval '24 hours'
           ${this.scopeCondition(scope)}
       `,
       [workspaceId],
@@ -40,6 +43,7 @@ export class DashboardSessionRepository {
         failedCount: "0",
         runningCount: "0",
         averageDurationMs: null,
+        averageElapsedDurationMs: null,
         averageCost: null,
         blockedCount: "0",
       }
@@ -55,9 +59,9 @@ export class DashboardSessionRepository {
         ${this.sessionRollupCte()}
         SELECT *
         FROM rollup
-        WHERE rollup."startedAt" >= now() - interval '24 hours'
+        WHERE rollup."lastActivityAt" >= now() - interval '24 hours'
           ${this.scopeCondition(scope)}
-        ORDER BY rollup."startedAt" DESC, rollup.id DESC
+        ORDER BY rollup."lastActivityAt" DESC, rollup.id DESC
         LIMIT 8
       `,
       [workspaceId],
@@ -74,7 +78,7 @@ export class DashboardSessionRepository {
         filtered AS (
           SELECT *
           FROM rollup
-          WHERE rollup."startedAt" >= date_trunc('hour', now()) - interval '23 hours'
+          WHERE rollup."lastActivityAt" >= date_trunc('hour', now()) - interval '23 hours'
             ${this.scopeCondition(scope)}
         )
         SELECT
@@ -86,8 +90,8 @@ export class DashboardSessionRepository {
           interval '1 hour'
         ) bucket
         LEFT JOIN filtered
-          ON filtered."startedAt" >= bucket
-          AND filtered."startedAt" < bucket + interval '1 hour'
+          ON filtered."lastActivityAt" >= bucket
+          AND filtered."lastActivityAt" < bucket + interval '1 hour'
         GROUP BY bucket
         ORDER BY bucket ASC
       `,
@@ -141,7 +145,7 @@ export class DashboardSessionRepository {
     };
   }
 
-  /** Run 원본을 Session 단위의 한 행으로 집계합니다. */
+  /** Run 원본을 Session 단위 운영 지표로 집계합니다. */
   private sessionRollupCte(): string {
     return `
       WITH rollup AS (
@@ -156,16 +160,38 @@ export class DashboardSessionRepository {
             ELSE 'COMPLETED'
           END AS status,
           MIN(run."startedAt") AS "startedAt",
+          GREATEST(
+            MAX(COALESCE(run."endedAt", run."startedAt")),
+            COALESCE(
+              (
+                SELECT MAX(event.timestamp)
+                FROM "event" event
+                WHERE event."sessionId" = session.id
+              ),
+              MIN(run."startedAt")
+            )
+          ) AS "lastActivityAt",
           CASE
             WHEN BOOL_OR(run."endedAt" IS NULL) THEN NULL
             ELSE MAX(run."endedAt")
           END AS "endedAt",
+          SUM(
+            GREATEST(
+              EXTRACT(EPOCH FROM (run."endedAt" - run."startedAt")) * 1000,
+              0
+            )
+          ) FILTER (
+            WHERE run."endedAt" IS NOT NULL
+          ) AS "durationMs",
           CASE
             WHEN BOOL_OR(run."endedAt" IS NULL) THEN NULL
-            ELSE EXTRACT(
-              EPOCH FROM (MAX(run."endedAt") - MIN(run."startedAt"))
-            ) * 1000
-          END AS "durationMs",
+            ELSE GREATEST(
+              EXTRACT(
+                EPOCH FROM (MAX(run."endedAt") - MIN(run."startedAt"))
+              ) * 1000,
+              0
+            )
+          END AS "elapsedDurationMs",
           COALESCE(SUM(run."totalCost"), 0) AS cost,
           COALESCE(SUM(run."totalTokens"), 0)::text AS "totalTokens",
           COUNT(DISTINCT run.id)::text AS "runCount",

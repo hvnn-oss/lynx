@@ -14,7 +14,6 @@ export class IssueRecordWorker {
     this.timer = setInterval(() => {
       void this.tick();
     }, POLL_INTERVAL_MS);
-    this.timer.unref?.();
     void this.tick();
   }
 

@@ -66,7 +66,7 @@ await lynx.run(
 | `decision(reasonOrDecision, options?)` | Records an agent decision. |
 | `context(labelOrData, dataOrMetadata?, metadata?)` | Records retrieved or constructed context. |
 | `memory(operation, data, metadata?)` | Records memory access. |
-| `outcome(options)` | Records the final technical and business outcome. |
+| `outcome(options)` | Records an explicit technical and business outcome. A root `run()` records a technical outcome automatically when omitted. |
 | `setAttributes(attributes)` | Attaches attributes to later events in the current run. |
 | `annotate(label, payload)` | Records a custom breadcrumb. |
 | `log(label, payload)` | Records a custom context event. |

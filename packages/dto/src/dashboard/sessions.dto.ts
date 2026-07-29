@@ -15,6 +15,7 @@ export const DashboardSessionsResponseSchema = z.object({
     failedCount: z.number().int().nonnegative(),
     runningCount: z.number().int().nonnegative(),
     averageDurationMs: z.number().nonnegative().nullable(),
+    averageElapsedDurationMs: z.number().nonnegative().nullable(),
     averageCost: z.number().nonnegative(),
     blockedCount: z.number().int().nonnegative(),
   }),
@@ -34,8 +35,10 @@ export const DashboardSessionsResponseSchema = z.object({
         name: z.string(),
         status: z.string(),
         startedAt: z.string().datetime(),
+        lastActivityAt: z.string().datetime(),
         endedAt: z.string().datetime().nullable(),
         durationMs: z.number().nonnegative().nullable(),
+        elapsedDurationMs: z.number().nonnegative().nullable(),
         cost: z.number().nonnegative(),
         runCount: z.number().int().positive(),
         agent: z.object({

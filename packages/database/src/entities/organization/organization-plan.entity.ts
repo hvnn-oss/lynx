@@ -1,8 +1,10 @@
 import {
   Column,
+  CreateDateColumn,
   Entity,
   OneToMany,
   PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from "typeorm";
 import { OrganizationEntity } from "./organization.entity";
 
@@ -41,6 +43,12 @@ export class OrganizationPlanEntity {
 
   @Column({ default: true })
   isActive!: boolean;
+
+  @CreateDateColumn({ type: "timestamptz" })
+  createdAt!: Date;
+
+  @UpdateDateColumn({ type: "timestamptz" })
+  updatedAt!: Date;
 
   @OneToMany(
     () => OrganizationEntity,

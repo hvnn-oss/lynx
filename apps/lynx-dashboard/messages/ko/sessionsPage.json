@@ -2,15 +2,15 @@
   "pages": {
     "overview": {
       "title": "세션 개요",
-      "description": "최근 24시간의 Run을 Session 단위로 묶어 성공, 실패, 실행 시간과 비용을 확인합니다."
+      "description": "최근 24시간 안에 활동한 Session의 성공, 실패, 활성 실행 시간과 비용을 확인합니다."
     },
     "completed": {
       "title": "성공한 세션",
-      "description": "최근 24시간 동안 모든 Run이 정상 완료된 Session을 확인합니다."
+      "description": "최근 24시간 안에 활동했고 모든 Run이 정상 완료된 Session을 확인합니다."
     },
     "failed": {
       "title": "실패한 세션",
-      "description": "최근 24시간 동안 하나 이상의 Run이 실패한 Session을 확인합니다."
+      "description": "최근 24시간 안에 활동했고 하나 이상의 Run이 실패한 Session을 확인합니다."
     }
   },
   "metrics": {
@@ -27,8 +27,8 @@
       "description": "실패 Run이 포함된 Session"
     },
     "duration": {
-      "label": "평균 실행 시간",
-      "description": "종료 시각이 확인된 Session 기준"
+      "label": "평균 활성 실행 시간",
+      "description": "완료 Run 실행 시간의 합계 · 전체 경과 평균 {elapsed}"
     },
     "cost": {
       "label": "평균 비용",
@@ -37,7 +37,7 @@
   },
   "list": {
     "title": "최근 Session",
-    "description": "{agent} · Run {runs}개 · {duration} · {cost}",
+    "description": "{agent} · Run {runs}개 · 활성 {activeDuration} · 전체 경과 {elapsedDuration} · 마지막 활동 {lastActivity} · {cost}",
     "empty": "선택한 범위에 표시할 Session이 없습니다.",
     "status": {
       "RUNNING": "진행 중",
@@ -49,7 +49,7 @@
   },
   "volume": {
     "title": "시간대별 Session",
-    "description": "최근 {hours}시간 동안 시작된 Session 수입니다.",
+    "description": "최근 {hours}시간 동안 마지막 활동이 발생한 Session 수입니다.",
     "empty": "선택한 범위에 집계할 Session이 없습니다."
   },
   "empty": {

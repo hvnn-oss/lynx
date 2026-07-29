@@ -277,7 +277,10 @@ test("managed policies block matching LLM input and output content", async () =>
 
   await tracer.run("SupportAgent", () => {
     assert.throws(
-      () => tracer.firewallInput("안녕하세요"),
+      () =>
+        tracer.firewallInput("안녕하세요", {
+          captureContent: false,
+        }),
       (error) =>
         error instanceof LynxPolicyError && error.policyId === "input-policy",
     );
@@ -297,6 +300,11 @@ test("managed policies block matching LLM input and output content", async () =>
     evaluations.map((event) => event.payload.phase),
     ["INPUT", "OUTPUT"],
   );
+  const violations = telemetry.filter(
+    (event) => event.eventType === "POLICY_VIOLATION",
+  );
+  assert.deepEqual(violations[0].payload.input, { redacted: true });
+  assert.equal(violations[1].payload.output, "이 답변은 차단 대상입니다.");
 });
 
 test("managed policies can match nested tool input without evaluating JavaScript", async () => {

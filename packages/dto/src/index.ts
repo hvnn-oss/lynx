@@ -12,3 +12,4 @@ export * from "./common/index.js";
 export * from "./bootstrap/index.js";
 export * from "./integration/index.js";
 export * from "./access/index.js";
+export * from "./admin/index.js";

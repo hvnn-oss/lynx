@@ -36,11 +36,13 @@ test("flush sends queued events even when the batch size is not reached", async 
   await tracer.flush();
 
   assert.equal(batches.length, 1);
-  assert.equal(batches[0].length, 3);
+  assert.equal(batches[0].length, 4);
   assert.deepEqual(
-    batches[0].map((event) => event.payload.phase),
-    ["start", undefined, "end"],
+    batches[0].map((event) => event.eventType),
+    ["CONTEXT_ALERT", "CONTEXT_ALERT", "CONTEXT_ALERT", "SESSION_OUTCOME"],
   );
+  assert.equal(batches[0][3].payload.status, "COMPLETED");
+  assert.equal(batches[0][3].payload.automatic, true);
 });
 
 test("uses the hosted Lynx API endpoint by default", async () => {
@@ -123,7 +125,7 @@ test("flush splits the queue into bounded batches", async () => {
   await tracer.flush();
   await tracer.shutdown();
 
-  assert.deepEqual(batchSizes, [2, 2, 1]);
+  assert.deepEqual(batchSizes, [2, 2, 2]);
 });
 
 test("shutdown flushes queued events and clears the timer", async () => {
@@ -404,7 +406,7 @@ test("delivery queue drops oldest events when maxQueueSize is reached", async ()
     .flat()
     .map((event) => event.label)
     .filter((label) => ["first", "second", "third", "fourth"].includes(label));
-  assert.deepEqual(labels, ["third", "fourth"]);
+  assert.deepEqual(labels, ["fourth"]);
 });
 
 test("setAttributes attaches metadata to subsequent events only", async () => {
@@ -496,7 +498,7 @@ test("getStatus reports queue and circuit breaker state", async () => {
   await tracer.flush();
 
   const status = tracer.getStatus();
-  assert.equal(status.queueSize, 3);
+  assert.equal(status.queueSize, 4);
   assert.equal(status.circuitState, "OPEN");
   assert.equal(status.lastError, "batch_failed");
   await tracer.shutdown({ timeoutMs: 20 });
@@ -568,7 +570,7 @@ test("events captured after shutdown are rejected instead of stranded", async ()
 
   assert.equal(fetchCount, 1);
   assert.equal(tracer.getStatus().queueSize, 0);
-  assert.equal(tracer.getStatus().droppedEvents, 3);
+  assert.equal(tracer.getStatus().droppedEvents, 4);
 });
 
 test("firewallTool applies failureMode when policy evaluation throws", async () => {
@@ -640,12 +642,68 @@ test("semantic APIs capture agent behavior and outcome events", async () => {
   assert.ok(events.some((event) => event.eventType === "AGENT_DECISION"));
   assert.ok(events.some((event) => event.eventType === "CONTEXT_RETRIEVAL"));
   assert.ok(events.some((event) => event.eventType === "MEMORY_ACCESS"));
-  const outcome = events.find((event) => event.eventType === "SESSION_OUTCOME");
+  const outcomes = events.filter(
+    (event) => event.eventType === "SESSION_OUTCOME",
+  );
+  const outcome = outcomes[0];
+  assert.equal(outcomes.length, 1);
   assert.equal(outcome.payload.businessStatus, "FAILED");
+  assert.equal(outcome.payload.automatic, undefined);
   assert.equal(outcome.payload.appVersion, "1.2.3");
   assert.equal(outcome.payload.deploymentId, "deploy-7");
   assert.equal(outcome.payload.environment, "test");
   assert.equal(outcome.payload.policyVersion, "policy-1");
+});
+
+test("run records one automatic failed outcome when execution throws", async () => {
+  const batches = [];
+  globalThis.fetch = async (_url, init) => {
+    batches.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+
+  const tracer = createTracer();
+  await assert.rejects(
+    () =>
+      tracer.run("SupportAgent", async () => {
+        throw new Error("provider failed");
+      }),
+    /provider failed/,
+  );
+  await tracer.shutdown();
+
+  const outcomes = batches
+    .flat()
+    .filter((event) => event.eventType === "SESSION_OUTCOME");
+  assert.equal(outcomes.length, 1);
+  assert.equal(outcomes[0].payload.status, "FAILED");
+  assert.equal(outcomes[0].payload.automatic, true);
+  assert.equal(outcomes[0].payload.error, "provider failed");
+});
+
+test("an explicit outcome in a child run suppresses the root automatic outcome", async () => {
+  const batches = [];
+  globalThis.fetch = async (_url, init) => {
+    batches.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+
+  const tracer = createTracer();
+  await tracer.run("RootAgent", async () => {
+    await tracer.run("ChildAgent", async () => {
+      tracer.outcome({
+        status: "COMPLETED",
+        businessStatus: "SUCCEEDED",
+      });
+    });
+  });
+  await tracer.shutdown();
+
+  const outcomes = batches
+    .flat()
+    .filter((event) => event.eventType === "SESSION_OUTCOME");
+  assert.equal(outcomes.length, 1);
+  assert.equal(outcomes[0].payload.automatic, undefined);
 });
 
 test("instrumentLLM captures OpenAI Responses API calls", async () => {

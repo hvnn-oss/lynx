@@ -14,6 +14,7 @@ import {
   integrationContract,
   accessContract,
   teamInvitationContract,
+  adminContract,
 } from "@repo/contract";
 import { Hono } from "hono";
 import { requestId } from "hono/request-id";
@@ -37,6 +38,10 @@ import { bootstrapRouter } from "./api/bootstrap/bootstrap.router.js";
 import { slackIntegrationRouter } from "./api/slack-integration/slack-integration.router.js";
 import { accessInvitationRouter } from "./api/access-invitation/access-invitation.router.js";
 import { teamInvitationRouter } from "./api/access-invitation/team-invitation.router.js";
+import { systemHealthService } from "./common/services/system-health.service.js";
+import { adminRouter } from "./api/admin/admin.router.js";
+import { secureHeaders } from "hono/secure-headers";
+import { auditLogMiddleware } from "./common/middleware/audit-log.middleware.js";
 
 /**
  * 공통 미들웨어와 기능별 라우터를 연결한 Hono 애플리케이션입니다.
@@ -49,10 +54,25 @@ export const app = new Hono<AppEnv>();
 // 모든 요청에 추적 ID와 요청 전용 로거를 설정합니다.
 app.use("*", requestId());
 app.use("*", requestLoggerMiddleware);
+app.use("*", secureHeaders());
+app.use("*", auditLogMiddleware);
 
 /** 서버 프로세스가 요청을 처리할 수 있는지 확인합니다. */
 app.on(systemContract.health.method, systemContract.health.path, (c) =>
   c.json(systemContract.health.response.parse({ status: "ok" })),
+);
+app.on(systemContract.liveness.method, systemContract.liveness.path, (c) =>
+  c.json(systemContract.liveness.response.parse({ status: "ok" })),
+);
+app.on(
+  systemContract.readiness.method,
+  systemContract.readiness.path,
+  async (c) => {
+    const readiness = systemContract.readiness.response.parse(
+      await systemHealthService.checkReadiness(),
+    );
+    return c.json(readiness, readiness.status === "ok" ? 200 : 503);
+  },
 );
 
 /** Public machine-readable contract for SDK generation and API tooling. */
@@ -82,6 +102,7 @@ app.route(issuesContract.basePath, issuesRouter);
 app.route(firewallPolicyContract.basePath, firewallPolicyRouter);
 app.route(firewallApprovalContract.basePath, firewallApprovalRouter);
 app.route(promptContract.basePath, promptRouter);
+app.route(adminContract.basePath, adminRouter);
 
 // 내부 예외를 스택 없이 안전한 공개 오류 응답으로 변환합니다.
 app.onError((error, c) => {

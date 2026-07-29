@@ -16,6 +16,10 @@ export interface LynxContext {
   workspaceId?: string;
   agentId?: string;
   sessionId?: string;
+  /** Shared root-run state used to prevent duplicate automatic outcomes. */
+  outcomeState?: {
+    hasRecordedOutcome: boolean;
+  };
   /** Request-local counters used for repeated-call detection. */
   eventCounts?: Record<string, number>;
   /** Run-local counters used by stateful firewall policies. */
@@ -371,6 +375,8 @@ export interface LynxFirewallContentOptions {
   riskLevel?: LynxRiskLevel;
   /** Behavior used when managed policy evaluation is unavailable. */
   failureMode?: LynxFirewallFailureMode;
+  /** Whether the evaluated content may be attached to policy events. */
+  captureContent?: boolean;
 }
 
 /** @deprecated Use `LynxFirewallToolOptions`. */

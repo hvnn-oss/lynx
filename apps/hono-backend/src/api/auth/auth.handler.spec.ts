@@ -38,11 +38,7 @@ function createAuthApp() {
     authContract.signupPolicy.path,
     ...handlers.signupPolicy,
   );
-  app.on(
-    authContract.login.method,
-    authContract.login.path,
-    ...handlers.login,
-  );
+  app.on(authContract.login.method, authContract.login.path, ...handlers.login);
   app.on(
     authContract.refresh.method,
     authContract.refresh.path,
@@ -119,6 +115,7 @@ describe("auth HTTP handlers", () => {
     expect(response.headers.get("set-cookie")).toEqual(
       expect.stringContaining("Path=/"),
     );
+    expect(response.headers.get("cache-control")).toBe("no-store");
     expect(mockedLocalAuthService.assertAllowed).toHaveBeenCalledWith(
       expect.anything(),
       "user@example.com",
@@ -146,15 +143,14 @@ describe("auth HTTP handlers", () => {
       success: true,
       access_token: "new-access-token",
     });
-    expect(mockedAuthService.refresh).toHaveBeenCalledWith(
-      "old-refresh-token",
-    );
+    expect(mockedAuthService.refresh).toHaveBeenCalledWith("old-refresh-token");
     expect(response.headers.get("set-cookie")).toEqual(
       expect.stringContaining("rid=new-refresh-token"),
     );
     expect(response.headers.get("set-cookie")).toEqual(
       expect.stringContaining("Path=/"),
     );
+    expect(response.headers.get("cache-control")).toBe("no-store");
   });
 
   it("revokes the refresh session and expires the cookie on logout", async () => {

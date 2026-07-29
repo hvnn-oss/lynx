@@ -8,10 +8,14 @@ import {
   type ContractSchemaOutput,
 } from "@repo/contract";
 import { getCurrentRedirectPath, withRedirect } from "./safe-redirect";
+import {
+  clearAccessToken,
+  getAccessToken,
+  isAccessTokenExpired,
+  setAccessToken,
+} from "./auth-session";
 
-const ACCESS_TOKEN_STORAGE_KEY = "_uid";
 const REFRESH_TOKEN_LOCK_NAME = "lynx-refresh-token";
-const TOKEN_REFRESH_BUFFER_SECONDS = 30;
 
 let refreshPromise: Promise<string> | null = null;
 
@@ -29,26 +33,18 @@ interface RetryableRequestConfig {
 }
 
 export function getStoredAccessToken() {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY);
+  return getAccessToken();
 }
 
 export function setStoredAccessToken(accessToken: string) {
-  localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, accessToken);
+  setAccessToken(accessToken);
 }
 
 export function clearStoredAccessToken() {
-  if (typeof window === "undefined") return;
-  localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+  clearAccessToken();
 }
 
-export function isAccessTokenExpired(accessToken: string) {
-  const payload = decodeJwtPayload(accessToken);
-  if (!payload?.exp) return true;
-
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  return payload.exp <= nowSeconds + TOKEN_REFRESH_BUFFER_SECONDS;
-}
+export { isAccessTokenExpired };
 
 export async function refreshAccessToken() {
   if (!refreshPromise) {
@@ -257,21 +253,4 @@ function buildContractPath(
   });
 
   return `${basePath}${path}`;
-}
-
-function decodeJwtPayload(accessToken: string): { exp?: number } | null {
-  try {
-    const [, payload] = accessToken.split(".");
-    if (!payload) return null;
-
-    const normalizedPayload = payload.replace(/-/g, "+").replace(/_/g, "/");
-    const paddedPayload = normalizedPayload.padEnd(
-      normalizedPayload.length + ((4 - (normalizedPayload.length % 4)) % 4),
-      "=",
-    );
-
-    return JSON.parse(window.atob(paddedPayload)) as { exp?: number };
-  } catch {
-    return null;
-  }
 }

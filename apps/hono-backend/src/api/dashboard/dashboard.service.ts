@@ -176,6 +176,9 @@ export class DashboardService {
         averageDurationMs: this.nullableRoundedNumber(
           metrics.averageDurationMs,
         ),
+        averageElapsedDurationMs: this.nullableRoundedNumber(
+          metrics.averageElapsedDurationMs,
+        ),
         averageCost: this.nonnegativeNumber(metrics.averageCost),
         blockedCount: Number(metrics.blockedCount),
       },
@@ -189,10 +192,14 @@ export class DashboardService {
         name: session.name,
         status: session.status,
         startedAt: new Date(session.startedAt).toISOString(),
+        lastActivityAt: new Date(session.lastActivityAt).toISOString(),
         endedAt: session.endedAt
           ? new Date(session.endedAt).toISOString()
           : null,
         durationMs: this.nullableRoundedNumber(session.durationMs),
+        elapsedDurationMs: this.nullableRoundedNumber(
+          session.elapsedDurationMs,
+        ),
         cost: this.nonnegativeNumber(session.cost),
         runCount: Number(session.runCount),
         agent: {
@@ -327,8 +334,10 @@ export class DashboardService {
       name: session.name,
       status: session.status,
       startedAt: new Date(session.startedAt).toISOString(),
+      lastActivityAt: new Date(session.lastActivityAt).toISOString(),
       endedAt: session.endedAt ? new Date(session.endedAt).toISOString() : null,
       durationMs: this.nullableRoundedNumber(session.durationMs),
+      elapsedDurationMs: this.nullableRoundedNumber(session.elapsedDurationMs),
       cost: this.nonnegativeNumber(session.cost),
       totalTokens: Number(session.totalTokens ?? 0),
       runCount: Number(session.runCount),

@@ -15,6 +15,12 @@ Use run tracking when you want to inspect the full path from user input to final
 
 Nested `run()` calls inherit the parent run and create child span relationships.
 
+When a root `run()` callback returns or throws without an explicit
+`outcome()`, the SDK records a technical `COMPLETED` or `FAILED` outcome
+automatically. Call `outcome()` when you also know whether the business task
+succeeded, partially succeeded, or failed; the SDK will not add a duplicate
+automatic outcome.
+
 ## Example
 
 ```ts
@@ -73,7 +79,7 @@ await lynx.run("SupportAgent", async () => {
 | `context(label, data, metadata?)` | RAG results, loaded records, summaries, or selected context. |
 | `decision(reasonOrDecision, options?)` | A workflow choice, tool choice, branch, or reasoning step. |
 | `memory(operation, data, metadata?)` | Memory read, write, search, hit, or miss information. |
-| `outcome(options)` | The final technical and business result. |
+| `outcome(options)` | An explicit technical and business result. Optional for technical run closure. |
 | `setAttributes(attributes)` | IDs and metadata that should be attached to later events. |
 | `annotate(label, payload)` | A custom breadcrumb for debugging. |
 | `log(label, payload)` | A custom context event when no semantic helper fits. |

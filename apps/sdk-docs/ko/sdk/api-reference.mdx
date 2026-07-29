@@ -66,7 +66,7 @@ await lynx.run(
 | `decision(reasonOrDecision, options?)` | 에이전트 판단을 기록합니다. |
 | `context(labelOrData, dataOrMetadata?, metadata?)` | 검색되었거나 구성된 컨텍스트를 기록합니다. |
 | `memory(operation, data, metadata?)` | 메모리 접근을 기록합니다. |
-| `outcome(options)` | 최종 기술 결과와 비즈니스 결과를 기록합니다. |
+| `outcome(options)` | 명시적인 기술 결과와 비즈니스 결과를 기록합니다. 생략하면 루트 `run()`이 기술 결과를 자동으로 기록합니다. |
 | `setAttributes(attributes)` | 현재 실행의 이후 이벤트에 공통 속성을 붙입니다. |
 | `annotate(label, payload)` | 커스텀 breadcrumb를 기록합니다. |
 | `log(label, payload)` | 커스텀 context 이벤트를 기록합니다. |

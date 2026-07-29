@@ -1,4 +1,5 @@
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -7,7 +8,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, relative, join, sep } from "node:path";
+import { basename, dirname, relative, join, sep } from "node:path";
 
 const sdkRepoPath = process.env.SDK_REPO_PATH ?? "sdk-repo";
 const sdkTypesPath =
@@ -22,8 +23,15 @@ const rootTypesPath = join(sdkRepoPath, "src", "types.ts");
 const coreTypesPath = join(sdkRepoPath, "src", "core", "types.ts");
 const indexPath = join(sdkRepoPath, "src", "index.ts");
 const versionPath = join(sdkRepoPath, "src", "version.ts");
+const sdkTypesPackagePath = join(
+  dirname(dirname(sdkTypesPath)),
+  "package.json",
+);
 
 const packageJson = readJson(packageJsonPath);
+const sdkTypesPackageJson = existsSync(sdkTypesPackagePath)
+  ? readJson(sdkTypesPackagePath)
+  : {};
 const nextVersion =
   versionBump === "none"
     ? packageJson.version
@@ -60,7 +68,10 @@ packageJson.engines = {
   node: ">=18",
 };
 
-packageJson.dependencies = removeInternalPackages(packageJson.dependencies);
+packageJson.dependencies = {
+  ...removeInternalPackages(sdkTypesPackageJson.dependencies),
+  ...removeInternalPackages(packageJson.dependencies),
+};
 delete packageJson.scripts?.prebuild;
 delete packageJson.scripts?.obfuscate;
 delete packageJson.scripts?.["build:prod"];
@@ -98,6 +109,11 @@ writeFileSync(
   rootTypesPath,
   `// Generated from packages/sdk-types during OSS sync.\n${sdkTypesSource}`,
 );
+copySdkTypeSiblingModules(
+  dirname(sdkTypesPath),
+  dirname(rootTypesPath),
+  sdkTypesPath,
+);
 writeFileSync(coreTypesPath, `export * from "../types.js";\n`);
 writeFileSync(versionPath, `export const SDK_VERSION = "${nextVersion}";\n`);
 
@@ -129,6 +145,31 @@ function readJson(path) {
 
 function writeJson(path, value) {
   writeFileSync(`${path}`, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+/**
+ * Copies runtime modules re-exported by the shared type entry into the
+ * standalone SDK source tree. The entry itself is renamed to `types.ts`.
+ */
+function copySdkTypeSiblingModules(
+  sourceDirectory,
+  targetDirectory,
+  entryPath,
+) {
+  const entryFileName = basename(entryPath);
+
+  for (const entry of readdirSync(sourceDirectory, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith(".ts")) {
+      continue;
+    }
+
+    if (entry.name === entryFileName) {
+      continue;
+    }
+
+    const sourcePath = join(sourceDirectory, entry.name);
+    copyFileSync(sourcePath, join(targetDirectory, entry.name));
+  }
 }
 
 function writePublicSdkPublishWorkflow(path) {

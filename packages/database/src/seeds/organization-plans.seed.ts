@@ -2,7 +2,10 @@ import { AppDataSource } from "../data-source";
 import { OrganizationPlanEntity } from "../entities/organization/organization-plan.entity";
 
 const DEFAULT_ORGANIZATION_PLANS: Array<
-  Omit<OrganizationPlanEntity, "id" | "organizations">
+  Omit<
+    OrganizationPlanEntity,
+    "id" | "organizations" | "createdAt" | "updatedAt"
+  >
 > = [
   {
     code: "FREE",

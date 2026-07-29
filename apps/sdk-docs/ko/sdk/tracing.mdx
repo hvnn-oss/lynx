@@ -15,6 +15,11 @@ description: "사용자 입력, 컨텍스트, 판단, 메모리 접근, 결과�
 
 중첩된 `run()`은 부모 실행을 이어받고, 자식 실행 단계(span)로 연결됩니다.
 
+루트 `run()` callback이 명시적인 `outcome()` 없이 반환되거나 오류를
+던지면 SDK가 기술 결과 `COMPLETED` 또는 `FAILED`를 자동으로 기록합니다.
+비즈니스 작업의 성공, 부분 성공, 실패 여부도 알고 있다면 `outcome()`을
+호출하세요. 이 경우 SDK는 자동 결과를 중복으로 추가하지 않습니다.
+
 ## 예시
 
 ```ts
@@ -75,7 +80,7 @@ await lynx.run("SupportAgent", async () => {
 | `context(label, data, metadata?)` | RAG 결과, 로드한 레코드, 요약, 선택된 컨텍스트입니다. |
 | `decision(reasonOrDecision, options?)` | 워크플로우 선택, 도구 선택, 분기, 판단 단계입니다. |
 | `memory(operation, data, metadata?)` | 메모리 읽기, 쓰기, 검색, hit, miss 정보입니다. |
-| `outcome(options)` | 최종 기술 결과와 비즈니스 결과입니다. |
+| `outcome(options)` | 명시적인 기술 결과와 비즈니스 결과입니다. 기술적인 Run 종료만 필요하면 생략할 수 있습니다. |
 | `setAttributes(attributes)` | 이후 이벤트에 붙일 공통 ID나 메타데이터입니다. |
 | `annotate(label, payload)` | 디버깅에 도움이 되는 커스텀 breadcrumb입니다. |
 | `log(label, payload)` | 다른 helper로 표현하기 어려운 커스텀 이벤트입니다. |

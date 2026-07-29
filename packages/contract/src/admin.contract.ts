@@ -1,0 +1,100 @@
+import {
+  AdminAuditLogDetailSchema,
+  AdminAuditLogListResponseSchema,
+  AdminAuditLogParamsSchema,
+  AdminAuditLogQuerySchema,
+  AdminOrganizationDetailSchema,
+  AdminOrganizationListResponseSchema,
+  AdminOrganizationParamsSchema,
+  AdminOrganizationPlanUpdateSchema,
+  AdminOrganizationQuerySchema,
+  AdminOverviewResponseSchema,
+  AdminPilotParticipantListResponseSchema,
+  AdminPilotParticipantParamsSchema,
+  AdminPilotParticipantQuerySchema,
+  AdminPilotParticipantSchema,
+  AdminPilotParticipantUpdateSchema,
+  AdminPlanInputSchema,
+  AdminPlanListResponseSchema,
+  AdminPlanParamsSchema,
+  AdminPlanSchema,
+  AdminPlanUpdateSchema,
+} from "@repo/dto";
+import { defineEndpoint } from "./util/endpoint.js";
+
+export const ADMIN_BASE_PATH = "/admin";
+
+export const adminContract = {
+  basePath: ADMIN_BASE_PATH,
+  overview: defineEndpoint({
+    method: "GET",
+    path: "/overview",
+    request: null,
+    response: AdminOverviewResponseSchema,
+  }),
+  listAuditLogs: defineEndpoint({
+    method: "GET",
+    path: "/audit-logs",
+    request: AdminAuditLogQuerySchema,
+    response: AdminAuditLogListResponseSchema,
+  }),
+  getAuditLog: defineEndpoint({
+    method: "GET",
+    path: "/audit-logs/:auditLogId",
+    params: AdminAuditLogParamsSchema,
+    request: null,
+    response: AdminAuditLogDetailSchema,
+  }),
+  listOrganizations: defineEndpoint({
+    method: "GET",
+    path: "/organizations",
+    request: AdminOrganizationQuerySchema,
+    response: AdminOrganizationListResponseSchema,
+  }),
+  getOrganization: defineEndpoint({
+    method: "GET",
+    path: "/organizations/:organizationId",
+    params: AdminOrganizationParamsSchema,
+    request: null,
+    response: AdminOrganizationDetailSchema,
+  }),
+  updateOrganizationPlan: defineEndpoint({
+    method: "PATCH",
+    path: "/organizations/:organizationId/plan",
+    params: AdminOrganizationParamsSchema,
+    request: AdminOrganizationPlanUpdateSchema,
+    response: AdminOrganizationDetailSchema,
+  }),
+  listPilotParticipants: defineEndpoint({
+    method: "GET",
+    path: "/pilot/participants",
+    request: AdminPilotParticipantQuerySchema,
+    response: AdminPilotParticipantListResponseSchema,
+  }),
+  updatePilotParticipant: defineEndpoint({
+    method: "PATCH",
+    path: "/pilot/participants/:participantId",
+    params: AdminPilotParticipantParamsSchema,
+    request: AdminPilotParticipantUpdateSchema,
+    response: AdminPilotParticipantSchema,
+  }),
+  listPlans: defineEndpoint({
+    method: "GET",
+    path: "/plans",
+    request: null,
+    response: AdminPlanListResponseSchema,
+  }),
+  createPlan: defineEndpoint({
+    method: "POST",
+    path: "/plans",
+    request: AdminPlanInputSchema,
+    response: AdminPlanSchema,
+  }),
+  updatePlan: defineEndpoint({
+    method: "PATCH",
+    path: "/plans/:planId",
+    params: AdminPlanParamsSchema,
+    request: AdminPlanUpdateSchema,
+    response: AdminPlanSchema,
+  }),
+} as const;
