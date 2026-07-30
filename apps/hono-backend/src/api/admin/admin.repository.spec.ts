@@ -29,9 +29,10 @@ describe("AdminRepository", () => {
       take: jest.fn().mockReturnThis(),
       getRawMany: jest.fn().mockResolvedValue([]),
     };
+    const createQueryBuilder = jest.fn().mockReturnValue(queryBuilder);
     const dataSource = {
       getRepository: jest.fn().mockReturnValue({
-        createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
+        createQueryBuilder,
       }),
     } as unknown as DataSource;
     const repository = new AdminRepository(dataSource);
@@ -48,16 +49,20 @@ describe("AdminRepository", () => {
     });
 
     expect(queryBuilder.take).toHaveBeenCalledWith(26);
+    expect(createQueryBuilder).toHaveBeenCalledWith("listedUser");
     expect(queryBuilder.andWhere).toHaveBeenCalledWith(
-      expect.stringContaining('AND "activeAdmin".role = :adminRole'),
+      expect.stringContaining('AND "activeAdmin"."role" = :adminRole'),
       { adminRole: "ADMIN" },
     );
     expect(queryBuilder.andWhere).toHaveBeenCalledWith(
-      `(user."createdAt", user.id) < (:userCreatedAt, :userId)`,
+      `("listedUser"."createdAt", "listedUser"."id") < (:userCreatedAt, :userId)`,
       {
         userCreatedAt: cursor.createdAt,
         userId: cursor.id,
       },
+    );
+    expect(subqueryBuilder.where).toHaveBeenCalledWith(
+      '"adminAccess"."userId" = "listedUser"."id"',
     );
   });
 

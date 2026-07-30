@@ -541,13 +541,13 @@ export class AdminRepository {
       query.andWhere(
         new Brackets((builder) => {
           builder
-            .where("user.name ILIKE :userSearch", {
+            .where("listedUser.name ILIKE :userSearch", {
               userSearch: `%${filters.search}%`,
             })
-            .orWhere("user.email ILIKE :userSearch", {
+            .orWhere("listedUser.email ILIKE :userSearch", {
               userSearch: `%${filters.search}%`,
             })
-            .orWhere("user.id::text ILIKE :userSearch", {
+            .orWhere("listedUser.id::text ILIKE :userSearch", {
               userSearch: `%${filters.search}%`,
             });
         }),
@@ -558,7 +558,7 @@ export class AdminRepository {
         `NOT EXISTS (
           SELECT 1
           FROM admin_user "activeAdmin"
-          WHERE "activeAdmin"."userId" = user.id
+          WHERE "activeAdmin"."userId" = "listedUser"."id"
             AND "activeAdmin"."isActive" = true
         )`,
       );
@@ -567,9 +567,9 @@ export class AdminRepository {
         `EXISTS (
           SELECT 1
           FROM admin_user "activeAdmin"
-          WHERE "activeAdmin"."userId" = user.id
+          WHERE "activeAdmin"."userId" = "listedUser"."id"
             AND "activeAdmin"."isActive" = true
-            AND "activeAdmin".role = :adminRole
+            AND "activeAdmin"."role" = :adminRole
         )`,
         {
           adminRole: filters.access,
@@ -578,7 +578,7 @@ export class AdminRepository {
     }
     if (filters.cursor) {
       query.andWhere(
-        `(user."createdAt", user.id) < (:userCreatedAt, :userId)`,
+        `("listedUser"."createdAt", "listedUser"."id") < (:userCreatedAt, :userId)`,
         {
           userCreatedAt: filters.cursor.createdAt,
           userId: filters.cursor.id,
@@ -590,7 +590,7 @@ export class AdminRepository {
 
   getUser(userId: string): Promise<RawAdminUser | undefined> {
     return this.createUserQuery()
-      .andWhere("user.id = :userId", { userId })
+      .andWhere("listedUser.id = :userId", { userId })
       .getRawOne<RawAdminUser>();
   }
 
@@ -1305,17 +1305,17 @@ export class AdminRepository {
   private createUserQuery(): SelectQueryBuilder<UserEntity> {
     return this.dataSource
       .getRepository(UserEntity)
-      .createQueryBuilder("user")
-      .select("user.id", "id")
-      .addSelect("user.name", "name")
-      .addSelect("user.email", "email")
-      .addSelect('user."profileImageKey"', "profileImageKey")
+      .createQueryBuilder("listedUser")
+      .select("listedUser.id", "id")
+      .addSelect("listedUser.name", "name")
+      .addSelect("listedUser.email", "email")
+      .addSelect("listedUser.profileImageKey", "profileImageKey")
       .addSelect(
         (subquery) =>
           subquery
             .select("adminAccess.role")
             .from(AdminUserEntity, "adminAccess")
-            .where('adminAccess."userId" = user.id')
+            .where('"adminAccess"."userId" = "listedUser"."id"')
             .orderBy('adminAccess."isActive"', "DESC")
             .addOrderBy('adminAccess."createdAt"', "DESC")
             .limit(1),
@@ -1326,7 +1326,7 @@ export class AdminRepository {
           subquery
             .select('adminAccess."isActive"')
             .from(AdminUserEntity, "adminAccess")
-            .where('adminAccess."userId" = user.id')
+            .where('"adminAccess"."userId" = "listedUser"."id"')
             .orderBy('adminAccess."isActive"', "DESC")
             .addOrderBy('adminAccess."createdAt"', "DESC")
             .limit(1),
@@ -1337,7 +1337,9 @@ export class AdminRepository {
           subquery
             .select("COUNT(organizationMembership.id)")
             .from(OrganizationUserEntity, "organizationMembership")
-            .where('organizationMembership."userId" = user.id'),
+            .where(
+              '"organizationMembership"."userId" = "listedUser"."id"',
+            ),
         "organizationCount",
       )
       .addSelect(
@@ -1345,12 +1347,12 @@ export class AdminRepository {
           subquery
             .select("COUNT(workspaceMembership.id)")
             .from(WorkspaceMembershipEntity, "workspaceMembership")
-            .where('workspaceMembership."userId" = user.id'),
+            .where('"workspaceMembership"."userId" = "listedUser"."id"'),
         "workspaceCount",
       )
-      .addSelect('user."createdAt"', "createdAt")
-      .orderBy('user."createdAt"', "DESC")
-      .addOrderBy("user.id", "DESC");
+      .addSelect("listedUser.createdAt", "createdAt")
+      .orderBy("listedUser.createdAt", "DESC")
+      .addOrderBy("listedUser.id", "DESC");
   }
 
   private createApiKeyQuery(): SelectQueryBuilder<WorkspaceApiKeyEntity> {
