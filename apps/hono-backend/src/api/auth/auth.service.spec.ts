@@ -357,8 +357,9 @@ describe("AuthService 이메일 확인", () => {
 });
 
 describe("AuthService 초대 가입", () => {
-  it("계정 생성 트랜잭션에서 초대를 수락한다", async () => {
+  it("초대를 수락하고 선택된 요금제로 첫 조직을 생성한다", async () => {
     const invitationId = randomUUID();
+    const organizationPlanId = randomUUID();
     const userId = randomUUID();
     const stageStore = {
       get: jest.fn().mockResolvedValue({
@@ -401,9 +402,18 @@ describe("AuthService 초대 가입", () => {
     };
     const accessInvitations = {
       resolveSignupInvitation: jest.fn(),
-      acceptSignupInvitation: jest.fn().mockResolvedValue(undefined),
+      acceptSignupInvitation: jest.fn().mockResolvedValue({
+        organizationPlanId,
+      }),
       isBootstrapAdminEmail: jest.fn().mockReturnValue(false),
       activateBootstrapAdmin: jest.fn().mockResolvedValue(undefined),
+    };
+    const organizationService = {
+      createOrganization: jest.fn().mockResolvedValue({
+        id: randomUUID(),
+        name: "Pilot Organization",
+        role: "OWNER",
+      }),
     };
     const service = new AuthService(
       {
@@ -413,7 +423,7 @@ describe("AuthService 초대 가입", () => {
         saveRefresh: jest.fn(),
       } as never,
       stageStore as never,
-      { createOrganization: jest.fn() } as never,
+      organizationService as never,
       { sendMail: jest.fn() } as never,
       dataSource as never,
       accessInvitations as never,
@@ -424,6 +434,7 @@ describe("AuthService 초대 가입", () => {
         token: randomUUID(),
         name: "Pilot",
         password: "password123",
+        organization_info: { name: "Pilot Organization" },
       }),
     ).resolves.toEqual({ success: true });
 
@@ -432,6 +443,14 @@ describe("AuthService 초대 가입", () => {
       invitationId,
       "pilot@example.com",
       userId,
+    );
+    expect(organizationService.createOrganization).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId,
+        name: "Pilot Organization",
+        planId: organizationPlanId,
+      }),
+      manager,
     );
   });
 });

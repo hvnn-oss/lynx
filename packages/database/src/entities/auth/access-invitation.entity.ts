@@ -38,6 +38,9 @@ export class AccessInvitationEntity {
   @Column({ type: "varchar", nullable: true })
   role!: string | null;
 
+  @Column({ type: "uuid", nullable: true })
+  organizationPlanId!: string | null;
+
   @Column({ type: "varchar", default: ACCESS_INVITATION_STATUS.PENDING })
   status!: AccessInvitationStatus;
 

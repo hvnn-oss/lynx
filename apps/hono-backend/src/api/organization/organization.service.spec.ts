@@ -71,12 +71,18 @@ describe("OrganizationService", () => {
   it("creates an organization when both limits allow it", async () => {
     const repository = createRepository();
     const service = new OrganizationService(repository);
+    const planId = randomUUID();
 
-    await expect(service.createOrganization(input)).resolves.toMatchObject({
+    await expect(
+      service.createOrganization({ ...input, planId }),
+    ).resolves.toMatchObject({
       name: "Lynx",
       role: "OWNER",
     });
-    expect(repository.createRecords).toHaveBeenCalledTimes(1);
+    expect(repository.createRecords).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ planId }),
+    );
   });
 
   it("rejects creation when the active owned organization limit is reached", async () => {

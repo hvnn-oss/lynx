@@ -23,6 +23,7 @@ function createInvitation(
     targetType: "PRODUCT",
     targetId: null,
     role: null,
+    organizationPlanId: "a4c424cf-0e63-479b-a60d-18445d5fc1d1",
     status: ACCESS_INVITATION_STATUS.PENDING,
     invitedByUserId: "a77c2374-5d68-4a79-96e5-881a0eb76978",
     acceptedByUserId: null,
@@ -53,6 +54,12 @@ describe("AccessInvitationService", () => {
       findPending: jest.fn(),
       findPendingOrganization: jest.fn(),
       findOrganization: jest.fn(),
+      findActiveOrganizationPlan: jest.fn().mockResolvedValue({
+        id: invitation.organizationPlanId,
+        code: "FREE",
+        name: "Free",
+        isActive: true,
+      }),
       isOrganizationMemberEmail: jest.fn(),
       listOrganization: jest.fn(),
       revokeOrganization: jest.fn(),
@@ -91,12 +98,13 @@ describe("AccessInvitationService", () => {
   }
 
   it("원본 토큰 대신 SHA-256 해시를 저장하고 이메일로 초대 링크를 보낸다", async () => {
-    const { mailer, repository, service } = createService();
+    const { invitation, mailer, repository, service } = createService();
 
     await expect(
       service.create("admin-1", {
         email: " Pilot@Example.COM ",
         expiresInHours: 72,
+        organizationPlanId: invitation.organizationPlanId!,
       }),
     ).resolves.toMatchObject({
       email: "pilot@example.com",
@@ -108,12 +116,54 @@ describe("AccessInvitationService", () => {
         email: "pilot@example.com",
         tokenHash: expect.stringMatching(/^[0-9a-f]{64}$/),
         invitedByUserId: "admin-1",
+        organizationPlanId: invitation.organizationPlanId,
       }),
     );
     expect(mailer.sendMail).toHaveBeenCalledWith(
       expect.objectContaining({
         to: "pilot@example.com",
         html: expect.stringContaining("/signup?invite="),
+      }),
+    );
+    expect(mailer.sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        html: expect.stringContaining("Free plan"),
+      }),
+    );
+  });
+
+  it("비활성 또는 존재하지 않는 요금제로는 초대를 만들지 않는다", async () => {
+    const { invitation, mailer, repository, service } = createService();
+    repository.findActiveOrganizationPlan.mockResolvedValue(null);
+
+    await expect(
+      service.create("admin-1", {
+        email: "pilot@example.com",
+        expiresInHours: 72,
+        organizationPlanId: invitation.organizationPlanId!,
+      }),
+    ).rejects.toMatchObject({
+      status: 404,
+      message: ERROR_CODES.ADMIN_PLAN_NOT_FOUND,
+    });
+    expect(repository.create).not.toHaveBeenCalled();
+    expect(mailer.sendMail).not.toHaveBeenCalled();
+  });
+
+  it("요금제를 보내지 않은 구버전 관리자 요청에는 활성 Free 요금제를 적용한다", async () => {
+    const { invitation, repository, service } = createService();
+
+    await service.create("admin-1", {
+      email: "pilot@example.com",
+      expiresInHours: 72,
+    });
+
+    expect(repository.findActiveOrganizationPlan).toHaveBeenCalledWith(
+      undefined,
+    );
+    expect(repository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationPlanId: invitation.organizationPlanId,
       }),
     );
   });
@@ -127,6 +177,7 @@ describe("AccessInvitationService", () => {
       service.create("admin-1", {
         email: "pilot@example.com",
         expiresInHours: 24,
+        organizationPlanId: invitation.organizationPlanId!,
       }),
     ).rejects.toMatchObject({
       status: 500,
@@ -209,12 +260,16 @@ describe("AccessInvitationService", () => {
     const manager = {} as EntityManager;
     repository.accept.mockResolvedValue(invitation);
 
-    await service.acceptSignupInvitation(
-      manager,
-      invitation.id,
-      invitation.email,
-      "user-1",
-    );
+    await expect(
+      service.acceptSignupInvitation(
+        manager,
+        invitation.id,
+        invitation.email,
+        "user-1",
+      ),
+    ).resolves.toEqual({
+      organizationPlanId: invitation.organizationPlanId,
+    });
 
     expect(repository.accept).toHaveBeenCalledWith(
       manager,
@@ -227,6 +282,23 @@ describe("AccessInvitationService", () => {
       "user-1",
       invitation.invitedByUserId,
     );
+  });
+
+  it("기존 초대에 요금제가 없으면 기본 요금제 적용을 위해 null을 반환한다", async () => {
+    const { invitation, repository, service } = createService();
+    const manager = {} as EntityManager;
+    repository.accept.mockResolvedValue(
+      createInvitation({ organizationPlanId: null }),
+    );
+
+    await expect(
+      service.acceptSignupInvitation(
+        manager,
+        invitation.id,
+        invitation.email,
+        "user-1",
+      ),
+    ).resolves.toEqual({ organizationPlanId: null });
   });
 
   it("다음 행을 이용해 초대 목록 cursor를 생성한다", async () => {

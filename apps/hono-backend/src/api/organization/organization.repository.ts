@@ -248,10 +248,17 @@ export class OrganizationRepository {
     });
     if (!user) throw new Error("USER_NOT_FOUND");
 
-    const plan = await manager
-      .getRepository(OrganizationPlanEntity)
-      .findOneBy({ code: "FREE" });
-    if (!plan) throw new Error("DEFAULT_ORGANIZATION_PLAN_NOT_FOUND");
+    const planRepository = manager.getRepository(OrganizationPlanEntity);
+    const plan = input.planId
+      ? await planRepository.findOneBy({ id: input.planId })
+      : await planRepository.findOneBy({ code: "FREE" });
+    if (!plan) {
+      throw new Error(
+        input.planId
+          ? "ORGANIZATION_PLAN_NOT_FOUND"
+          : "DEFAULT_ORGANIZATION_PLAN_NOT_FOUND",
+      );
+    }
 
     const organizationRepository = manager.getRepository(OrganizationEntity);
     const organization = organizationRepository.create({

@@ -4,6 +4,7 @@ export type CreateOrganizationInput = {
   name: string;
   requestId: string;
   source: OrganizationCreationSource;
+  planId?: string;
 };
 
 /** 조직과 소유자 멤버십, 생성 이력을 함께 저장할 입력입니다. */
@@ -13,4 +14,5 @@ export type CreateOrganizationRecordInput = {
   requestId: string;
   source: OrganizationCreationSource;
   dayStartedAt: Date;
+  planId?: string;
 };

@@ -262,11 +262,20 @@ export class AccessInvitationService {
     input: CreateAccessInvitationDto,
   ): Promise<AccessInvitationResponseDto> {
     const email = this.normalizeEmail(input.email);
+    const organizationPlan = await this.repository.findActiveOrganizationPlan(
+      input.organizationPlanId,
+    );
+    if (!organizationPlan) {
+      throw new HTTPException(404, {
+        message: ERROR_CODES.ADMIN_PLAN_NOT_FOUND,
+      });
+    }
     const token = generateRandomString(48);
     const invitation = await this.repository.create({
       email,
       tokenHash: this.hashToken(token),
       invitedByUserId: actorUserId,
+      organizationPlanId: organizationPlan.id,
       expiresAt: new Date(Date.now() + input.expiresInHours * 60 * 60 * 1_000),
     });
 
@@ -275,7 +284,11 @@ export class AccessInvitationService {
         from: env.SMTP_FROM_EMAIL,
         to: email,
         subject: "You are invited to the Lynx pilot",
-        html: this.createInvitationEmailHtml(token, invitation.expiresAt),
+        html: this.createInvitationEmailHtml(
+          token,
+          invitation.expiresAt,
+          organizationPlan.name,
+        ),
       });
     } catch {
       await this.repository.deletePending(invitation.id).catch(() => undefined);
@@ -388,7 +401,7 @@ export class AccessInvitationService {
     invitationId: string,
     email: string,
     userId: string,
-  ): Promise<void> {
+  ): Promise<{ organizationPlanId: string | null }> {
     const invitation = await this.repository.accept(
       manager,
       invitationId,
@@ -405,6 +418,7 @@ export class AccessInvitationService {
       userId,
       invitation.invitedByUserId,
     );
+    return { organizationPlanId: invitation.organizationPlanId };
   }
 
   /** 비교 전에 이메일의 대소문자와 주변 공백을 정규화합니다. */
@@ -418,11 +432,16 @@ export class AccessInvitationService {
   }
 
   /** 초대 URL과 만료 시각을 포함한 최소 HTML 메일을 생성합니다. */
-  private createInvitationEmailHtml(token: string, expiresAt: Date): string {
+  private createInvitationEmailHtml(
+    token: string,
+    expiresAt: Date,
+    organizationPlanName: string,
+  ): string {
     const frontendUrl = env.FRONTEND_URL.replace(/\/$/, "");
     const invitationUrl = `${frontendUrl}/signup?invite=${encodeURIComponent(token)}`;
     return [
       "<p>You have been invited to the Lynx pilot.</p>",
+      `<p>Your first organization will use the ${this.escapeHtml(organizationPlanName)} plan.</p>`,
       `<p><a href="${invitationUrl}">Accept invitation</a></p>`,
       `<p>This invitation expires at ${expiresAt.toISOString()}.</p>`,
     ].join("");
@@ -537,6 +556,7 @@ export class AccessInvitationService {
     return {
       id: invitation.id,
       email: invitation.email,
+      organizationPlanId: invitation.organizationPlanId,
       status: invitation.status,
       expiresAt: invitation.expiresAt.toISOString(),
       acceptedAt: invitation.acceptedAt?.toISOString() ?? null,

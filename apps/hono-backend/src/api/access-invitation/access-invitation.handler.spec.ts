@@ -46,6 +46,7 @@ describe("access invitation HTTP handlers", () => {
     mockedService.create.mockResolvedValue({
       id: "0782d59b-d50a-4f2e-93c2-2bd7cf4ec94f",
       email: "pilot@example.com",
+      organizationPlanId: "a4c424cf-0e63-479b-a60d-18445d5fc1d1",
       status: "PENDING",
       expiresAt: "2026-08-01T00:00:00.000Z",
       acceptedAt: null,
@@ -58,6 +59,7 @@ describe("access invitation HTTP handlers", () => {
       body: JSON.stringify({
         email: "pilot@example.com",
         expiresInHours: 72,
+        organizationPlanId: "a4c424cf-0e63-479b-a60d-18445d5fc1d1",
       }),
     });
 
@@ -65,6 +67,7 @@ describe("access invitation HTTP handlers", () => {
     expect(mockedService.create).toHaveBeenCalledWith("admin-1", {
       email: "pilot@example.com",
       expiresInHours: 72,
+      organizationPlanId: "a4c424cf-0e63-479b-a60d-18445d5fc1d1",
     });
   });
 

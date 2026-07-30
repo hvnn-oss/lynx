@@ -59,12 +59,9 @@ export class WorkspaceRepository {
   ): Promise<WorkspaceEntity> {
     const organization = await this.getLockedOrganization(manager, input.orgId);
     const workspaceRepository = manager.getRepository(WorkspaceEntity);
-    const workspaceCount = await workspaceRepository
-      .createQueryBuilder("workspace")
-      .where('"workspace"."organizationId" = :organizationId', {
-        organizationId: input.orgId,
-      })
-      .getCount();
+    const workspaceCount = await workspaceRepository.count({
+      where: { organization: { id: input.orgId } },
+    });
     if (
       organization.plan.maxWorkspaces !== null &&
       workspaceCount >= organization.plan.maxWorkspaces

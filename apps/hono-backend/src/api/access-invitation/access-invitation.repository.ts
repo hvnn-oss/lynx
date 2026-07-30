@@ -7,6 +7,7 @@ import {
 import {
   AccessInvitationEntity,
   OrganizationEntity,
+  OrganizationPlanEntity,
   OrganizationUserEntity,
   UserEntity,
 } from "@repo/database";
@@ -18,9 +19,11 @@ interface CreateInvitationRecord {
   tokenHash: string;
   invitedByUserId: string;
   expiresAt: Date;
+  organizationPlanId: string;
 }
 
-interface CreateOrganizationInvitationRecord extends CreateInvitationRecord {
+interface CreateOrganizationInvitationRecord
+  extends Omit<CreateInvitationRecord, "organizationPlanId"> {
   organizationId: string;
   role: UserPermissions;
 }
@@ -58,6 +61,7 @@ export class AccessInvitationRepository {
           targetType: ACCESS_INVITATION_TARGET_TYPE.PRODUCT,
           targetId: null,
           role: null,
+          organizationPlanId: input.organizationPlanId,
           status: ACCESS_INVITATION_STATUS.PENDING,
           acceptedByUserId: null,
           acceptedAt: null,
@@ -101,6 +105,7 @@ export class AccessInvitationRepository {
           targetType: ACCESS_INVITATION_TARGET_TYPE.ORGANIZATION,
           targetId: input.organizationId,
           role: input.role,
+          organizationPlanId: null,
           status: ACCESS_INVITATION_STATUS.PENDING,
           acceptedByUserId: null,
           acceptedAt: null,
@@ -177,6 +182,17 @@ export class AccessInvitationRepository {
     return AppDataSource.getRepository(OrganizationEntity).findOneBy({
       id: organizationId,
     });
+  }
+
+  /** 제품 초대에 지정할 수 있는 활성 조직 요금제를 조회합니다. */
+  findActiveOrganizationPlan(
+    organizationPlanId?: string,
+  ): Promise<OrganizationPlanEntity | null> {
+    return AppDataSource.getRepository(OrganizationPlanEntity).findOneBy(
+      organizationPlanId
+        ? { id: organizationPlanId, isActive: true }
+        : { code: "FREE", isActive: true },
+    );
   }
 
   /** 이미 조직에 참여한 이메일인지 초대 발급 전에 확인합니다. */

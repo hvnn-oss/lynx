@@ -14,10 +14,12 @@ import {
   createPilotInvitation,
   listPilotInvitations,
   listPilotParticipants,
+  listPlans,
   revokePilotInvitation,
   updatePilotParticipant,
 } from "@/lib/admin-api";
 import type {
+  AdminPlan,
   AccessInvitationList,
   AccessInvitationStatus,
   PilotParticipantList,
@@ -29,6 +31,8 @@ export default function PilotPage() {
   const [tab, setTab] = useState("invite");
   const [email, setEmail] = useState("");
   const [expiresInHours, setExpiresInHours] = useState("72");
+  const [organizationPlanId, setOrganizationPlanId] = useState("");
+  const [plans, setPlans] = useState<AdminPlan[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [createMessage, setCreateMessage] = useState("");
   const [invitations, setInvitations] = useState<AccessInvitationList | null>(
@@ -52,6 +56,35 @@ export default function PilotPage() {
   const [invitationError, setInvitationError] = useState("");
   const [participantError, setParticipantError] = useState("");
   const [changingId, setChangingId] = useState("");
+
+  useEffect(() => {
+    let isCurrent = true;
+    listPlans()
+      .then((items) => {
+        if (!isCurrent) return;
+        const activePlans = items.filter((plan) => plan.isActive);
+        setPlans(items);
+        setOrganizationPlanId(
+          (current) =>
+            current ||
+            activePlans.find((plan) => plan.code === "FREE")?.id ||
+            activePlans[0]?.id ||
+            "",
+        );
+      })
+      .catch((cause: unknown) => {
+        if (isCurrent) {
+          setCreateMessage(
+            cause instanceof Error
+              ? cause.message
+              : "요금제 조회에 실패했습니다.",
+          );
+        }
+      });
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
 
   const loadInvitations = useCallback(() => {
     setInvitationError("");
@@ -173,7 +206,11 @@ export default function PilotPage() {
                 setIsCreating(true);
                 setCreateMessage("");
                 try {
-                  await createPilotInvitation(email, Number(expiresInHours));
+                  await createPilotInvitation(
+                    email,
+                    Number(expiresInHours),
+                    organizationPlanId,
+                  );
                   setEmail("");
                   setCreateMessage(
                     "파일럿 초대 메일을 보냈습니다. 초대 현황에서 상태를 확인할 수 있습니다.",
@@ -236,6 +273,27 @@ export default function PilotPage() {
                     </small>
                   </label>
                   <label className="field">
+                    <span>적용 요금제</span>
+                    <select
+                      required
+                      value={organizationPlanId}
+                      onChange={(event) =>
+                        setOrganizationPlanId(event.target.value)
+                      }
+                    >
+                      {plans
+                        .filter((plan) => plan.isActive)
+                        .map((plan) => (
+                          <option key={plan.id} value={plan.id}>
+                            {plan.name} ({plan.code})
+                          </option>
+                        ))}
+                    </select>
+                    <small>
+                      초대를 수락한 사용자가 만드는 첫 조직에 바로 적용됩니다.
+                    </small>
+                  </label>
+                  <label className="field">
                     <span>초대 유효 시간</span>
                     <select
                       value={expiresInHours}
@@ -266,7 +324,11 @@ export default function PilotPage() {
                   <footer>
                     <button
                       className="button button-primary"
-                      disabled={isCreating || email.trim().length === 0}
+                      disabled={
+                        isCreating ||
+                        email.trim().length === 0 ||
+                        organizationPlanId.length === 0
+                      }
                     >
                       {isCreating ? "초대 전송 중…" : "파일럿 초대 보내기"}
                     </button>
@@ -319,6 +381,7 @@ export default function PilotPage() {
                     <thead>
                       <tr>
                         <th>이메일</th>
+                        <th>요금제</th>
                         <th>상태</th>
                         <th>생성일</th>
                         <th>만료일</th>
@@ -334,6 +397,15 @@ export default function PilotPage() {
                               {invitation.email}
                             </div>
                             <code className="cell-code">{invitation.id}</code>
+                          </td>
+                          <td>
+                            {plans.find(
+                              (plan) =>
+                                plan.id === invitation.organizationPlanId,
+                            )?.name ??
+                              (invitation.organizationPlanId
+                                ? "알 수 없는 요금제"
+                                : "기본 Free")}
                           </td>
                           <td>
                             <Badge tone={getInvitationTone(invitation.status)}>

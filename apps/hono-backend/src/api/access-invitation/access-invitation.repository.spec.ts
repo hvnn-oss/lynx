@@ -14,6 +14,7 @@ function createInvitation(
     targetType: "PRODUCT",
     targetId: null,
     role: null,
+    organizationPlanId: "a4c424cf-0e63-479b-a60d-18445d5fc1d1",
     status: ACCESS_INVITATION_STATUS.PENDING,
     invitedByUserId: "a77c2374-5d68-4a79-96e5-881a0eb76978",
     acceptedByUserId: null,
@@ -55,6 +56,7 @@ describe("AccessInvitationRepository", () => {
       email: invitation.email,
       tokenHash: invitation.tokenHash,
       invitedByUserId: invitation.invitedByUserId,
+      organizationPlanId: invitation.organizationPlanId!,
       expiresAt: invitation.expiresAt,
     });
 

@@ -179,14 +179,14 @@ export class AuthService {
         input.name,
         passwordHash,
       );
-      if (stage.access_invitation_id) {
-        await this.accessInvitations.acceptSignupInvitation(
-          manager,
-          stage.access_invitation_id,
-          stage.email,
-          user.id,
-        );
-      }
+      const acceptedInvitation = stage.access_invitation_id
+        ? await this.accessInvitations.acceptSignupInvitation(
+            manager,
+            stage.access_invitation_id,
+            stage.email,
+            user.id,
+          )
+        : null;
       if (stage.bootstrap_admin) {
         await this.accessInvitations.activateBootstrapAdmin(manager, user.id);
       }
@@ -208,6 +208,7 @@ export class AuthService {
             name: input.organization_info.name,
             requestId: input.token,
             source: ORGANIZATION_CREATION_SOURCES.SIGNUP,
+            planId: acceptedInvitation?.organizationPlanId ?? undefined,
           },
           manager,
         );

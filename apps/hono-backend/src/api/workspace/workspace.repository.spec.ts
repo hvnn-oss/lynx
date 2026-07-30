@@ -31,12 +31,8 @@ describe("WorkspaceRepository", () => {
     const planRepository = {
       findOneBy: jest.fn().mockResolvedValue(plan),
     };
-    const workspaceCountQuery = {
-      where: jest.fn().mockReturnThis(),
-      getCount: jest.fn().mockResolvedValue(workspaceCount),
-    };
     const workspaceRepository = {
-      createQueryBuilder: jest.fn().mockReturnValue(workspaceCountQuery),
+      count: jest.fn().mockResolvedValue(workspaceCount),
       create: jest.fn().mockReturnValue(savedWorkspace),
       save: jest.fn().mockResolvedValue(savedWorkspace),
     };
@@ -55,7 +51,6 @@ describe("WorkspaceRepository", () => {
       organizationQuery,
       planRepository,
       savedWorkspace,
-      workspaceCountQuery,
       workspaceRepository,
     };
   }
@@ -67,7 +62,6 @@ describe("WorkspaceRepository", () => {
       organizationQuery,
       planRepository,
       savedWorkspace,
-      workspaceCountQuery,
       workspaceRepository,
     } = createManager(1, 0);
 
@@ -87,10 +81,9 @@ describe("WorkspaceRepository", () => {
     expect(planRepository.findOneBy).toHaveBeenCalledWith({
       id: organization.planId,
     });
-    expect(workspaceCountQuery.where).toHaveBeenCalledWith(
-      '"workspace"."organizationId" = :organizationId',
-      { organizationId: organization.id },
-    );
+    expect(workspaceRepository.count).toHaveBeenCalledWith({
+      where: { organization: { id: organization.id } },
+    });
     expect(workspaceRepository.create).toHaveBeenCalledWith({
       name: "Production",
       organization: expect.objectContaining({

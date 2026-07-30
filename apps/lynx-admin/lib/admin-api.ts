@@ -148,10 +148,11 @@ export function deleteUser(
 export function createPilotInvitation(
   email: string,
   expiresInHours: number,
+  organizationPlanId: string,
 ): Promise<AccessInvitation> {
   return adminRequest("/access/invitations", {
     method: "POST",
-    body: JSON.stringify({ email, expiresInHours }),
+    body: JSON.stringify({ email, expiresInHours, organizationPlanId }),
   });
 }
 

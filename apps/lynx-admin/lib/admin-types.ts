@@ -299,6 +299,7 @@ export type AccessInvitationStatus =
 export interface AccessInvitation {
   id: string;
   email: string;
+  organizationPlanId: string | null;
   status: AccessInvitationStatus;
   expiresAt: string;
   acceptedAt: string | null;

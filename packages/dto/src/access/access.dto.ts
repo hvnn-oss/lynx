@@ -20,6 +20,7 @@ export const ProductAccessContextSchema = z.object({
 
 export const CreateAccessInvitationSchema = z.object({
   email: z.email(),
+  organizationPlanId: z.uuid().optional(),
   expiresInHours: z.number().int().min(1).max(24 * 30).default(72),
 });
 
@@ -42,6 +43,7 @@ export const ListAccessInvitationsQuerySchema = z.object({
 export const AccessInvitationResponseSchema = z.object({
   id: z.uuid(),
   email: z.email(),
+  organizationPlanId: z.uuid().nullable(),
   status: z.enum(ACCESS_INVITATION_STATUS),
   expiresAt: z.string().datetime(),
   acceptedAt: z.string().datetime().nullable(),

@@ -42,6 +42,7 @@ import { WorkspaceMembershipEntity } from "./entities/workspace/workspace-member
 import { OpenApiApiKeyUsageHourlyEntity } from "./entities/workspace/openapi-api-key-usage-hourly.entity";
 import { InitialSchema1785054963677 } from "./migrations/1785054963677-initial-schema";
 import { AddOpenApiApiKeyUsage1785312000000 } from "./migrations/1785312000000-add-openapi-api-key-usage";
+import { AddAccessInvitationOrganizationPlan1785398400000 } from "./migrations/1785398400000-add-access-invitation-organization-plan";
 import { loadDatabaseEnv } from "./load-env";
 import { normalizeCertificateBundle } from "./certificate";
 
@@ -192,6 +193,7 @@ export const AppDataSource = new DataSource({
   migrations: [
     InitialSchema1785054963677,
     AddOpenApiApiKeyUsage1785312000000,
+    AddAccessInvitationOrganizationPlan1785398400000,
   ],
   subscribers: [],
 });
