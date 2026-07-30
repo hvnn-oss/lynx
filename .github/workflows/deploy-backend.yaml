@@ -118,15 +118,33 @@ jobs:
         run: |
           IMAGE_URI="${{ steps.ecr.outputs.registry }}/${BACKEND_ECR_REPOSITORY}:${GITHUB_SHA}"
           echo "uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
+          echo "tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Check whether image already exists
         id: existing-image
         shell: bash
         run: |
-          if docker manifest inspect "${{ steps.image.outputs.uri }}" >/dev/null 2>&1; then
+          set +e
+          IMAGE_LOOKUP="$(
+            aws ecr describe-images \
+              --repository-name "${BACKEND_ECR_REPOSITORY}" \
+              --image-ids "imageTag=${{ steps.image.outputs.tag }}" \
+              --query "imageDetails[0].imageDigest" \
+              --output text 2>&1
+          )"
+          IMAGE_LOOKUP_STATUS=$?
+          set -e
+
+          if [ "${IMAGE_LOOKUP_STATUS}" -eq 0 ]; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
+            echo "digest=${IMAGE_LOOKUP}" >> "$GITHUB_OUTPUT"
+            echo "Reusing existing immutable image ${IMAGE_LOOKUP}."
+          elif grep -q "ImageNotFoundException" <<< "${IMAGE_LOOKUP}"; then
             echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "No image exists for tag ${{ steps.image.outputs.tag }}."
+          else
+            echo "${IMAGE_LOOKUP}" >&2
+            exit "${IMAGE_LOOKUP_STATUS}"
           fi
 
       - name: Setup Docker Buildx
