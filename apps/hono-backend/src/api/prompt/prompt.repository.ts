@@ -51,12 +51,12 @@ export class PromptRepository {
       .subQuery()
       .select("1")
       .from(PromptDeploymentEntity, "activeDeployment")
-      .where('activeDeployment."promptId" = prompt.id')
-      .andWhere('activeDeployment."workspaceId" = :workspaceId')
-      .andWhere('activeDeployment."active" = true');
+      .where("activeDeployment.promptId = prompt.id")
+      .andWhere("activeDeployment.workspaceId = :workspaceId")
+      .andWhere("activeDeployment.active = true");
     if (input.environment) {
       activeDeployment.andWhere(
-        'activeDeployment."environment" = :deploymentEnvironment',
+        "activeDeployment.environment = :deploymentEnvironment",
         { deploymentEnvironment: input.environment },
       );
     }
@@ -70,8 +70,8 @@ export class PromptRepository {
           .subQuery()
           .select("1")
           .from(PromptVersionEntity, "latestVersion")
-          .where('latestVersion."promptId" = prompt.id')
-          .andWhere('latestVersion."draftRevision" = prompt."draftRevision"')
+          .where("latestVersion.promptId = prompt.id")
+          .andWhere("latestVersion.draftRevision = prompt.draftRevision")
           .getQuery()}`,
       );
     }

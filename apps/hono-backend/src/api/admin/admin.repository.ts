@@ -504,7 +504,7 @@ export class AdminRepository {
       )
       .addSelect('SUM(usage."rateLimitedCount")', "rateLimitedCount")
       .addSelect('SUM(usage."acceptedEventCount")', "acceptedEventCount")
-      .addSelect('apiKey."lastUsedAt"', "lastUsedAt")
+      .addSelect("apiKey.lastUsedAt", "lastUsedAt")
       .groupBy("apiKey.id")
       .addGroupBy("workspace.id")
       .addGroupBy("organization.id")
@@ -1316,19 +1316,19 @@ export class AdminRepository {
             .select("adminAccess.role")
             .from(AdminUserEntity, "adminAccess")
             .where('"adminAccess"."userId" = "listedUser"."id"')
-            .orderBy('adminAccess."isActive"', "DESC")
-            .addOrderBy('adminAccess."createdAt"', "DESC")
+            .orderBy("adminAccess.isActive", "DESC")
+            .addOrderBy("adminAccess.createdAt", "DESC")
             .limit(1),
         "adminRole",
       )
       .addSelect(
         (subquery) =>
           subquery
-            .select('adminAccess."isActive"')
+            .select("adminAccess.isActive")
             .from(AdminUserEntity, "adminAccess")
             .where('"adminAccess"."userId" = "listedUser"."id"')
-            .orderBy('adminAccess."isActive"', "DESC")
-            .addOrderBy('adminAccess."createdAt"', "DESC")
+            .orderBy("adminAccess.isActive", "DESC")
+            .addOrderBy("adminAccess.createdAt", "DESC")
             .limit(1),
         "adminIsActive",
       )
