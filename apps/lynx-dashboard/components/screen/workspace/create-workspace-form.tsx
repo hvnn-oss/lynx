@@ -2,7 +2,7 @@
 
 import { createWorkspace } from "@/lib/dashboard";
 import { listAvailableOrganizations } from "@/lib/organizations";
-import { USER_PERMISSIONS } from "@repo/constants";
+import { ERROR_CODES, USER_PERMISSIONS } from "@repo/constants";
 import type { WorkspaceListResponseDto } from "@repo/dto";
 import { Button } from "@repo/ui/components/ui/button";
 import { DashRing } from "@repo/ui/components/ui/dash-ring";
@@ -18,6 +18,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import axios from "axios";
 import {
   Select,
   SelectContent,
@@ -81,8 +82,15 @@ export function CreateWorkspaceForm() {
         queryKey: ["workspaces", "available"],
       });
       router.replace("/dashboard/overview");
-    } catch {
-      setError(t("errors.failed"));
+    } catch (cause) {
+      const errorCode = axios.isAxiosError(cause)
+        ? cause.response?.data?.code
+        : undefined;
+      setError(
+        errorCode === ERROR_CODES.PLAN_UPGRADE_REQUIRED
+          ? t("errors.planLimit")
+          : t("errors.failed"),
+      );
     } finally {
       setIsSubmitting(false);
     }

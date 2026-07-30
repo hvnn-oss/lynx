@@ -53,29 +53,37 @@ export class WorkspaceRepository {
    * @param input 검증된 워크스페이스 생성 정보입니다.
    * @returns 저장된 워크스페이스입니다.
    */
-  createWorkspace(input: CreateWorkspaceRecordInput): Promise<WorkspaceEntity> {
-    return AppDataSource.transaction(async (manager) => {
-      const organization = await this.getLockedOrganization(
-        manager,
-        input.orgId,
-      );
-      const workspaceCount = await manager
-        .getRepository(WorkspaceEntity)
-        .countBy({ organization: { id: input.orgId } });
-      if (
-        organization.plan.maxWorkspaces !== null &&
-        workspaceCount >= organization.plan.maxWorkspaces
-      ) {
-        throw new ForbiddenErrorException(ERROR_CODES.PLAN_UPGRADE_REQUIRED);
-      }
+  async createWorkspace(
+    manager: EntityManager,
+    input: CreateWorkspaceRecordInput,
+  ): Promise<WorkspaceEntity> {
+    const organization = await this.getLockedOrganization(manager, input.orgId);
+    const workspaceRepository = manager.getRepository(WorkspaceEntity);
+    const workspaceCount = await workspaceRepository
+      .createQueryBuilder("workspace")
+      .where('"workspace"."organizationId" = :organizationId', {
+        organizationId: input.orgId,
+      })
+      .getCount();
+    if (
+      organization.plan.maxWorkspaces !== null &&
+      workspaceCount >= organization.plan.maxWorkspaces
+    ) {
+      throw new ForbiddenErrorException(ERROR_CODES.PLAN_UPGRADE_REQUIRED);
+    }
 
-      const workspaceRepository = manager.getRepository(WorkspaceEntity);
-      const workspace = workspaceRepository.create({
-        name: input.name,
-        organization,
-      });
-      return workspaceRepository.save(workspace);
+    const workspace = workspaceRepository.create({
+      name: input.name,
+      organization,
     });
+    return workspaceRepository.save(workspace);
+  }
+
+  /** 워크스페이스와 부가 권한 기록을 하나의 원자적 작업으로 저장합니다. */
+  transaction<T>(
+    work: (manager: EntityManager) => Promise<T>,
+  ): Promise<T> {
+    return AppDataSource.transaction(work);
   }
 
   /** 검증된 API Key 메타데이터와 secret 해시를 저장합니다. */

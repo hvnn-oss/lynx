@@ -11,21 +11,27 @@ import {
 import type { ApiKeyIssuancePolicy } from "../api-key/api-key-issuance.policy.js";
 import { apiKeyParser } from "../../common/util/api-key-parser.js";
 import { createHash } from "node:crypto";
+import type { EntityManager } from "typeorm";
 import type { ProductAccessService } from "../../common/access-control/product-access.service.js";
 
 describe("WorkspaceService", () => {
-  it("returns the created workspace using the public response contract", async () => {
+  it("워크스페이스와 제품 접근 권한을 같은 트랜잭션에서 생성한다", async () => {
+    const manager = {} as EntityManager;
     const repository = {
-      createWorkspace: jest.fn().mockResolvedValue({
-        id: "1fe94bb3-7297-4b42-a4fb-f4b04b6857ec",
-        name: "Production",
-      } as WorkspaceEntity),
+      transaction: jest.fn(async (work) => work(manager)),
+      createWorkspace: jest
+        .fn()
+        .mockResolvedValue({
+          id: "1fe94bb3-7297-4b42-a4fb-f4b04b6857ec",
+          name: "Production",
+        } as WorkspaceEntity),
     } as unknown as WorkspaceRepository;
     const accessControl = {
       assertOrganizationCapability: jest.fn().mockResolvedValue(undefined),
     } as unknown as AccessControlService;
     const productAccess = {
-      grantWorkspaceForUser: jest.fn().mockResolvedValue(undefined),
+      assertUserAccess: jest.fn().mockResolvedValue(undefined),
+      grantWorkspace: jest.fn().mockResolvedValue(undefined),
     } as unknown as ProductAccessService;
     const service = new WorkspaceService(
       repository,
@@ -44,16 +50,51 @@ describe("WorkspaceService", () => {
       name: "Production",
       orgId: "70302e18-767c-42d3-9674-80c302475981",
     });
-    expect(repository.createWorkspace).toHaveBeenCalledWith(input);
+    expect(repository.transaction).toHaveBeenCalledTimes(1);
+    expect(repository.createWorkspace).toHaveBeenCalledWith(manager, input);
     expect(accessControl.assertOrganizationCapability).toHaveBeenCalledWith({
       userId: input.userId,
       organizationId: input.orgId,
       capability: CAPABILITIES.WORKSPACE_CREATE,
     });
-    expect(productAccess.grantWorkspaceForUser).toHaveBeenCalledWith(
+    expect(productAccess.assertUserAccess).toHaveBeenCalledWith(input.userId);
+    expect(productAccess.grantWorkspace).toHaveBeenCalledWith(
+      manager,
       input.userId,
       "1fe94bb3-7297-4b42-a4fb-f4b04b6857ec",
     );
+  });
+
+  it("제품 접근 권한 저장 실패 시 트랜잭션 오류를 그대로 반환한다", async () => {
+    const manager = {} as EntityManager;
+    const repository = {
+      transaction: jest.fn(async (work) => work(manager)),
+      createWorkspace: jest.fn().mockResolvedValue({
+        id: "1fe94bb3-7297-4b42-a4fb-f4b04b6857ec",
+        name: "Production",
+      } as WorkspaceEntity),
+    } as unknown as WorkspaceRepository;
+    const accessControl = {
+      assertOrganizationCapability: jest.fn().mockResolvedValue(undefined),
+    } as unknown as AccessControlService;
+    const productAccess = {
+      assertUserAccess: jest.fn().mockResolvedValue(undefined),
+      grantWorkspace: jest.fn().mockRejectedValue(new Error("grant failed")),
+    } as unknown as ProductAccessService;
+    const service = new WorkspaceService(
+      repository,
+      accessControl,
+      undefined,
+      productAccess,
+    );
+
+    await expect(
+      service.createWorkspace({
+        userId: "user-1",
+        name: "Production",
+        orgId: "70302e18-767c-42d3-9674-80c302475981",
+      }),
+    ).rejects.toThrow("grant failed");
   });
 
   it("returns the raw API key once and stores only its SHA-256 secret hash", async () => {

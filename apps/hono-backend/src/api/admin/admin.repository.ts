@@ -384,21 +384,21 @@ export class AdminRepository {
       .select("COUNT(apiKey.id)", "total")
       .addSelect(
         `COUNT(apiKey.id) FILTER (
-          WHERE apiKey."revokedAt" IS NULL
-            AND (apiKey."expiresAt" IS NULL OR apiKey."expiresAt" > NOW())
+          WHERE "apiKey"."revokedAt" IS NULL
+            AND ("apiKey"."expiresAt" IS NULL OR "apiKey"."expiresAt" > NOW())
         )`,
         "active",
       )
       .addSelect(
         `COUNT(apiKey.id) FILTER (
-          WHERE apiKey."revokedAt" IS NULL
-            AND apiKey."expiresAt" IS NOT NULL
-            AND apiKey."expiresAt" <= NOW()
+          WHERE "apiKey"."revokedAt" IS NULL
+            AND "apiKey"."expiresAt" IS NOT NULL
+            AND "apiKey"."expiresAt" <= NOW()
         )`,
         "expired",
       )
       .addSelect(
-        `COUNT(apiKey.id) FILTER (WHERE apiKey."revokedAt" IS NOT NULL)`,
+        `COUNT(apiKey.id) FILTER (WHERE "apiKey"."revokedAt" IS NOT NULL)`,
         "revoked",
       );
     this.applyApiKeyScopeFilters(query, filters);
@@ -1257,7 +1257,7 @@ export class AdminRepository {
     participantId: string,
   ): Promise<RawPilotParticipant | undefined> {
     return this.createPilotParticipantQuery()
-      .andWhere("grant.id = :participantId", { participantId })
+      .andWhere('"accessGrant"."id" = :participantId', { participantId })
       .getRawOne<RawPilotParticipant>();
   }
 
@@ -1371,7 +1371,7 @@ export class AdminRepository {
       .addSelect("organization.name", "organizationName")
       .addSelect("apiKey.createdByUserId", "createdByUserId")
       .addSelect(
-        'COALESCE(createdBy.name, apiKey."createdByName")',
+        'COALESCE("createdBy"."name", "apiKey"."createdByName")',
         "createdByName",
       )
       .addSelect("apiKey.createdAt", "createdAt")
@@ -1414,23 +1414,23 @@ export class AdminRepository {
     }
     if (filters.status === "ACTIVE") {
       query
-        .andWhere('apiKey."revokedAt" IS NULL')
+        .andWhere('"apiKey"."revokedAt" IS NULL')
         .andWhere(
-          '(apiKey."expiresAt" IS NULL OR apiKey."expiresAt" > NOW())',
+          '("apiKey"."expiresAt" IS NULL OR "apiKey"."expiresAt" > NOW())',
         );
     }
     if (filters.status === "EXPIRED") {
       query
-        .andWhere('apiKey."revokedAt" IS NULL')
-        .andWhere('apiKey."expiresAt" IS NOT NULL')
-        .andWhere('apiKey."expiresAt" <= NOW()');
+        .andWhere('"apiKey"."revokedAt" IS NULL')
+        .andWhere('"apiKey"."expiresAt" IS NOT NULL')
+        .andWhere('"apiKey"."expiresAt" <= NOW()');
     }
     if (filters.status === "REVOKED") {
-      query.andWhere('apiKey."revokedAt" IS NOT NULL');
+      query.andWhere('"apiKey"."revokedAt" IS NOT NULL');
     }
     if (filters.cursor) {
       query.andWhere(
-        `(apiKey."createdAt", apiKey.id) < (:apiKeyCreatedAt, :apiKeyCursorId)`,
+        `("apiKey"."createdAt", "apiKey"."id") < (:apiKeyCreatedAt, :apiKeyCursorId)`,
         {
           apiKeyCreatedAt: filters.cursor.createdAt,
           apiKeyCursorId: filters.cursor.id,

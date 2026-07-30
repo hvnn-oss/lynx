@@ -93,12 +93,30 @@ export class ProductAccessService {
 
     await this.assertUserAccess(userId);
     await AppDataSource.transaction((manager) =>
-      this.grantSubject(
-        manager,
-        PRODUCT_ACCESS_SUBJECT_TYPE.WORKSPACE,
-        workspaceId,
-        userId,
-      ),
+      this.grantWorkspace(manager, userId, workspaceId),
+    );
+  }
+
+  /**
+   * 현재 트랜잭션 안에서 Workspace 제품 접근 권한을 함께 저장합니다.
+   * @param manager Workspace 생성에 사용 중인 트랜잭션 매니저입니다.
+   * @param userId Workspace를 생성한 사용자 식별자입니다.
+   * @param workspaceId 접근 권한을 부여할 Workspace 식별자입니다.
+   */
+  grantWorkspace(
+    manager: EntityManager,
+    userId: string,
+    workspaceId: string,
+  ): Promise<void> {
+    if (env.PRODUCT_ACCESS_MODE === PRODUCT_ACCESS_MODE.PUBLIC) {
+      return Promise.resolve();
+    }
+
+    return this.grantSubject(
+      manager,
+      PRODUCT_ACCESS_SUBJECT_TYPE.WORKSPACE,
+      workspaceId,
+      userId,
     );
   }
 

@@ -4,24 +4,17 @@ import {
   WorkspaceEntity,
 } from "@repo/database";
 import type { EntityManager } from "typeorm";
-import { AppDataSource } from "../../provider/database/typeorm-config.js";
 import { WorkspaceRepository } from "./workspace.repository.js";
 
-jest.mock("../../provider/database/typeorm-config.js", () => ({
-  AppDataSource: {
-    transaction: jest.fn(),
-  },
-}));
-
 describe("WorkspaceRepository", () => {
-  it("조직 행만 잠그고 요금제는 별도로 조회해 워크스페이스를 생성한다", async () => {
+  function createManager(maxWorkspaces: number | null, workspaceCount: number) {
     const organization = {
       id: "790f39ca-4bbb-4d6d-b0ec-e77bb16d0f27",
       planId: "790f39ca-4bbb-4d6d-b0ec-e77bb16d0f28",
     } as OrganizationEntity;
     const plan = {
       id: organization.planId,
-      maxWorkspaces: 3,
+      maxWorkspaces,
     } as OrganizationPlanEntity;
     const savedWorkspace = {
       id: "790f39ca-4bbb-4d6d-b0ec-e77bb16d0f29",
@@ -38,8 +31,12 @@ describe("WorkspaceRepository", () => {
     const planRepository = {
       findOneBy: jest.fn().mockResolvedValue(plan),
     };
+    const workspaceCountQuery = {
+      where: jest.fn().mockReturnThis(),
+      getCount: jest.fn().mockResolvedValue(workspaceCount),
+    };
     const workspaceRepository = {
-      countBy: jest.fn().mockResolvedValue(0),
+      createQueryBuilder: jest.fn().mockReturnValue(workspaceCountQuery),
       create: jest.fn().mockReturnValue(savedWorkspace),
       save: jest.fn().mockResolvedValue(savedWorkspace),
     };
@@ -51,13 +48,32 @@ describe("WorkspaceRepository", () => {
         throw new Error("UNEXPECTED_REPOSITORY");
       }),
     } as unknown as EntityManager;
-    jest
-      .mocked(AppDataSource.transaction)
-      .mockImplementation(async (work) => work(manager));
+
+    return {
+      manager,
+      organization,
+      organizationQuery,
+      planRepository,
+      savedWorkspace,
+      workspaceCountQuery,
+      workspaceRepository,
+    };
+  }
+
+  it("Free 요금제의 첫 워크스페이스 생성을 허용한다", async () => {
+    const {
+      manager,
+      organization,
+      organizationQuery,
+      planRepository,
+      savedWorkspace,
+      workspaceCountQuery,
+      workspaceRepository,
+    } = createManager(1, 0);
 
     const repository = new WorkspaceRepository();
     await expect(
-      repository.createWorkspace({
+      repository.createWorkspace(manager, {
         orgId: organization.id,
         name: "Production",
       }),
@@ -71,9 +87,33 @@ describe("WorkspaceRepository", () => {
     expect(planRepository.findOneBy).toHaveBeenCalledWith({
       id: organization.planId,
     });
+    expect(workspaceCountQuery.where).toHaveBeenCalledWith(
+      '"workspace"."organizationId" = :organizationId',
+      { organizationId: organization.id },
+    );
     expect(workspaceRepository.create).toHaveBeenCalledWith({
       name: "Production",
-      organization: { ...organization, plan },
+      organization: expect.objectContaining({
+        id: organization.id,
+        plan: expect.objectContaining({ maxWorkspaces: 1 }),
+      }),
     });
+  });
+
+  it("Free 요금제의 기존 워크스페이스가 1개면 추가 생성을 거부한다", async () => {
+    const { manager, organization, workspaceRepository } = createManager(1, 1);
+    const repository = new WorkspaceRepository();
+
+    await expect(
+      repository.createWorkspace(manager, {
+        orgId: organization.id,
+        name: "Second workspace",
+      }),
+    ).rejects.toMatchObject({
+      status: 403,
+      message: "PLAN_UPGRADE_REQUIRED",
+    });
+    expect(workspaceRepository.create).not.toHaveBeenCalled();
+    expect(workspaceRepository.save).not.toHaveBeenCalled();
   });
 });

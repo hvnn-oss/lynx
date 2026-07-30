@@ -125,4 +125,32 @@ describe("ProductAccessService", () => {
       ["subjectType", "subjectId", "capability"],
     );
   });
+
+  it("워크스페이스 생성 트랜잭션에서 Workspace grant를 upsert한다", async () => {
+    env.PRODUCT_ACCESS_MODE = PRODUCT_ACCESS_MODE.INVITE_ONLY;
+    const upsert = jest.fn().mockResolvedValue(undefined);
+    const manager = {
+      getRepository: jest.fn((entity) => {
+        expect(entity).toBe(ProductAccessGrantEntity);
+        return { upsert };
+      }),
+    } as unknown as EntityManager;
+
+    await new ProductAccessService().grantWorkspace(
+      manager,
+      "user-1",
+      "workspace-1",
+    );
+
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subjectType: PRODUCT_ACCESS_SUBJECT_TYPE.WORKSPACE,
+        subjectId: "workspace-1",
+        capability: PRODUCT_ACCESS_CAPABILITY.LYNX_CORE,
+        status: PRODUCT_ACCESS_GRANT_STATUS.ACTIVE,
+        grantedByUserId: "user-1",
+      }),
+      ["subjectType", "subjectId", "capability"],
+    );
+  });
 });

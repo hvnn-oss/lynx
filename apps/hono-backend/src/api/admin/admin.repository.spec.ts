@@ -93,6 +93,98 @@ describe("AdminRepository", () => {
     expect(selections.join("\n")).not.toContain('grant."expiresAt"');
   });
 
+  it("파일럿 참여자 단건 조회에 실제 accessGrant 별칭을 사용한다", async () => {
+    const whereConditions: string[] = [];
+    const queryBuilder = {
+      innerJoin: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn((condition: string) => {
+        whereConditions.push(condition);
+        return queryBuilder;
+      }),
+      orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      getRawOne: jest.fn().mockResolvedValue(undefined),
+    };
+    const dataSource = {
+      getRepository: jest.fn().mockReturnValue({
+        createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
+      }),
+    } as unknown as DataSource;
+    const repository = new AdminRepository(dataSource);
+
+    await repository.getPilotParticipant(
+      "00000000-0000-4000-8000-000000000001",
+    );
+
+    expect(whereConditions).toContain(
+      '"accessGrant"."id" = :participantId',
+    );
+    expect(whereConditions).not.toContain("grant.id = :participantId");
+  });
+
+  it("API Key 목록의 혼합 대소문자 별칭을 명시적으로 인용한다", async () => {
+    const selections: string[] = [];
+    const queryBuilder = {
+      innerJoin: jest.fn().mockReturnThis(),
+      leftJoin: jest.fn().mockReturnThis(),
+      select: jest.fn((selection: string) => {
+        selections.push(selection);
+        return queryBuilder;
+      }),
+      addSelect: jest.fn((selection: string) => {
+        selections.push(selection);
+        return queryBuilder;
+      }),
+      orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getRawMany: jest.fn().mockResolvedValue([]),
+    };
+    const dataSource = {
+      getRepository: jest.fn().mockReturnValue({
+        createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
+      }),
+    } as unknown as DataSource;
+    const repository = new AdminRepository(dataSource);
+
+    await repository.listApiKeys({ limit: 25 });
+
+    expect(selections).toContain(
+      'COALESCE("createdBy"."name", "apiKey"."createdByName")',
+    );
+  });
+
+  it("API Key 상태 집계의 FILTER 조건에서 apiKey 별칭을 인용한다", async () => {
+    const selections: string[] = [];
+    const queryBuilder = {
+      innerJoin: jest.fn().mockReturnThis(),
+      select: jest.fn((selection: string) => {
+        selections.push(selection);
+        return queryBuilder;
+      }),
+      addSelect: jest.fn((selection: string) => {
+        selections.push(selection);
+        return queryBuilder;
+      }),
+      getRawOne: jest.fn().mockResolvedValue(undefined),
+    };
+    const dataSource = {
+      getRepository: jest.fn().mockReturnValue({
+        createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
+      }),
+    } as unknown as DataSource;
+    const repository = new AdminRepository(dataSource);
+
+    await repository.getApiKeyStatusCounts({});
+
+    const statusSql = selections.join("\n");
+    expect(statusSql).toContain('"apiKey"."revokedAt"');
+    expect(statusSql).not.toContain(' apiKey."revokedAt"');
+  });
+
   it("조직 목록 쿼리에 저장 이벤트 수와 최근 이벤트 시각을 포함한다", async () => {
     const selectedAliases: string[] = [];
     const subquerySelectExpressions: string[] = [];

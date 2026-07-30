@@ -1,0 +1,22 @@
+{
+  "create": {
+    "title": "Create workspace",
+    "description": "Create your first workspace for runs and policies.",
+    "organization": {
+      "label": "Organization",
+      "description": "Select the organization that will own this workspace."
+    },
+    "name": {
+      "label": "Workspace name",
+      "placeholder": "For example, Production Agents"
+    },
+    "submit": "Create workspace",
+    "retry": "Try again",
+    "errors": {
+      "load": "Could not load your organizations.",
+      "failed": "Could not create the workspace. Please try again shortly.",
+      "planLimit": "This organization has used all workspaces included in its current plan. Use an existing workspace or review the organization plan.",
+      "noOrganization": "You do not have permission to create a workspace in any organization. Ask an organization administrator for access."
+    }
+  }
+}

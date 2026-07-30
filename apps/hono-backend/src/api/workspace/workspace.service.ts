@@ -36,7 +36,7 @@ export class WorkspaceService {
     private readonly apiKeyPolicy: ApiKeyIssuancePolicy = apiKeyIssuancePolicy,
     private readonly productAccess: Pick<
       ProductAccessService,
-      "grantWorkspaceForUser"
+      "assertUserAccess" | "grantWorkspace"
     > = productAccessService,
   ) {}
 
@@ -61,8 +61,16 @@ export class WorkspaceService {
       capability: CAPABILITIES.WORKSPACE_CREATE,
     });
 
-    const workspace = await this.repository.createWorkspace(input);
-    await this.productAccess.grantWorkspaceForUser(input.userId, workspace.id);
+    await this.productAccess.assertUserAccess(input.userId);
+    const workspace = await this.repository.transaction(async (manager) => {
+      const created = await this.repository.createWorkspace(manager, input);
+      await this.productAccess.grantWorkspace(
+        manager,
+        input.userId,
+        created.id,
+      );
+      return created;
+    });
     return {
       id: workspace.id,
       name: workspace.name,
