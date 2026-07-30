@@ -1,8 +1,10 @@
 import {
+  ADMIN_ROLES,
   ISSUE_STATUS,
   PRODUCT_ACCESS_CAPABILITY,
   PRODUCT_ACCESS_GRANT_STATUS,
   PRODUCT_ACCESS_SUBJECT_TYPE,
+  type AdminRole,
   type ApiKeyScope,
   type ProductAccessGrantStatus,
   type WorkspaceApiKeyKind,
@@ -22,9 +24,12 @@ import {
   PromptEntity,
   RunEntity,
   SessionEntity,
+  UserAccountEntity,
   UserEntity,
+  UserEntitlementEntity,
   WorkspaceEntity,
   WorkspaceApiKeyEntity,
+  WorkspaceMembershipEntity,
 } from "@repo/database";
 import { Brackets, type DataSource, type SelectQueryBuilder } from "typeorm";
 import { AppDataSource } from "../../provider/database/typeorm-config.js";
@@ -53,6 +58,41 @@ export interface OrganizationFilters {
   planId?: string;
   cursor?: AdminCursor;
   limit: number;
+}
+
+export interface UserFilters {
+  search?: string;
+  access?: "NONE" | AdminRole;
+  cursor?: AdminCursor;
+  limit: number;
+}
+
+export interface RawAdminUser {
+  id: string;
+  name: string;
+  email: string;
+  profileImageKey: string | null;
+  adminRole: AdminRole | null;
+  adminIsActive: boolean | null;
+  organizationCount: string | number;
+  workspaceCount: string | number;
+  createdAt: Date;
+}
+
+export interface RawAdminUserOrganization {
+  id: string;
+  name: string;
+  role: string;
+  joinedAt: Date;
+}
+
+export interface RawAdminUserWorkspace {
+  id: string;
+  name: string;
+  organizationId: string;
+  organizationName: string;
+  role: string;
+  joinedAt: Date;
 }
 
 export interface ApiKeyFilters {
@@ -492,6 +532,160 @@ export class AdminRepository {
         name: string;
         email: string;
       }>();
+  }
+
+  /** 사용자 이름, 이메일 또는 ID로 운영 콘솔의 사용자 목록을 조회합니다. */
+  listUsers(filters: UserFilters): Promise<RawAdminUser[]> {
+    const query = this.createUserQuery().take(filters.limit + 1);
+    if (filters.search) {
+      query.andWhere(
+        new Brackets((builder) => {
+          builder
+            .where("user.name ILIKE :userSearch", {
+              userSearch: `%${filters.search}%`,
+            })
+            .orWhere("user.email ILIKE :userSearch", {
+              userSearch: `%${filters.search}%`,
+            })
+            .orWhere("user.id::text ILIKE :userSearch", {
+              userSearch: `%${filters.search}%`,
+            });
+        }),
+      );
+    }
+    if (filters.access === "NONE") {
+      query.andWhere(
+        `NOT EXISTS (
+          SELECT 1
+          FROM admin_user "activeAdmin"
+          WHERE "activeAdmin"."userId" = user.id
+            AND "activeAdmin"."isActive" = true
+        )`,
+      );
+    } else if (filters.access) {
+      query.andWhere(
+        `EXISTS (
+          SELECT 1
+          FROM admin_user "activeAdmin"
+          WHERE "activeAdmin"."userId" = user.id
+            AND "activeAdmin"."isActive" = true
+            AND "activeAdmin".role = :adminRole
+        )`,
+        {
+          adminRole: filters.access,
+        },
+      );
+    }
+    if (filters.cursor) {
+      query.andWhere(
+        `(user."createdAt", user.id) < (:userCreatedAt, :userId)`,
+        {
+          userCreatedAt: filters.cursor.createdAt,
+          userId: filters.cursor.id,
+        },
+      );
+    }
+    return query.getRawMany<RawAdminUser>();
+  }
+
+  getUser(userId: string): Promise<RawAdminUser | undefined> {
+    return this.createUserQuery()
+      .andWhere("user.id = :userId", { userId })
+      .getRawOne<RawAdminUser>();
+  }
+
+  listUserLoginProviders(userId: string): Promise<string[]> {
+    return this.dataSource
+      .getRepository(UserAccountEntity)
+      .createQueryBuilder("account")
+      .select("account.provider", "provider")
+      .where('account."userId" = :userId', { userId })
+      .orderBy("account.provider", "ASC")
+      .getRawMany<{ provider: string }>()
+      .then((rows) => [...new Set(rows.map((row) => row.provider))]);
+  }
+
+  listUserOrganizations(
+    userId: string,
+  ): Promise<RawAdminUserOrganization[]> {
+    return this.dataSource
+      .getRepository(OrganizationUserEntity)
+      .createQueryBuilder("membership")
+      .innerJoin("membership.organization", "organization")
+      .select("organization.id", "id")
+      .addSelect("organization.name", "name")
+      .addSelect("membership.role", "role")
+      .addSelect("membership.joinedAt", "joinedAt")
+      .where('membership."userId" = :userId', { userId })
+      .orderBy("organization.name", "ASC")
+      .getRawMany<RawAdminUserOrganization>();
+  }
+
+  listUserWorkspaces(userId: string): Promise<RawAdminUserWorkspace[]> {
+    return this.dataSource
+      .getRepository(WorkspaceMembershipEntity)
+      .createQueryBuilder("membership")
+      .innerJoin("membership.workspace", "workspace")
+      .innerJoin("workspace.organization", "organization")
+      .select("workspace.id", "id")
+      .addSelect("workspace.name", "name")
+      .addSelect("organization.id", "organizationId")
+      .addSelect("organization.name", "organizationName")
+      .addSelect("membership.role", "role")
+      .addSelect("membership.createdAt", "joinedAt")
+      .where('membership."userId" = :userId', { userId })
+      .orderBy("organization.name", "ASC")
+      .addOrderBy("workspace.name", "ASC")
+      .getRawMany<RawAdminUserWorkspace>();
+  }
+
+  getUserEntitlement(userId: string): Promise<UserEntitlementEntity | null> {
+    return this.dataSource
+      .getRepository(UserEntitlementEntity)
+      .findOneBy({ userId });
+  }
+
+  getUserPilotAccess(
+    userId: string,
+  ): Promise<RawPilotParticipant | undefined> {
+    return this.createPilotParticipantQuery()
+      .andWhere("user.id = :userId", { userId })
+      .getRawOne<RawPilotParticipant>();
+  }
+
+  /**
+   * 기존 관리자 행은 다시 활성화하고, 처음 권한을 받는 사용자는 ADMIN으로 등록합니다.
+   */
+  async setUserAdminAccess(userId: string, isAdmin: boolean): Promise<boolean> {
+    return this.dataSource.transaction(async (manager) => {
+      const user = await manager.getRepository(UserEntity).findOneBy({
+        id: userId,
+      });
+      if (!user) return false;
+
+      const adminRepository = manager.getRepository(AdminUserEntity);
+      const admin = await adminRepository.findOne({
+        where: { user: { id: userId } },
+        relations: { user: true },
+        order: { createdAt: "DESC" },
+      });
+      if (admin) {
+        admin.isActive = isAdmin;
+        if (isAdmin) admin.role = ADMIN_ROLES.ADMIN;
+        await adminRepository.save(admin);
+        return true;
+      }
+      if (!isAdmin) return true;
+
+      await adminRepository.save(
+        adminRepository.create({
+          user,
+          role: ADMIN_ROLES.ADMIN,
+          isActive: true,
+        }),
+      );
+      return true;
+    });
   }
 
   async getOverviewCounts() {
@@ -1107,6 +1301,58 @@ export class AdminRepository {
   }
 
   /** API Key 원문과 해시는 선택하지 않고 운영 메타데이터만 구성합니다. */
+  /** 비밀번호나 외부 계정 식별자를 포함하지 않는 사용자 운영 메타데이터만 선택합니다. */
+  private createUserQuery(): SelectQueryBuilder<UserEntity> {
+    return this.dataSource
+      .getRepository(UserEntity)
+      .createQueryBuilder("user")
+      .select("user.id", "id")
+      .addSelect("user.name", "name")
+      .addSelect("user.email", "email")
+      .addSelect('user."profileImageKey"', "profileImageKey")
+      .addSelect(
+        (subquery) =>
+          subquery
+            .select("adminAccess.role")
+            .from(AdminUserEntity, "adminAccess")
+            .where('adminAccess."userId" = user.id')
+            .orderBy('adminAccess."isActive"', "DESC")
+            .addOrderBy('adminAccess."createdAt"', "DESC")
+            .limit(1),
+        "adminRole",
+      )
+      .addSelect(
+        (subquery) =>
+          subquery
+            .select('adminAccess."isActive"')
+            .from(AdminUserEntity, "adminAccess")
+            .where('adminAccess."userId" = user.id')
+            .orderBy('adminAccess."isActive"', "DESC")
+            .addOrderBy('adminAccess."createdAt"', "DESC")
+            .limit(1),
+        "adminIsActive",
+      )
+      .addSelect(
+        (subquery) =>
+          subquery
+            .select("COUNT(organizationMembership.id)")
+            .from(OrganizationUserEntity, "organizationMembership")
+            .where('organizationMembership."userId" = user.id'),
+        "organizationCount",
+      )
+      .addSelect(
+        (subquery) =>
+          subquery
+            .select("COUNT(workspaceMembership.id)")
+            .from(WorkspaceMembershipEntity, "workspaceMembership")
+            .where('workspaceMembership."userId" = user.id'),
+        "workspaceCount",
+      )
+      .addSelect('user."createdAt"', "createdAt")
+      .orderBy('user."createdAt"', "DESC")
+      .addOrderBy("user.id", "DESC");
+  }
+
   private createApiKeyQuery(): SelectQueryBuilder<WorkspaceApiKeyEntity> {
     return this.dataSource
       .getRepository(WorkspaceApiKeyEntity)

@@ -11,6 +11,7 @@ const navigation = [
   { href: "/", label: "운영 요약", description: "전체 상태" },
   { href: "/audit-logs", label: "감사 기록", description: "변경과 데이터" },
   { href: "/organizations", label: "조직 관리", description: "고객과 사용량" },
+  { href: "/users", label: "사용자 관리", description: "계정과 관리자 권한" },
   {
     href: "/api-keys",
     label: "API Key",

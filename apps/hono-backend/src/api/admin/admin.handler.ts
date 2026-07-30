@@ -108,6 +108,42 @@ export function createAdminHandlers() {
       ),
   );
 
+  const listUsers = factory.createHandlers(
+    zValidator("query", adminContract.listUsers.request),
+    async (context) =>
+      context.json(
+        adminContract.listUsers.response.parse(
+          await adminService.listUsers(context.req.valid("query")),
+        ),
+      ),
+  );
+
+  const getUser = factory.createHandlers(
+    zValidator("param", adminContract.getUser.params!),
+    async (context) =>
+      context.json(
+        adminContract.getUser.response.parse(
+          await adminService.getUser(context.req.valid("param").userId),
+        ),
+      ),
+  );
+
+  const updateUserAdminAccess = factory.createHandlers(
+    zValidator("param", adminContract.updateUserAdminAccess.params!),
+    zValidator("json", adminContract.updateUserAdminAccess.request),
+    async (context) =>
+      context.json(
+        adminContract.updateUserAdminAccess.response.parse(
+          await adminService.updateUserAdminAccess(
+            context.get("currentUserId"),
+            context.req.valid("param").userId,
+            context.req.valid("json").isAdmin,
+            context.get("requestId"),
+          ),
+        ),
+      ),
+  );
+
   const listPilotParticipants = factory.createHandlers(
     zValidator("query", adminContract.listPilotParticipants.request),
     async (context) =>
@@ -181,6 +217,9 @@ export function createAdminHandlers() {
     listOrganizations,
     getOrganization,
     updateOrganizationPlan,
+    listUsers,
+    getUser,
+    updateUserAdminAccess,
     listPilotParticipants,
     updatePilotParticipant,
     listPlans,

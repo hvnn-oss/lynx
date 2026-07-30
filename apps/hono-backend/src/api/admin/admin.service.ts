@@ -1,4 +1,8 @@
-import { ERROR_CODES, PRODUCT_ACCESS_GRANT_STATUS } from "@repo/constants";
+import {
+  ADMIN_ROLES,
+  ERROR_CODES,
+  PRODUCT_ACCESS_GRANT_STATUS,
+} from "@repo/constants";
 import {
   ADMIN_API_KEY_STATUS,
   ADMIN_OPENAPI_USAGE_PERIOD,
@@ -21,12 +25,17 @@ import type {
   AdminPlanDto,
   AdminPlanInputDto,
   AdminPlanUpdateDto,
+  AdminUserDetailDto,
+  AdminUserQueryDto,
+  AdminUserSummaryDto,
 } from "@repo/dto";
 import { HTTPException } from "hono/http-exception";
+import { env } from "../../common/config/config.js";
 import {
   auditLogService,
   type AuditLogRecorder,
 } from "../../common/services/audit-log.service.js";
+import { getImageService } from "../../provider/image/image-provider.js";
 import {
   AdminRepository,
   adminRepository,
@@ -34,9 +43,13 @@ import {
   type RawAdminApiKey,
   type RawAuditLog,
   type RawOrganization,
+  type RawAdminUser,
   type RawPilotParticipant,
   type RawPlan,
 } from "./admin.repository.js";
+
+const OVERVIEW_RECENT_AUDIT_LIMIT = 5;
+const ORGANIZATION_RECENT_AUDIT_LIMIT = 10;
 
 /** Lynx 운영자가 감사 기록, 조직, 요금제를 관리하는 유스케이스입니다. */
 export class AdminService {
@@ -51,7 +64,7 @@ export class AdminService {
         this.repository.getCurrentAdmin(userId),
         this.repository.getOverviewCounts(),
         this.repository.getPlanDistribution(),
-        this.repository.listAuditLogs({ limit: 5 }),
+        this.repository.listAuditLogs({ limit: OVERVIEW_RECENT_AUDIT_LIMIT }),
       ],
     );
     if (!currentAdmin) {
@@ -66,7 +79,9 @@ export class AdminService {
         ...item,
         organizationCount: this.toInteger(item.organizationCount),
       })),
-      recentAuditLogs: recentRows.map((row) => this.toAuditSummary(row)),
+      recentAuditLogs: recentRows
+        .slice(0, OVERVIEW_RECENT_AUDIT_LIMIT)
+        .map((row) => this.toAuditSummary(row)),
     };
   }
 
@@ -384,7 +399,10 @@ export class AdminService {
       this.repository.listOrganizationEventTypes(organizationId),
       this.repository.listOrganizationAgentUsage(organizationId),
       this.repository.listOrganizationDailyEventTrend(organizationId),
-      this.repository.listAuditLogs({ organizationId, limit: 10 }),
+      this.repository.listAuditLogs({
+        organizationId,
+        limit: ORGANIZATION_RECENT_AUDIT_LIMIT,
+      }),
     ]);
     return {
       ...this.toOrganizationSummary(organization),
@@ -451,8 +469,120 @@ export class AdminService {
         eventCount: this.toInteger(item.eventCount),
         totalCost: this.toNumber(item.totalCost),
       })),
-      recentAuditLogs: auditRows.map((row) => this.toAuditSummary(row)),
+      recentAuditLogs: auditRows
+        .slice(0, ORGANIZATION_RECENT_AUDIT_LIMIT)
+        .map((row) => this.toAuditSummary(row)),
     };
+  }
+
+  async listUsers(input: AdminUserQueryDto) {
+    const rows = await this.repository.listUsers({
+      ...input,
+      cursor: input.cursor ? this.decodeCursor(input.cursor) : undefined,
+    });
+    const hasNext = rows.length > input.limit;
+    const items = rows.slice(0, input.limit);
+    return {
+      items: items.map((row) => this.toUserSummary(row)),
+      nextCursor:
+        hasNext && items.length > 0
+          ? this.encodeCursor(items[items.length - 1]!)
+          : null,
+    };
+  }
+
+  async getUser(userId: string): Promise<AdminUserDetailDto> {
+    const user = await this.repository.getUser(userId);
+    if (!user) {
+      throw new HTTPException(404, { message: ERROR_CODES.USER_NOT_FOUND });
+    }
+    const [loginProviders, organizations, workspaces, entitlement, pilotAccess] =
+      await Promise.all([
+        this.repository.listUserLoginProviders(userId),
+        this.repository.listUserOrganizations(userId),
+        this.repository.listUserWorkspaces(userId),
+        this.repository.getUserEntitlement(userId),
+        this.repository.getUserPilotAccess(userId),
+      ]);
+
+    return {
+      ...this.toUserSummary(user),
+      loginProviders,
+      organizations: organizations.map((organization) => ({
+        ...organization,
+        joinedAt: organization.joinedAt.toISOString(),
+      })),
+      workspaces: workspaces.map((workspace) => ({
+        ...workspace,
+        joinedAt: workspace.joinedAt.toISOString(),
+      })),
+      entitlement: entitlement
+        ? {
+            tier: entitlement.tier,
+            maxOwnedOrganizations: entitlement.maxOwnedOrganizations,
+            dailyOrganizationCreateLimit:
+              entitlement.dailyOrganizationCreateLimit,
+            source: entitlement.source,
+            expiresAt: entitlement.expiresAt?.toISOString() ?? null,
+          }
+        : null,
+      pilotAccess: pilotAccess
+        ? {
+            status: pilotAccess.status,
+            grantedAt: pilotAccess.grantedAt.toISOString(),
+            expiresAt: pilotAccess.expiresAt?.toISOString() ?? null,
+          }
+        : null,
+    };
+  }
+
+  /**
+   * SUPER_ADMIN만 기존 사용자에게 운영자 권한을 부여하거나 회수할 수 있습니다.
+   */
+  async updateUserAdminAccess(
+    actorUserId: string,
+    userId: string,
+    isAdmin: boolean,
+    requestId?: string,
+  ): Promise<AdminUserDetailDto> {
+    const actor = await this.repository.getCurrentAdmin(actorUserId);
+    if (actor?.role !== ADMIN_ROLES.SUPER_ADMIN) {
+      throw new HTTPException(403, {
+        message: ERROR_CODES.ADMIN_SUPER_ADMIN_REQUIRED,
+      });
+    }
+
+    const before = await this.getUser(userId);
+    if (
+      before.adminAccess?.isActive &&
+      before.adminAccess.role === ADMIN_ROLES.SUPER_ADMIN
+    ) {
+      throw new HTTPException(409, {
+        message: ERROR_CODES.ADMIN_SUPER_ADMIN_PROTECTED,
+      });
+    }
+    if (!(await this.repository.setUserAdminAccess(userId, isAdmin))) {
+      throw new HTTPException(404, { message: ERROR_CODES.USER_NOT_FOUND });
+    }
+
+    const after = await this.getUser(userId);
+    await this.auditRecorder.record({
+      actorUserId,
+      action: isAdmin ? "admin_user.grant" : "admin_user.revoke",
+      targetType: "user",
+      targetId: userId,
+      requestId,
+      before: { adminAccess: before.adminAccess },
+      after: { adminAccess: after.adminAccess },
+      metadata: {
+        method: "PATCH",
+        path: `/admin/users/${userId}/admin-access`,
+        statusCode: 200,
+        request: { body: { isAdmin } },
+        response: { body: { userId, adminAccess: after.adminAccess } },
+      },
+    });
+    return after;
   }
 
   async listPilotParticipants(input: AdminPilotParticipantQueryDto) {
@@ -717,6 +847,27 @@ export class AdminService {
       expiresAt: row.expiresAt?.toISOString() ?? null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  private toUserSummary(row: RawAdminUser): AdminUserSummaryDto {
+    return {
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      profileImageUrl: row.profileImageKey
+        ? getImageService().getUrl(row.profileImageKey)
+        : (env.DEFAULT_USER_PROFILE_IMAGE_URL ?? null),
+      adminAccess:
+        row.adminRole === null
+          ? null
+          : {
+              role: row.adminRole,
+              isActive: row.adminIsActive === true,
+            },
+      organizationCount: this.toInteger(row.organizationCount),
+      workspaceCount: this.toInteger(row.workspaceCount),
+      createdAt: row.createdAt.toISOString(),
     };
   }
 

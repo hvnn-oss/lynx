@@ -216,6 +216,58 @@ export interface OrganizationList {
   nextCursor: string | null;
 }
 
+export type AdminRole = "ADMIN" | "SUPER_ADMIN";
+export type AdminUserAccessFilter = "NONE" | AdminRole;
+
+export interface AdminUserSummary {
+  id: string;
+  name: string;
+  email: string;
+  profileImageUrl: string | null;
+  adminAccess: {
+    role: AdminRole;
+    isActive: boolean;
+  } | null;
+  organizationCount: number;
+  workspaceCount: number;
+  createdAt: string;
+}
+
+export interface AdminUserDetail extends AdminUserSummary {
+  loginProviders: string[];
+  organizations: Array<{
+    id: string;
+    name: string;
+    role: string;
+    joinedAt: string;
+  }>;
+  workspaces: Array<{
+    id: string;
+    name: string;
+    organizationId: string;
+    organizationName: string;
+    role: string;
+    joinedAt: string;
+  }>;
+  entitlement: {
+    tier: string;
+    maxOwnedOrganizations: number | null;
+    dailyOrganizationCreateLimit: number;
+    source: string;
+    expiresAt: string | null;
+  } | null;
+  pilotAccess: {
+    status: PilotParticipantStatus;
+    grantedAt: string;
+    expiresAt: string | null;
+  } | null;
+}
+
+export interface AdminUserList {
+  items: AdminUserSummary[];
+  nextCursor: string | null;
+}
+
 export interface AdminOverview {
   currentAdmin: {
     id: string;

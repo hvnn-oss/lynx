@@ -1441,6 +1441,84 @@ td {
   background: #52525b;
 }
 
+.user-cell {
+  display: flex;
+  min-width: 220px;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-avatar {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background-color: var(--surface-subtle);
+  color: #3f3f46;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.user-avatar-image {
+  background-position: center;
+  background-size: cover;
+}
+
+.user-avatar-large {
+  width: 54px;
+  height: 54px;
+  font-size: 17px;
+}
+
+.user-id {
+  max-width: 190px;
+  margin-top: 0;
+}
+
+.user-detail-heading {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: -8px 0 20px;
+}
+
+.user-detail-heading > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.user-detail-heading strong {
+  font-size: 15px;
+}
+
+.user-detail-heading span,
+.user-detail-heading code {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.inline-error {
+  margin: 0;
+  border-top: 1px solid var(--border);
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+  padding: 10px 18px;
+  font-size: 11px;
+}
+
 @media (max-width: 1120px) {
   .filter-grid {
     grid-template-columns: repeat(3, minmax(160px, 1fr));
@@ -1493,7 +1571,8 @@ td {
   .organization-overview,
   .payload-grid,
   .data-tables,
-  .usage-grid {
+  .usage-grid,
+  .user-detail-grid {
     grid-template-columns: 1fr;
   }
 

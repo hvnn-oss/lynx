@@ -3,6 +3,8 @@ import type {
   AdminApiKey,
   AdminApiKeyList,
   AdminPlan,
+  AdminUserDetail,
+  AdminUserList,
   AccessInvitation,
   AccessInvitationList,
   AuditLogDetail,
@@ -105,6 +107,29 @@ export function updateOrganizationPlan(organizationId: string, planId: string) {
     {
       method: "PATCH",
       body: JSON.stringify({ planId }),
+    },
+  );
+}
+
+export function listUsers(
+  query: Record<string, string | undefined>,
+): Promise<AdminUserList> {
+  return adminRequest(`/admin/users${toQuery(query)}`);
+}
+
+export function getUser(userId: string): Promise<AdminUserDetail> {
+  return adminRequest(`/admin/users/${encodeURIComponent(userId)}`);
+}
+
+export function updateUserAdminAccess(
+  userId: string,
+  isAdmin: boolean,
+): Promise<AdminUserDetail> {
+  return adminRequest(
+    `/admin/users/${encodeURIComponent(userId)}/admin-access`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ isAdmin }),
     },
   );
 }
@@ -249,6 +274,11 @@ function getAdminErrorMessage(code: string, fallback?: string): string {
     ADMIN_PLAN_CODE_EXISTS: "이미 사용 중인 요금제 코드입니다.",
     ADMIN_PLAN_INACTIVE: "비활성 요금제는 조직에 새로 할당할 수 없습니다.",
     ADMIN_PILOT_PARTICIPANT_NOT_FOUND: "파일럿 사용 대상을 찾을 수 없습니다.",
+    ADMIN_SUPER_ADMIN_REQUIRED:
+      "슈퍼어드민만 다른 사용자에게 관리자 권한을 부여하거나 회수할 수 있습니다.",
+    ADMIN_SUPER_ADMIN_PROTECTED:
+      "슈퍼어드민 권한은 사용자 관리 화면에서 변경할 수 없습니다.",
+    USER_NOT_FOUND: "사용자를 찾을 수 없습니다.",
     ACCESS_INVITATION_NOT_FOUND: "파일럿 초대를 찾을 수 없습니다.",
     COULD_NOT_SEND_EMAIL: "초대 메일을 보내지 못했습니다.",
     INVALID_CREDENTIALS: "이메일 또는 비밀번호가 올바르지 않습니다.",

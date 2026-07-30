@@ -15,6 +15,9 @@ jest.mock("./admin.service.js", () => ({
     listOrganizations: jest.fn(),
     getOrganization: jest.fn(),
     updateOrganizationPlan: jest.fn(),
+    listUsers: jest.fn(),
+    getUser: jest.fn(),
+    updateUserAdminAccess: jest.fn(),
     listPilotParticipants: jest.fn(),
     updatePilotParticipant: jest.fn(),
     listPlans: jest.fn(),
@@ -26,6 +29,7 @@ jest.mock("./admin.service.js", () => ({
 const mockedService = jest.mocked(adminService);
 const organizationId = "00000000-0000-4000-8000-000000000001";
 const planId = "00000000-0000-4000-8000-000000000002";
+const userId = "00000000-0000-4000-8000-000000000009";
 
 function createApp() {
   const handlers = createAdminHandlers();
@@ -64,6 +68,21 @@ function createApp() {
     adminContract.updateOrganizationPlan.method,
     adminContract.updateOrganizationPlan.path,
     ...handlers.updateOrganizationPlan,
+  );
+  app.on(
+    adminContract.listUsers.method,
+    adminContract.listUsers.path,
+    ...handlers.listUsers,
+  );
+  app.on(
+    adminContract.getUser.method,
+    adminContract.getUser.path,
+    ...handlers.getUser,
+  );
+  app.on(
+    adminContract.updateUserAdminAccess.method,
+    adminContract.updateUserAdminAccess.path,
+    ...handlers.updateUserAdminAccess,
   );
   app.on(
     adminContract.listPilotParticipants.method,
@@ -186,6 +205,27 @@ function responseApiKey() {
     lastUsedAt: null,
     expiresAt: null,
     revokedAt: null,
+  };
+}
+
+function responseUser() {
+  return {
+    id: userId,
+    name: "Test User",
+    email: "user@lynx.local",
+    profileImageUrl: null,
+    adminAccess: {
+      role: "ADMIN" as const,
+      isActive: true,
+    },
+    organizationCount: 1,
+    workspaceCount: 1,
+    createdAt: "2026-07-29T00:00:00.000Z",
+    loginProviders: ["LOCAL"],
+    organizations: [],
+    workspaces: [],
+    entitlement: null,
+    pilotAccess: null,
   };
 }
 
@@ -347,6 +387,45 @@ describe("admin HTTP handlers", () => {
       "admin-user-1",
       planId,
       { status: "SUSPENDED" },
+      "request-1",
+    );
+  });
+
+  it("사용자 검색과 관리자 권한 필터를 검증해 서비스에 전달한다", async () => {
+    mockedService.listUsers.mockResolvedValue({
+      items: [responseUser()],
+      nextCursor: null,
+    });
+
+    const response = await createApp().request(
+      "/users?search=Test&access=ADMIN",
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockedService.listUsers).toHaveBeenCalledWith({
+      search: "Test",
+      access: "ADMIN",
+      limit: 25,
+    });
+  });
+
+  it("관리자 권한 부여 요청에 행위자와 요청 ID를 함께 전달한다", async () => {
+    mockedService.updateUserAdminAccess.mockResolvedValue(responseUser());
+
+    const response = await createApp().request(
+      `/users/${userId}/admin-access`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ isAdmin: true }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockedService.updateUserAdminAccess).toHaveBeenCalledWith(
+      "admin-user-1",
+      userId,
+      true,
       "request-1",
     );
   });

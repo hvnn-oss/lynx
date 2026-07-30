@@ -3,6 +3,64 @@ import type { DataSource, EntityManager } from "typeorm";
 import { AdminRepository } from "./admin.repository.js";
 
 describe("AdminRepository", () => {
+  it("사용자 목록에 관리자 필터와 커서 페이지네이션을 적용한다", async () => {
+    const subqueryBuilder = {
+      select: jest.fn().mockReturnThis(),
+      from: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
+    };
+    const queryBuilder = {
+      leftJoin: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      addSelect: jest.fn(
+        (selection: string | ((subquery: unknown) => unknown)) => {
+          if (typeof selection === "function") {
+            selection(subqueryBuilder);
+          }
+          return queryBuilder;
+        },
+      ),
+      orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getRawMany: jest.fn().mockResolvedValue([]),
+    };
+    const dataSource = {
+      getRepository: jest.fn().mockReturnValue({
+        createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
+      }),
+    } as unknown as DataSource;
+    const repository = new AdminRepository(dataSource);
+    const cursor = {
+      createdAt: new Date("2026-07-29T00:00:00.000Z"),
+      id: "00000000-0000-4000-8000-000000000001",
+    };
+
+    await repository.listUsers({
+      search: "Test User",
+      access: "ADMIN",
+      cursor,
+      limit: 25,
+    });
+
+    expect(queryBuilder.take).toHaveBeenCalledWith(26);
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+      expect.stringContaining('AND "activeAdmin".role = :adminRole'),
+      { adminRole: "ADMIN" },
+    );
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+      `(user."createdAt", user.id) < (:userCreatedAt, :userId)`,
+      {
+        userCreatedAt: cursor.createdAt,
+        userId: cursor.id,
+      },
+    );
+  });
+
   it("파일럿 접근 조회에서 PostgreSQL 예약어를 별칭으로 사용하지 않는다", async () => {
     const selections: string[] = [];
     const queryBuilder = {

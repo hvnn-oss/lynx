@@ -25,6 +25,11 @@ import {
   AdminPlanParamsSchema,
   AdminPlanSchema,
   AdminPlanUpdateSchema,
+  AdminUserAccessUpdateSchema,
+  AdminUserDetailSchema,
+  AdminUserListResponseSchema,
+  AdminUserParamsSchema,
+  AdminUserQuerySchema,
 } from "@repo/dto";
 import { defineEndpoint } from "./util/endpoint.js";
 
@@ -89,6 +94,26 @@ export const adminContract = {
     params: AdminOrganizationParamsSchema,
     request: AdminOrganizationPlanUpdateSchema,
     response: AdminOrganizationDetailSchema,
+  }),
+  listUsers: defineEndpoint({
+    method: "GET",
+    path: "/users",
+    request: AdminUserQuerySchema,
+    response: AdminUserListResponseSchema,
+  }),
+  getUser: defineEndpoint({
+    method: "GET",
+    path: "/users/:userId",
+    params: AdminUserParamsSchema,
+    request: null,
+    response: AdminUserDetailSchema,
+  }),
+  updateUserAdminAccess: defineEndpoint({
+    method: "PATCH",
+    path: "/users/:userId/admin-access",
+    params: AdminUserParamsSchema,
+    request: AdminUserAccessUpdateSchema,
+    response: AdminUserDetailSchema,
   }),
   listPilotParticipants: defineEndpoint({
     method: "GET",

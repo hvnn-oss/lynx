@@ -58,6 +58,21 @@ adminRouter.on(
   ...handlers.updateOrganizationPlan,
 );
 adminRouter.on(
+  adminContract.listUsers.method,
+  adminContract.listUsers.path,
+  ...handlers.listUsers,
+);
+adminRouter.on(
+  adminContract.getUser.method,
+  adminContract.getUser.path,
+  ...handlers.getUser,
+);
+adminRouter.on(
+  adminContract.updateUserAdminAccess.method,
+  adminContract.updateUserAdminAccess.path,
+  ...handlers.updateUserAdminAccess,
+);
+adminRouter.on(
   adminContract.listPilotParticipants.method,
   adminContract.listPilotParticipants.path,
   ...handlers.listPilotParticipants,

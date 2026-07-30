@@ -3,6 +3,7 @@ import type { AuditLogRecorder } from "../../common/services/audit-log.service.j
 import {
   AdminRepository,
   type RawAdminApiKey,
+  type RawAdminUser,
   type RawAuditLog,
   type RawOrganization,
   type RawPilotParticipant,
@@ -125,6 +126,23 @@ function apiKeyRow(
   };
 }
 
+function userRow(
+  overrides: Partial<RawAdminUser> = {},
+): RawAdminUser {
+  return {
+    id: "00000000-0000-4000-8000-000000000009",
+    name: "Test User",
+    email: "user@lynx.local",
+    profileImageKey: null,
+    adminRole: null,
+    adminIsActive: null,
+    organizationCount: "2",
+    workspaceCount: "3",
+    createdAt: new Date("2026-07-29T00:00:00.000Z"),
+    ...overrides,
+  };
+}
+
 function createService() {
   const repository = {
     getCurrentAdmin: jest.fn(),
@@ -155,6 +173,14 @@ function createService() {
     listOrganizationAgentUsage: jest.fn(),
     listOrganizationDailyEventTrend: jest.fn(),
     updateOrganizationPlan: jest.fn(),
+    listUsers: jest.fn(),
+    getUser: jest.fn(),
+    listUserLoginProviders: jest.fn().mockResolvedValue([]),
+    listUserOrganizations: jest.fn().mockResolvedValue([]),
+    listUserWorkspaces: jest.fn().mockResolvedValue([]),
+    getUserEntitlement: jest.fn().mockResolvedValue(null),
+    getUserPilotAccess: jest.fn().mockResolvedValue(undefined),
+    setUserAdminAccess: jest.fn(),
     listPilotParticipants: jest.fn(),
     getPilotParticipant: jest.fn(),
     updatePilotParticipant: jest.fn(),
@@ -315,12 +341,16 @@ describe("AdminService", () => {
         organizationCount: "2",
       },
     ]);
-    repository.listAuditLogs.mockResolvedValue([auditRow()]);
+    repository.listAuditLogs.mockResolvedValue(
+      Array.from({ length: 6 }, () => auditRow()),
+    );
 
     const result = await service.getOverview(actorId);
 
     expect(result.metrics.organizationCount).toBe(4);
     expect(result.planDistribution[0]?.organizationCount).toBe(2);
+    expect(result.recentAuditLogs).toHaveLength(5);
+    expect(repository.listAuditLogs).toHaveBeenCalledWith({ limit: 5 });
     expect(result.recentAuditLogs[0]).toEqual(
       expect.objectContaining({
         method: "PATCH",
@@ -497,5 +527,107 @@ describe("AdminService", () => {
         after: expect.objectContaining({ status: "SUSPENDED" }),
       }),
     );
+  });
+
+  it("사용자 목록의 수치와 관리자 권한을 운영 응답으로 변환한다", async () => {
+    const { service, repository } = createService();
+    repository.listUsers.mockResolvedValue([
+      userRow({
+        adminRole: "ADMIN",
+        adminIsActive: true,
+      }),
+    ]);
+
+    const result = await service.listUsers({ search: "Test", limit: 25 });
+
+    expect(repository.listUsers).toHaveBeenCalledWith({
+      search: "Test",
+      limit: 25,
+      cursor: undefined,
+    });
+    expect(result.items[0]).toEqual(
+      expect.objectContaining({
+        id: userRow().id,
+        organizationCount: 2,
+        workspaceCount: 3,
+        adminAccess: { role: "ADMIN", isActive: true },
+      }),
+    );
+  });
+
+  it("슈퍼어드민이 사용자에게 관리자 권한을 부여하고 감사 기록을 남긴다", async () => {
+    const { service, repository, recorder } = createService();
+    repository.getCurrentAdmin.mockResolvedValue({
+      id: actorId,
+      role: "SUPER_ADMIN",
+      name: "Root",
+      email: "root@lynx.local",
+    });
+    repository.getUser
+      .mockResolvedValueOnce(userRow())
+      .mockResolvedValueOnce(
+        userRow({ adminRole: "ADMIN", adminIsActive: true }),
+      );
+    repository.setUserAdminAccess.mockResolvedValue(true);
+
+    const result = await service.updateUserAdminAccess(
+      actorId,
+      userRow().id,
+      true,
+      "request-1",
+    );
+
+    expect(result.adminAccess).toEqual({ role: "ADMIN", isActive: true });
+    expect(repository.setUserAdminAccess).toHaveBeenCalledWith(
+      userRow().id,
+      true,
+    );
+    expect(recorder.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "admin_user.grant",
+        targetType: "user",
+        targetId: userRow().id,
+        requestId: "request-1",
+      }),
+    );
+  });
+
+  it("일반 관리자는 다른 사용자에게 관리자 권한을 부여할 수 없다", async () => {
+    const { service, repository } = createService();
+    repository.getCurrentAdmin.mockResolvedValue({
+      id: actorId,
+      role: "ADMIN",
+      name: "Admin",
+      email: "admin@lynx.local",
+    });
+
+    await expect(
+      service.updateUserAdminAccess(actorId, userRow().id, true),
+    ).rejects.toMatchObject({
+      status: 403,
+      message: ERROR_CODES.ADMIN_SUPER_ADMIN_REQUIRED,
+    });
+    expect(repository.setUserAdminAccess).not.toHaveBeenCalled();
+  });
+
+  it("사용자 관리 화면에서 슈퍼어드민 권한을 변경하지 않는다", async () => {
+    const { service, repository } = createService();
+    repository.getCurrentAdmin.mockResolvedValue({
+      id: actorId,
+      role: "SUPER_ADMIN",
+      name: "Root",
+      email: "root@lynx.local",
+    });
+    repository.getUser.mockResolvedValue(
+      userRow({ adminRole: "SUPER_ADMIN", adminIsActive: true }),
+    );
+
+    await expect(
+      service.updateUserAdminAccess(actorId, userRow().id, false),
+    ).rejects.toMatchObject({
+      status: 409,
+      message: ERROR_CODES.ADMIN_SUPER_ADMIN_PROTECTED,
+    });
+    expect(repository.setUserAdminAccess).not.toHaveBeenCalled();
   });
 });

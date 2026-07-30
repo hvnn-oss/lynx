@@ -1,4 +1,5 @@
 import {
+  ADMIN_ROLES,
   API_KEY_SCOPES,
   PRODUCT_ACCESS_GRANT_STATUS,
   WORKSPACE_API_KEY_KINDS,
@@ -353,6 +354,86 @@ export const AdminOrganizationDetailSchema =
     recentAuditLogs: z.array(AdminAuditLogSummarySchema),
   });
 
+export const ADMIN_USER_ACCESS_FILTER = {
+  NONE: "NONE",
+  ADMIN: ADMIN_ROLES.ADMIN,
+  SUPER_ADMIN: ADMIN_ROLES.SUPER_ADMIN,
+} as const;
+
+export const AdminUserQuerySchema = z.object({
+  search: z.string().trim().max(120).optional(),
+  access: z.enum(ADMIN_USER_ACCESS_FILTER).optional(),
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+});
+
+export const AdminUserParamsSchema = z.object({
+  userId: z.uuid(),
+});
+
+export const AdminUserAccessUpdateSchema = z.object({
+  isAdmin: z.boolean(),
+});
+
+export const AdminUserSummarySchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  email: z.email(),
+  profileImageUrl: z.url().nullable(),
+  adminAccess: z
+    .object({
+      role: z.enum(ADMIN_ROLES),
+      isActive: z.boolean(),
+    })
+    .nullable(),
+  organizationCount: z.number().int().nonnegative(),
+  workspaceCount: z.number().int().nonnegative(),
+  createdAt: z.iso.datetime(),
+});
+
+export const AdminUserListResponseSchema = z.object({
+  items: z.array(AdminUserSummarySchema),
+  nextCursor: z.string().nullable(),
+});
+
+export const AdminUserDetailSchema = AdminUserSummarySchema.extend({
+  loginProviders: z.array(z.string()),
+  organizations: z.array(
+    z.object({
+      id: z.uuid(),
+      name: z.string(),
+      role: z.string(),
+      joinedAt: z.iso.datetime(),
+    }),
+  ),
+  workspaces: z.array(
+    z.object({
+      id: z.uuid(),
+      name: z.string(),
+      organizationId: z.uuid(),
+      organizationName: z.string(),
+      role: z.string(),
+      joinedAt: z.iso.datetime(),
+    }),
+  ),
+  entitlement: z
+    .object({
+      tier: z.string(),
+      maxOwnedOrganizations: z.number().int().nonnegative().nullable(),
+      dailyOrganizationCreateLimit: z.number().int().nonnegative(),
+      source: z.string(),
+      expiresAt: z.iso.datetime().nullable(),
+    })
+    .nullable(),
+  pilotAccess: z
+    .object({
+      status: z.enum(PRODUCT_ACCESS_GRANT_STATUS),
+      grantedAt: z.iso.datetime(),
+      expiresAt: z.iso.datetime().nullable(),
+    })
+    .nullable(),
+});
+
 export const AdminPilotParticipantQuerySchema = z.object({
   search: z.string().trim().max(120).optional(),
   status: z.enum(PRODUCT_ACCESS_GRANT_STATUS).optional(),
@@ -440,6 +521,12 @@ export type AdminOrganizationSummaryDto = z.infer<
 >;
 export type AdminOrganizationDetailDto = z.infer<
   typeof AdminOrganizationDetailSchema
+>;
+export type AdminUserQueryDto = z.infer<typeof AdminUserQuerySchema>;
+export type AdminUserSummaryDto = z.infer<typeof AdminUserSummarySchema>;
+export type AdminUserDetailDto = z.infer<typeof AdminUserDetailSchema>;
+export type AdminUserAccessUpdateDto = z.infer<
+  typeof AdminUserAccessUpdateSchema
 >;
 export type AdminPilotParticipantQueryDto = z.infer<
   typeof AdminPilotParticipantQuerySchema
