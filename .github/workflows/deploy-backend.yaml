@@ -174,8 +174,17 @@ jobs:
               --output text
           )"
 
-          if [[ "${CURRENT_TASK_DEFINITION}" != *":task-definition/${ECS_TASK_DEFINITION}:"* ]]; then
-            echo "::error::ECS service uses unexpected task definition: ${CURRENT_TASK_DEFINITION}"
+          if [[ -z "${CURRENT_TASK_DEFINITION}" || "${CURRENT_TASK_DEFINITION}" == "None" ]]; then
+            echo "::error::ECS service does not have a task definition: ${ECS_SERVICE}"
+            exit 1
+          fi
+
+          CURRENT_TASK_FAMILY="${CURRENT_TASK_DEFINITION##*/}"
+          CURRENT_TASK_FAMILY="${CURRENT_TASK_FAMILY%%:*}"
+          EXPECTED_TASK_FAMILY="${ECS_TASK_DEFINITION//[[:space:]]/}"
+
+          if [[ "${CURRENT_TASK_FAMILY}" != "${EXPECTED_TASK_FAMILY}" ]]; then
+            echo "::error::ECS service uses task definition family '${CURRENT_TASK_FAMILY}', expected '${EXPECTED_TASK_FAMILY}'. ARN: ${CURRENT_TASK_DEFINITION}"
             exit 1
           fi
 
