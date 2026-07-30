@@ -11,6 +11,10 @@ jest.mock("./organization.service.js", () => ({
     createOrganization: jest.fn(),
     getProfile: jest.fn(),
     updateProfile: jest.fn(),
+    listMembers: jest.fn(),
+    updateMemberRole: jest.fn(),
+    transferOwner: jest.fn(),
+    deleteOrganization: jest.fn(),
     uploadProfileImage: jest.fn(),
   },
 }));
@@ -42,6 +46,21 @@ function createApp() {
     organizationContract.updateProfile.method,
     organizationContract.updateProfile.path,
     ...handlers.updateProfile,
+  );
+  app.on(
+    organizationContract.updateMemberRole.method,
+    organizationContract.updateMemberRole.path,
+    ...handlers.updateMemberRole,
+  );
+  app.on(
+    organizationContract.transferOwner.method,
+    organizationContract.transferOwner.path,
+    ...handlers.transferOwner,
+  );
+  app.on(
+    organizationContract.delete.method,
+    organizationContract.delete.path,
+    ...handlers.deleteOrganization,
   );
   app.on(
     organizationContract.uploadProfileImage.method,
@@ -168,12 +187,73 @@ describe("organization profile HTTP handlers", () => {
     );
 
     expect(response.status).toBe(201);
-    expect(
-      mockedInvitationService.createTeamInvitation,
-    ).toHaveBeenCalledWith("user-1", organizationId, {
-      email: "member@example.com",
-      role: "MEMBER",
-      expiresInHours: 168,
+    expect(mockedInvitationService.createTeamInvitation).toHaveBeenCalledWith(
+      "user-1",
+      organizationId,
+      {
+        email: "member@example.com",
+        role: "MEMBER",
+        expiresInHours: 168,
+      },
+    );
+  });
+
+  it("멤버 역할 변경 요청을 검증해 서비스에 전달한다", async () => {
+    mockedService.updateMemberRole.mockResolvedValue({ items: [] });
+
+    const response = await createApp().request(
+      `/${organizationId}/members/7/role`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: "ADMIN" }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockedService.updateMemberRole).toHaveBeenCalledWith({
+      userId: "user-1",
+      organizationId,
+      memberId: 7,
+      update: { role: "ADMIN" },
+    });
+  });
+
+  it("Owner 위임 대상을 서비스에 전달한다", async () => {
+    const nextOwnerUserId = "00000000-0000-4000-8000-000000000002";
+    mockedService.transferOwner.mockResolvedValue({
+      previousOwnerUserId: "00000000-0000-4000-8000-000000000003",
+      ownerUserId: nextOwnerUserId,
+    });
+
+    const response = await createApp().request(`/${organizationId}/owner`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: nextOwnerUserId }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mockedService.transferOwner).toHaveBeenCalledWith({
+      userId: "user-1",
+      organizationId,
+      nextOwnerUserId,
+    });
+  });
+
+  it("조직 삭제 확인 이름을 서비스에 전달한다", async () => {
+    mockedService.deleteOrganization.mockResolvedValue({ success: true });
+
+    const response = await createApp().request(`/${organizationId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirmationName: "Lynx" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mockedService.deleteOrganization).toHaveBeenCalledWith({
+      userId: "user-1",
+      organizationId,
+      confirmationName: "Lynx",
     });
   });
 });

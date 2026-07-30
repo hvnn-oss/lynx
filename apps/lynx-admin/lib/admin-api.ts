@@ -3,6 +3,7 @@ import type {
   AdminApiKey,
   AdminApiKeyList,
   AdminPlan,
+  AdminRole,
   AdminUserDetail,
   AdminUserList,
   AccessInvitation,
@@ -123,15 +124,25 @@ export function getUser(userId: string): Promise<AdminUserDetail> {
 
 export function updateUserAdminAccess(
   userId: string,
-  isAdmin: boolean,
+  role: AdminRole | null,
 ): Promise<AdminUserDetail> {
   return adminRequest(
     `/admin/users/${encodeURIComponent(userId)}/admin-access`,
     {
       method: "PATCH",
-      body: JSON.stringify({ isAdmin }),
+      body: JSON.stringify({ role }),
     },
   );
+}
+
+export function deleteUser(
+  userId: string,
+  confirmationEmail: string,
+): Promise<{ success: true }> {
+  return adminRequest(`/admin/users/${encodeURIComponent(userId)}`, {
+    method: "DELETE",
+    body: JSON.stringify({ confirmationEmail }),
+  });
 }
 
 export function createPilotInvitation(
@@ -278,6 +289,17 @@ function getAdminErrorMessage(code: string, fallback?: string): string {
       "슈퍼어드민만 다른 사용자에게 관리자 권한을 부여하거나 회수할 수 있습니다.",
     ADMIN_SUPER_ADMIN_PROTECTED:
       "슈퍼어드민 권한은 사용자 관리 화면에서 변경할 수 없습니다.",
+    ADMIN_ROLE_REQUIRED: "이 작업을 수행할 관리자 등급이 부족합니다.",
+    ADMIN_ROLE_ASSIGNMENT_FORBIDDEN:
+      "자신과 같거나 더 높은 관리자 등급은 변경할 수 없습니다.",
+    ADMIN_ROLE_CONFLICT:
+      "다른 관리자가 먼저 역할을 변경했습니다. 새로고침 후 다시 시도하세요.",
+    ADMIN_USER_DELETE_REQUIRES_SENIOR:
+      "사용자 삭제는 상위 관리자 이상만 수행할 수 있습니다.",
+    ADMIN_USER_DELETE_TARGET_IS_ADMIN:
+      "관리자 권한이 활성화된 사용자는 삭제할 수 없습니다. 먼저 권한을 회수하세요.",
+    ADMIN_USER_DELETE_CONFIRMATION_MISMATCH:
+      "삭제 확인 이메일이 사용자 이메일과 일치하지 않습니다.",
     USER_NOT_FOUND: "사용자를 찾을 수 없습니다.",
     ACCESS_INVITATION_NOT_FOUND: "파일럿 초대를 찾을 수 없습니다.",
     COULD_NOT_SEND_EMAIL: "초대 메일을 보내지 못했습니다.",

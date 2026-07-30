@@ -12,6 +12,11 @@ import {
   CreateTeamInvitationResponseSchema,
   TeamInvitationListResponseSchema,
   TeamInvitationParamsSchema,
+  OrganizationMemberParamsSchema,
+  UpdateOrganizationMemberRoleSchema,
+  TransferOrganizationOwnerSchema,
+  TransferOrganizationOwnerResponseSchema,
+  DeleteOrganizationSchema,
 } from "@repo/dto";
 import { defineEndpoint } from "./util/endpoint.js";
 
@@ -51,6 +56,27 @@ export const organizationContract = {
     params: OrganizationIdParamsSchema,
     request: null,
     response: OrganizationMemberListResponseSchema,
+  }),
+  updateMemberRole: defineEndpoint({
+    method: "PATCH",
+    path: "/:organizationId/members/:memberId/role",
+    params: OrganizationMemberParamsSchema,
+    request: UpdateOrganizationMemberRoleSchema,
+    response: OrganizationMemberListResponseSchema,
+  }),
+  transferOwner: defineEndpoint({
+    method: "POST",
+    path: "/:organizationId/owner",
+    params: OrganizationIdParamsSchema,
+    request: TransferOrganizationOwnerSchema,
+    response: TransferOrganizationOwnerResponseSchema,
+  }),
+  delete: defineEndpoint({
+    method: "DELETE",
+    path: "/:organizationId",
+    params: OrganizationIdParamsSchema,
+    request: DeleteOrganizationSchema,
+    response: SuccessResponseSchema,
   }),
   createInvitation: defineEndpoint({
     method: "POST",

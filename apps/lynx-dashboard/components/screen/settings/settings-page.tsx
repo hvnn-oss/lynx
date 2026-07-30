@@ -18,6 +18,7 @@ import {
   SLACK_NOTIFICATION_EVENT_TYPE,
   USER_PERMISSIONS,
   type SlackNotificationEventType,
+  type UserPermissions,
 } from "@repo/constants";
 import { Button } from "@repo/ui/components/ui/button";
 import { Input } from "@repo/ui/components/ui/input";
@@ -77,7 +78,7 @@ type Member = {
   name: string;
   email: string;
   profileImageUrl: string | null;
-  role: string;
+  role: UserPermissions;
   joinedAt: string;
 };
 type ApiKeyItem = {
@@ -110,6 +111,9 @@ export function SettingsPage({ kind }: { kind: SettingsPageKind }) {
   const updateStoredUser = useUserStore((state) => state.updateUser);
   const updateStoredOrganization = useUserStore(
     (state) => state.updateOrganization,
+  );
+  const removeStoredOrganization = useUserStore(
+    (state) => state.removeOrganization,
   );
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -223,6 +227,10 @@ export function SettingsPage({ kind }: { kind: SettingsPageKind }) {
           setOrganization(nextOrganization);
           updateStoredOrganization(nextOrganization);
         }}
+        onDeleted={(organizationId) => {
+          removeStoredOrganization(organizationId);
+          window.location.assign("/dashboard/overview");
+        }}
       />
     );
   }
@@ -230,6 +238,7 @@ export function SettingsPage({ kind }: { kind: SettingsPageKind }) {
     return (
       <OrganizationMembers
         organization={organization}
+        currentUserId={storedUser?.id ?? null}
         members={members}
         invitations={teamInvitations}
         onReload={load}
@@ -287,16 +296,21 @@ function OrganizationGeneral({
   organizations,
   onSelected,
   onSaved,
+  onDeleted,
 }: {
   organization: Organization | null;
   organizations: Organization[];
   onSelected: (organizationId: string) => void;
   onSaved: (organization: Organization) => void;
+  onDeleted: (organizationId: string) => void;
 }) {
   const t = useTranslations("settings");
   const profileT = useTranslations("profileSettings");
   const [name, setName] = useState(organization?.name ?? "");
   const [status, setStatus] = useState("");
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
   const { pendingImage, selectImage, clearPendingImage } =
     usePendingProfileImage();
   if (!organization) return <EmptyWorkspace />;
@@ -368,17 +382,75 @@ function OrganizationGeneral({
           }}
         />
       </SettingsPanel>
+      {organization.role === USER_PERMISSIONS.OWNER ||
+      organization.role === USER_PERMISSIONS.ADMIN ? (
+        <SettingsPanel className="border-destructive/40">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 size-5 text-destructive" />
+            <div className="flex-1">
+              <h2 className="text-sm font-semibold">
+                {t("organization.deleteTitle")}
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t("organization.deleteDescription")}
+              </p>
+            </div>
+          </div>
+          <FormField
+            label={t("organization.deleteConfirmation", {
+              name: organization.name,
+            })}
+          >
+            <Input
+              value={deleteConfirmation}
+              onChange={(event) => setDeleteConfirmation(event.target.value)}
+            />
+          </FormField>
+          {deleteError ? (
+            <p className="text-sm text-destructive">{deleteError}</p>
+          ) : null}
+          <div className="flex justify-end border-t pt-4">
+            <Button
+              variant="destructive"
+              disabled={isDeleting || deleteConfirmation !== organization.name}
+              onClick={async () => {
+                setIsDeleting(true);
+                setDeleteError("");
+                try {
+                  await requestContract({
+                    basePath: organizationContract.basePath,
+                    endpoint: organizationContract.delete,
+                    params: { organizationId: organization.id },
+                    request: { confirmationName: deleteConfirmation },
+                  });
+                  onDeleted(organization.id);
+                } catch (error) {
+                  setDeleteError(getErrorMessage(error));
+                  setIsDeleting(false);
+                }
+              }}
+            >
+              <Trash2 className="size-4" />
+              {isDeleting
+                ? t("organization.deleting")
+                : t("organization.deleteAction")}
+            </Button>
+          </div>
+        </SettingsPanel>
+      ) : null}
     </SettingsShell>
   );
 }
 
 function OrganizationMembers({
   organization,
+  currentUserId,
   members,
   invitations,
   onReload,
 }: {
   organization: Organization | null;
+  currentUserId: string | null;
   members: Member[];
   invitations: TeamInvitationResponseDto[];
   onReload: () => Promise<void>;
@@ -387,11 +459,11 @@ function OrganizationMembers({
   const inviteT = useTranslations("teamInviteSettings");
   const [isCreating, setIsCreating] = useState(false);
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<TeamInvitationRole>(
-    USER_PERMISSIONS.MEMBER,
-  );
+  const [role, setRole] = useState<TeamInvitationRole>(USER_PERMISSIONS.MEMBER);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [inviteError, setInviteError] = useState("");
+  const [memberError, setMemberError] = useState("");
+  const [updatingMemberId, setUpdatingMemberId] = useState<number | null>(null);
   const [createdInvitationUrl, setCreatedInvitationUrl] = useState("");
 
   async function createInvitation() {
@@ -413,6 +485,50 @@ function OrganizationMembers({
       setInviteError(getErrorMessage(error));
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function updateMemberRole(member: Member, nextRole: UserPermissions) {
+    if (!organization) return;
+    setMemberError("");
+    setUpdatingMemberId(member.id);
+    try {
+      await requestContract({
+        basePath: organizationContract.basePath,
+        endpoint: organizationContract.updateMemberRole,
+        params: {
+          organizationId: organization.id,
+          memberId: member.id,
+        },
+        request: { role: nextRole as "ADMIN" | "MEMBER" | "VIEWER" },
+      });
+      await onReload();
+    } catch (error) {
+      setMemberError(getErrorMessage(error));
+    } finally {
+      setUpdatingMemberId(null);
+    }
+  }
+
+  async function transferOwner(member: Member) {
+    if (!organization) return;
+    const confirmed = window.confirm(
+      inviteT("transferOwnerConfirmation", { name: member.name }),
+    );
+    if (!confirmed) return;
+    setMemberError("");
+    setUpdatingMemberId(member.id);
+    try {
+      await requestContract({
+        basePath: organizationContract.basePath,
+        endpoint: organizationContract.transferOwner,
+        params: { organizationId: organization.id },
+        request: { userId: member.userId },
+      });
+      window.location.reload();
+    } catch (error) {
+      setMemberError(getErrorMessage(error));
+      setUpdatingMemberId(null);
     }
   }
 
@@ -507,10 +623,7 @@ function OrganizationMembers({
                 <p className="text-sm text-destructive">{inviteError}</p>
               ) : null}
               <div className="flex justify-end gap-2 border-t pt-4">
-                <Button
-                  variant="outline"
-                  onClick={() => setIsCreating(false)}
-                >
+                <Button variant="outline" onClick={() => setIsCreating(false)}>
                   {inviteT("cancel")}
                 </Button>
                 <Button
@@ -525,6 +638,9 @@ function OrganizationMembers({
         </SettingsPanel>
       ) : null}
 
+      {memberError ? (
+        <p className="text-sm text-destructive">{memberError}</p>
+      ) : null}
       <SettingsPanel className="divide-y p-0">
         {members.map((member) => (
           <div key={member.id} className="flex items-center gap-4 px-4 py-3">
@@ -540,7 +656,44 @@ function OrganizationMembers({
                 {member.email}
               </div>
             </div>
-            <Badge>{member.role}</Badge>
+            {canManageMember(organization?.role, currentUserId, member) ? (
+              <Select
+                value={member.role}
+                disabled={updatingMemberId === member.id}
+                onValueChange={(value) =>
+                  void updateMemberRole(member, value as UserPermissions)
+                }
+              >
+                <SelectTrigger className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={USER_PERMISSIONS.ADMIN}>
+                    {inviteT("roles.ADMIN")}
+                  </SelectItem>
+                  <SelectItem value={USER_PERMISSIONS.MEMBER}>
+                    {inviteT("roles.MEMBER")}
+                  </SelectItem>
+                  <SelectItem value={USER_PERMISSIONS.VIEWER}>
+                    {inviteT("roles.VIEWER")}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            ) : (
+              <Badge>{inviteT(`roles.${member.role}`)}</Badge>
+            )}
+            {organization?.role === USER_PERMISSIONS.OWNER &&
+            member.userId !== currentUserId &&
+            member.role !== USER_PERMISSIONS.OWNER ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={updatingMemberId === member.id}
+                onClick={() => void transferOwner(member)}
+              >
+                {inviteT("transferOwner")}
+              </Button>
+            ) : null}
             <div className="hidden text-xs text-muted-foreground sm:block">
               {new Date(member.joinedAt).toLocaleDateString()}
             </div>
@@ -598,6 +751,22 @@ function OrganizationMembers({
         </section>
       ) : null}
     </SettingsShell>
+  );
+}
+
+function canManageMember(
+  actorRole: UserPermissions | undefined,
+  currentUserId: string | null,
+  member: Member,
+): boolean {
+  if (!actorRole || member.userId === currentUserId) return false;
+  if (actorRole === USER_PERMISSIONS.OWNER) {
+    return member.role !== USER_PERMISSIONS.OWNER;
+  }
+  return (
+    actorRole === USER_PERMISSIONS.ADMIN &&
+    (member.role === USER_PERMISSIONS.MEMBER ||
+      member.role === USER_PERMISSIONS.VIEWER)
   );
 }
 
@@ -1763,7 +1932,19 @@ function getErrorMessage(error: unknown) {
     error.response &&
     "data" in error.response
   ) {
-    const data = error.response.data as { message?: string };
+    const data = error.response.data as { code?: string; message?: string };
+    const code = data.code ?? data.message;
+    const messages: Record<string, string> = {
+      ORGANIZATION_MEMBER_NOT_FOUND: "조직 멤버를 찾을 수 없습니다.",
+      ORGANIZATION_MEMBER_ROLE_FORBIDDEN:
+        "자신과 같거나 더 높은 역할은 변경할 수 없습니다.",
+      ORGANIZATION_OWNER_TRANSFER_FORBIDDEN:
+        "현재 Owner만 다른 멤버에게 소유권을 위임할 수 있습니다.",
+      ORGANIZATION_DELETE_CONFIRMATION_MISMATCH:
+        "입력한 조직 이름이 현재 조직 이름과 일치하지 않습니다.",
+      FORBIDDEN: "이 작업을 수행할 권한이 없습니다.",
+    };
+    if (code && messages[code]) return messages[code];
     if (data.message) return data.message;
   }
   return error instanceof Error ? error.message : "Request failed.";

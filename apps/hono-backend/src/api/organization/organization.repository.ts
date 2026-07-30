@@ -83,6 +83,86 @@ export class OrganizationRepository {
     );
   }
 
+  /** 역할 변경 중 조직 멤버 행이 바뀌지 않도록 잠가 조회합니다. */
+  findLockedMemberById(
+    manager: EntityManager,
+    organizationId: string,
+    memberId: number,
+  ): Promise<OrganizationUserEntity | null> {
+    return manager
+      .getRepository(OrganizationUserEntity)
+      .createQueryBuilder("membership")
+      .innerJoinAndSelect("membership.user", "user")
+      .innerJoinAndSelect("membership.organization", "organization")
+      .where("membership.id = :memberId", { memberId })
+      .andWhere("organization.id = :organizationId", { organizationId })
+      .setLock("pessimistic_write")
+      .getOne();
+  }
+
+  /** Owner 위임과 역할 변경에 사용할 현재 사용자 멤버십을 잠가 조회합니다. */
+  findLockedMemberByUserId(
+    manager: EntityManager,
+    organizationId: string,
+    userId: string,
+  ): Promise<OrganizationUserEntity | null> {
+    return manager
+      .getRepository(OrganizationUserEntity)
+      .createQueryBuilder("membership")
+      .innerJoinAndSelect("membership.user", "user")
+      .innerJoinAndSelect("membership.organization", "organization")
+      .where("organization.id = :organizationId", { organizationId })
+      .andWhere("user.id = :userId", { userId })
+      .setLock("pessimistic_write")
+      .getOne();
+  }
+
+  /** Owner 식별자 변경과 함께 사용할 조직 행을 잠가 조회합니다. */
+  findLockedOrganization(
+    manager: EntityManager,
+    organizationId: string,
+  ): Promise<OrganizationEntity | null> {
+    return manager
+      .getRepository(OrganizationEntity)
+      .createQueryBuilder("organization")
+      .where("organization.id = :organizationId", { organizationId })
+      .setLock("pessimistic_write")
+      .getOne();
+  }
+
+  /** 트랜잭션에서 변경한 조직 멤버십을 저장합니다. */
+  async saveMembership(
+    manager: EntityManager,
+    membership: OrganizationUserEntity,
+  ): Promise<void> {
+    await manager.getRepository(OrganizationUserEntity).save(membership);
+  }
+
+  /** Owner 위임으로 변경한 두 멤버십과 조직 소유자를 함께 저장합니다. */
+  async saveOwnershipTransfer(
+    manager: EntityManager,
+    organization: OrganizationEntity,
+    previousOwner: OrganizationUserEntity,
+    nextOwner: OrganizationUserEntity,
+  ): Promise<void> {
+    await manager
+      .getRepository(OrganizationUserEntity)
+      .save([previousOwner, nextOwner]);
+    await manager.getRepository(OrganizationEntity).save(organization);
+  }
+
+  /** 조직과 하위 워크스페이스 데이터를 관계 설정에 따라 삭제합니다. */
+  async deleteOrganization(
+    organizationId: string,
+  ): Promise<{ deleted: boolean; profileImageKey: string | null }> {
+    const repository = AppDataSource.getRepository(OrganizationEntity);
+    const organization = await repository.findOneBy({ id: organizationId });
+    if (!organization) return { deleted: false, profileImageKey: null };
+    const profileImageKey = organization.profileImageKey;
+    await repository.remove(organization);
+    return { deleted: true, profileImageKey };
+  }
+
   /**
    * 사용자 권한 행을 잠그고 같은 사용자의 동시 조직 생성을 직렬화합니다.
    * @param manager 현재 조직 생성 트랜잭션의 엔티티 매니저입니다.

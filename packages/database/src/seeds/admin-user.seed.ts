@@ -14,7 +14,9 @@ async function seedAdminUser() {
   }
 
   if (!ADMIN_ROLE_VALUES.has(role)) {
-    throw new Error("ADMIN_ROLE must be ADMIN or SUPER_ADMIN.");
+    throw new Error(
+      `ADMIN_ROLE must be one of: ${[...ADMIN_ROLE_VALUES].join(", ")}.`,
+    );
   }
 
   await AppDataSource.initialize();

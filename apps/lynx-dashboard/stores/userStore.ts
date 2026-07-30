@@ -19,6 +19,7 @@ interface UserStoreState {
   setActiveOrganization: (organizationId: string) => void;
   updateUser: (user: UserProfileResponseDto) => void;
   updateOrganization: (organization: Organization) => void;
+  removeOrganization: (organizationId: string) => void;
   reset: () => void;
 }
 
@@ -83,5 +84,35 @@ export const useUserStore = create<UserStoreState>((set) => ({
         current.id === organization.id ? organization : current,
       ),
     })),
+  removeOrganization: (organizationId) =>
+    set((state) => {
+      const organizations = state.organizations.filter(
+        (organization) => organization.id !== organizationId,
+      );
+      const workspaces = state.workspaces.filter(
+        (workspace) => workspace.orgId !== organizationId,
+      );
+      const activeOrganizationId =
+        state.activeOrganizationId === organizationId
+          ? (organizations[0]?.id ?? null)
+          : state.activeOrganizationId;
+      const activeWorkspaceId =
+        state.activeWorkspaceId &&
+        workspaces.some(
+          (workspace) =>
+            workspace.id === state.activeWorkspaceId &&
+            workspace.orgId === activeOrganizationId,
+        )
+          ? state.activeWorkspaceId
+          : (workspaces.find(
+              (workspace) => workspace.orgId === activeOrganizationId,
+            )?.id ?? null);
+      return {
+        organizations,
+        workspaces,
+        activeOrganizationId,
+        activeWorkspaceId,
+      };
+    }),
   reset: () => set(initialState),
 }));

@@ -12,7 +12,10 @@
   "invitationHistory": "초대 내역",
   "expires": "{date} 만료",
   "revoke": "초대 취소",
+  "transferOwner": "Owner 위임",
+  "transferOwnerConfirmation": "{name}님에게 Owner를 위임할까요? 위임 후 내 역할은 관리자로 변경됩니다.",
   "roles": {
+    "OWNER": "Owner",
     "ADMIN": "관리자",
     "MEMBER": "멤버",
     "VIEWER": "조회자"

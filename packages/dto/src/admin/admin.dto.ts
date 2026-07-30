@@ -69,9 +69,9 @@ export const AdminOpenApiUsageQuerySchema = z.object({
   organizationId: z.uuid().optional(),
   workspaceId: z.uuid().optional(),
   apiKeyId: z.uuid().optional(),
-  period: z.enum(ADMIN_OPENAPI_USAGE_PERIOD).default(
-    ADMIN_OPENAPI_USAGE_PERIOD.LAST_7_DAYS,
-  ),
+  period: z
+    .enum(ADMIN_OPENAPI_USAGE_PERIOD)
+    .default(ADMIN_OPENAPI_USAGE_PERIOD.LAST_7_DAYS),
 });
 
 const AdminOpenApiUsageCountSchema = z.number().int().nonnegative();
@@ -357,7 +357,9 @@ export const AdminOrganizationDetailSchema =
 export const ADMIN_USER_ACCESS_FILTER = {
   NONE: "NONE",
   ADMIN: ADMIN_ROLES.ADMIN,
+  SENIOR_ADMIN: ADMIN_ROLES.SENIOR_ADMIN,
   SUPER_ADMIN: ADMIN_ROLES.SUPER_ADMIN,
+  VIEWER: ADMIN_ROLES.VIEWER,
 } as const;
 
 export const AdminUserQuerySchema = z.object({
@@ -372,7 +374,11 @@ export const AdminUserParamsSchema = z.object({
 });
 
 export const AdminUserAccessUpdateSchema = z.object({
-  isAdmin: z.boolean(),
+  role: z.enum(ADMIN_ROLES).nullable(),
+});
+
+export const AdminUserDeleteSchema = z.object({
+  confirmationEmail: z.email(),
 });
 
 export const AdminUserSummarySchema = z.object({
@@ -478,7 +484,7 @@ export const AdminOverviewResponseSchema = z.object({
     id: z.uuid(),
     name: z.string(),
     email: z.string(),
-    role: z.string(),
+    role: z.enum(ADMIN_ROLES),
   }),
   metrics: z.object({
     organizationCount: z.number().int().nonnegative(),
@@ -528,6 +534,7 @@ export type AdminUserDetailDto = z.infer<typeof AdminUserDetailSchema>;
 export type AdminUserAccessUpdateDto = z.infer<
   typeof AdminUserAccessUpdateSchema
 >;
+export type AdminUserDeleteDto = z.infer<typeof AdminUserDeleteSchema>;
 export type AdminPilotParticipantQueryDto = z.infer<
   typeof AdminPilotParticipantQuerySchema
 >;

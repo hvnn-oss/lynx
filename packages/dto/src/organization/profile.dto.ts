@@ -41,6 +41,33 @@ export const OrganizationMemberListResponseSchema = z.object({
   items: z.array(OrganizationMemberSchema),
 });
 
+export const OrganizationMemberParamsSchema = OrganizationIdParamsSchema.extend(
+  {
+    memberId: z.coerce.number().int().positive(),
+  },
+);
+
+export const UpdateOrganizationMemberRoleSchema = z.object({
+  role: z.enum([
+    USER_PERMISSIONS.ADMIN,
+    USER_PERMISSIONS.MEMBER,
+    USER_PERMISSIONS.VIEWER,
+  ]),
+});
+
+export const TransferOrganizationOwnerSchema = z.object({
+  userId: z.uuid(),
+});
+
+export const TransferOrganizationOwnerResponseSchema = z.object({
+  previousOwnerUserId: z.uuid(),
+  ownerUserId: z.uuid(),
+});
+
+export const DeleteOrganizationSchema = z.object({
+  confirmationName: z.string().trim().min(1).max(200),
+});
+
 export type UpdateOrganizationProfileDto = z.infer<
   typeof UpdateOrganizationProfileSchema
 >;
@@ -53,3 +80,13 @@ export type OrganizationListResponseDto = z.infer<
 export type OrganizationMemberListResponseDto = z.infer<
   typeof OrganizationMemberListResponseSchema
 >;
+export type UpdateOrganizationMemberRoleDto = z.infer<
+  typeof UpdateOrganizationMemberRoleSchema
+>;
+export type TransferOrganizationOwnerDto = z.infer<
+  typeof TransferOrganizationOwnerSchema
+>;
+export type TransferOrganizationOwnerResponseDto = z.infer<
+  typeof TransferOrganizationOwnerResponseSchema
+>;
+export type DeleteOrganizationDto = z.infer<typeof DeleteOrganizationSchema>;

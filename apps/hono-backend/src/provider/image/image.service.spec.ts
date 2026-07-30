@@ -103,6 +103,18 @@ describe("ImageService", () => {
     expect(storage.deleteObject).not.toHaveBeenCalled();
   });
 
+  it("소유자가 일치하는 프로필 이미지만 명시적으로 삭제한다", async () => {
+    const service = new ImageService(storage, urls, 1024);
+    const storageKey = "profile-images/organizations/org-1/profile.png";
+
+    await service.delete("organization", "org-1", storageKey);
+
+    expect(storage.deleteObject).toHaveBeenCalledWith(storageKey);
+    await expect(
+      service.delete("organization", "org-2", storageKey),
+    ).rejects.toThrow("PROFILE_IMAGE_KEY_OWNER_MISMATCH");
+  });
+
   it("지원하지 않는 형식과 최대 크기 초과를 거절한다", async () => {
     const service = new ImageService(storage, urls, 2);
 

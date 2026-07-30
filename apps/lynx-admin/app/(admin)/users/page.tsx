@@ -12,6 +12,7 @@ import {
 } from "@/components/ui";
 import { listUsers } from "@/lib/admin-api";
 import type {
+  AdminRole,
   AdminUserAccessFilter,
   AdminUserList,
 } from "@/lib/admin-types";
@@ -25,9 +26,9 @@ export default function UsersPage() {
   const [appliedSearch, setAppliedSearch] = useState("");
   const [access, setAccess] = useState<AdminUserAccessFilter | "">("");
   const [cursor, setCursor] = useState<string | undefined>();
-  const [cursorHistory, setCursorHistory] = useState<
-    Array<string | undefined>
-  >([]);
+  const [cursorHistory, setCursorHistory] = useState<Array<string | undefined>>(
+    [],
+  );
   const [error, setError] = useState("");
 
   const resetPagination = () => {
@@ -113,8 +114,10 @@ export default function UsersPage() {
             >
               <option value="">전체 사용자</option>
               <option value="NONE">일반 사용자</option>
-              <option value="ADMIN">관리자</option>
               <option value="SUPER_ADMIN">슈퍼어드민</option>
+              <option value="SENIOR_ADMIN">상위 관리자</option>
+              <option value="ADMIN">일반 관리자</option>
+              <option value="VIEWER">뷰어</option>
             </select>
           </label>
           <button className="button button-primary" type="submit">
@@ -127,7 +130,9 @@ export default function UsersPage() {
         title="사용자 목록"
         description="사용자를 선택하면 로그인 방식, 소속 조직과 워크스페이스, 제품 접근 상태를 확인할 수 있습니다."
       >
-        {!data && !error && <LoadingState label="사용자를 불러오는 중입니다." />}
+        {!data && !error && (
+          <LoadingState label="사용자를 불러오는 중입니다." />
+        )}
         {!data && error && <ErrorState message={error} onRetry={load} />}
         {data?.items.length === 0 && (
           <EmptyState
@@ -251,10 +256,14 @@ function AdminAccessBadge({
   role,
   isActive,
 }: {
-  role?: "ADMIN" | "SUPER_ADMIN";
+  role?: AdminRole;
   isActive?: boolean;
 }) {
   if (!role || !isActive) return <Badge>일반 사용자</Badge>;
   if (role === "SUPER_ADMIN") return <Badge tone="warning">슈퍼어드민</Badge>;
-  return <Badge tone="info">관리자</Badge>;
+  if (role === "SENIOR_ADMIN") {
+    return <Badge tone="danger">상위 관리자</Badge>;
+  }
+  if (role === "ADMIN") return <Badge tone="info">일반 관리자</Badge>;
+  return <Badge>뷰어</Badge>;
 }

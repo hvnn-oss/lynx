@@ -2,11 +2,9 @@ import {
   ADMIN_ROLES,
   ERROR_CODES,
   PRODUCT_ACCESS_GRANT_STATUS,
+  type AdminRole,
 } from "@repo/constants";
-import {
-  ADMIN_API_KEY_STATUS,
-  ADMIN_OPENAPI_USAGE_PERIOD,
-} from "@repo/dto";
+import { ADMIN_API_KEY_STATUS, ADMIN_OPENAPI_USAGE_PERIOD } from "@repo/dto";
 import type {
   AdminApiKeyDto,
   AdminApiKeyQueryDto,
@@ -26,6 +24,7 @@ import type {
   AdminPlanInputDto,
   AdminPlanUpdateDto,
   AdminUserDetailDto,
+  AdminUserDeleteDto,
   AdminUserQueryDto,
   AdminUserSummaryDto,
 } from "@repo/dto";
@@ -36,6 +35,13 @@ import {
   type AuditLogRecorder,
 } from "../../common/services/audit-log.service.js";
 import { getImageService } from "../../provider/image/image-provider.js";
+import type { ImageService } from "../../provider/image/image.service.js";
+import {
+  canAssignAdminRole,
+  canManageAdminRole,
+  hasMinimumAdminRole,
+} from "../../common/access-control/admin-role.policy.js";
+import { logger } from "../../common/logger/logger.js";
 import {
   AdminRepository,
   adminRepository,
@@ -50,12 +56,14 @@ import {
 
 const OVERVIEW_RECENT_AUDIT_LIMIT = 5;
 const ORGANIZATION_RECENT_AUDIT_LIMIT = 10;
+type ImageServiceFactory = () => ImageService;
 
 /** Lynx 운영자가 감사 기록, 조직, 요금제를 관리하는 유스케이스입니다. */
 export class AdminService {
   constructor(
     private readonly repository: AdminRepository = adminRepository,
     private readonly auditRecorder: AuditLogRecorder = auditLogService,
+    private readonly images: ImageServiceFactory = getImageService,
   ) {}
 
   async getOverview(userId: string): Promise<AdminOverviewResponseDto> {
@@ -150,13 +158,15 @@ export class AdminService {
       workspaceId: input.workspaceId,
       apiKeyId: input.apiKeyId,
     };
-    const [keyStatus, summary, dailyTrend, endpoints, keys] = await Promise.all([
-      this.repository.getApiKeyStatusCounts(input),
-      this.repository.getOpenApiUsageSummary(filters),
-      this.repository.listOpenApiDailyUsage(filters),
-      this.repository.listOpenApiEndpointUsage(filters),
-      this.repository.listOpenApiKeyUsage(filters),
-    ]);
+    const [keyStatus, summary, dailyTrend, endpoints, keys] = await Promise.all(
+      [
+        this.repository.getApiKeyStatusCounts(input),
+        this.repository.getOpenApiUsageSummary(filters),
+        this.repository.listOpenApiDailyUsage(filters),
+        this.repository.listOpenApiEndpointUsage(filters),
+        this.repository.listOpenApiKeyUsage(filters),
+      ],
+    );
     const requestCount = this.toInteger(summary?.requestCount ?? 0);
     const successCount = this.toInteger(summary?.successCount ?? 0);
 
@@ -178,12 +188,8 @@ export class AdminService {
         clientErrorCount: this.toInteger(summary?.clientErrorCount ?? 0),
         serverErrorCount: this.toInteger(summary?.serverErrorCount ?? 0),
         rateLimitedCount: this.toInteger(summary?.rateLimitedCount ?? 0),
-        acceptedEventCount: this.toInteger(
-          summary?.acceptedEventCount ?? 0,
-        ),
-        rejectedEventCount: this.toInteger(
-          summary?.rejectedEventCount ?? 0,
-        ),
+        acceptedEventCount: this.toInteger(summary?.acceptedEventCount ?? 0),
+        rejectedEventCount: this.toInteger(summary?.rejectedEventCount ?? 0),
         requestBytes: this.toInteger(summary?.requestBytes ?? 0),
         responseBytes: this.toInteger(summary?.responseBytes ?? 0),
         averageLatencyMs: this.average(
@@ -496,14 +502,19 @@ export class AdminService {
     if (!user) {
       throw new HTTPException(404, { message: ERROR_CODES.USER_NOT_FOUND });
     }
-    const [loginProviders, organizations, workspaces, entitlement, pilotAccess] =
-      await Promise.all([
-        this.repository.listUserLoginProviders(userId),
-        this.repository.listUserOrganizations(userId),
-        this.repository.listUserWorkspaces(userId),
-        this.repository.getUserEntitlement(userId),
-        this.repository.getUserPilotAccess(userId),
-      ]);
+    const [
+      loginProviders,
+      organizations,
+      workspaces,
+      entitlement,
+      pilotAccess,
+    ] = await Promise.all([
+      this.repository.listUserLoginProviders(userId),
+      this.repository.listUserOrganizations(userId),
+      this.repository.listUserWorkspaces(userId),
+      this.repository.getUserEntitlement(userId),
+      this.repository.getUserPilotAccess(userId),
+    ]);
 
     return {
       ...this.toUserSummary(user),
@@ -536,39 +547,50 @@ export class AdminService {
     };
   }
 
-  /**
-   * SUPER_ADMIN만 기존 사용자에게 운영자 권한을 부여하거나 회수할 수 있습니다.
-   */
+  /** 현재 관리자보다 낮은 플랫폼 역할만 부여하거나 회수합니다. */
   async updateUserAdminAccess(
     actorUserId: string,
     userId: string,
-    isAdmin: boolean,
+    role: AdminRole | null,
     requestId?: string,
   ): Promise<AdminUserDetailDto> {
     const actor = await this.repository.getCurrentAdmin(actorUserId);
-    if (actor?.role !== ADMIN_ROLES.SUPER_ADMIN) {
+    if (!actor) {
       throw new HTTPException(403, {
-        message: ERROR_CODES.ADMIN_SUPER_ADMIN_REQUIRED,
+        message: ERROR_CODES.ADMIN_ACCESS_REQUIRED,
       });
     }
 
     const before = await this.getUser(userId);
+    const targetRole = before.adminAccess?.isActive
+      ? before.adminAccess.role
+      : null;
     if (
-      before.adminAccess?.isActive &&
-      before.adminAccess.role === ADMIN_ROLES.SUPER_ADMIN
+      !canManageAdminRole(actor.role, targetRole) ||
+      !canAssignAdminRole(actor.role, role)
     ) {
-      throw new HTTPException(409, {
-        message: ERROR_CODES.ADMIN_SUPER_ADMIN_PROTECTED,
+      throw new HTTPException(403, {
+        message: ERROR_CODES.ADMIN_ROLE_ASSIGNMENT_FORBIDDEN,
       });
     }
-    if (!(await this.repository.setUserAdminAccess(userId, isAdmin))) {
+    const updateResult = await this.repository.setUserAdminRole(
+      userId,
+      role,
+      targetRole,
+    );
+    if (updateResult === "NOT_FOUND") {
       throw new HTTPException(404, { message: ERROR_CODES.USER_NOT_FOUND });
+    }
+    if (updateResult === "CONFLICT") {
+      throw new HTTPException(409, {
+        message: ERROR_CODES.ADMIN_ROLE_CONFLICT,
+      });
     }
 
     const after = await this.getUser(userId);
     await this.auditRecorder.record({
       actorUserId,
-      action: isAdmin ? "admin_user.grant" : "admin_user.revoke",
+      action: role ? "admin_user.role_change" : "admin_user.revoke",
       targetType: "user",
       targetId: userId,
       requestId,
@@ -578,11 +600,104 @@ export class AdminService {
         method: "PATCH",
         path: `/admin/users/${userId}/admin-access`,
         statusCode: 200,
-        request: { body: { isAdmin } },
+        request: { body: { role } },
         response: { body: { userId, adminAccess: after.adminAccess } },
       },
     });
     return after;
+  }
+
+  /** 상위 관리자 이상이 관리자 권한이 없는 사용자와 소유 조직을 삭제합니다. */
+  async deleteUser(
+    actorUserId: string,
+    userId: string,
+    input: AdminUserDeleteDto,
+    requestId?: string,
+  ): Promise<{ success: true }> {
+    const actor = await this.repository.getCurrentAdmin(actorUserId);
+    if (!actor || !hasMinimumAdminRole(actor.role, ADMIN_ROLES.SENIOR_ADMIN)) {
+      throw new HTTPException(403, {
+        message: ERROR_CODES.ADMIN_USER_DELETE_REQUIRES_SENIOR,
+      });
+    }
+
+    const before = await this.getUser(userId);
+    if (
+      before.email.trim().toLowerCase() !==
+      input.confirmationEmail.trim().toLowerCase()
+    ) {
+      throw new HTTPException(400, {
+        message: ERROR_CODES.ADMIN_USER_DELETE_CONFIRMATION_MISMATCH,
+      });
+    }
+    if (before.adminAccess?.isActive) {
+      throw new HTTPException(409, {
+        message: ERROR_CODES.ADMIN_USER_DELETE_TARGET_IS_ADMIN,
+      });
+    }
+
+    const result = await this.repository.deleteNonAdminUser(userId);
+    if (result.status === "NOT_FOUND") {
+      throw new HTTPException(404, { message: ERROR_CODES.USER_NOT_FOUND });
+    }
+    if (result.status === "ACTIVE_ADMIN") {
+      throw new HTTPException(409, {
+        message: ERROR_CODES.ADMIN_USER_DELETE_TARGET_IS_ADMIN,
+      });
+    }
+
+    await this.auditRecorder.record({
+      actorUserId,
+      action: "user.delete",
+      targetType: "user",
+      targetId: userId,
+      requestId,
+      before: {
+        id: before.id,
+        email: before.email,
+        organizationCount: before.organizationCount,
+        workspaceCount: before.workspaceCount,
+      },
+      after: {
+        deleted: true,
+        deletedOrganizationIds: result.deletedOrganizationIds,
+      },
+      metadata: {
+        method: "DELETE",
+        path: `/admin/users/${userId}`,
+        statusCode: 200,
+        request: { body: { confirmationEmail: input.confirmationEmail } },
+        response: { body: { success: true } },
+      },
+    });
+
+    const cleanupTasks: Promise<void>[] = [];
+    if (result.userProfileImageKey) {
+      cleanupTasks.push(
+        Promise.resolve().then(() =>
+          this.images().delete("user", userId, result.userProfileImageKey),
+        ),
+      );
+    }
+    for (const image of result.organizationImages) {
+      cleanupTasks.push(
+        Promise.resolve().then(() =>
+          this.images().delete(
+            "organization",
+            image.organizationId,
+            image.profileImageKey,
+          ),
+        ),
+      );
+    }
+    const cleanupResults = await Promise.allSettled(cleanupTasks);
+    if (cleanupResults.some((item) => item.status === "rejected")) {
+      logger.warn(
+        { userId },
+        "deleted user profile image cleanup partially failed",
+      );
+    }
+    return { success: true };
   }
 
   async listPilotParticipants(input: AdminPilotParticipantQueryDto) {
@@ -856,7 +971,7 @@ export class AdminService {
       name: row.name,
       email: row.email,
       profileImageUrl: row.profileImageKey
-        ? getImageService().getUrl(row.profileImageKey)
+        ? this.images().getUrl(row.profileImageKey)
         : (env.DEFAULT_USER_PROFILE_IMAGE_URL ?? null),
       adminAccess:
         row.adminRole === null
@@ -935,10 +1050,7 @@ export class AdminService {
   }
 
   /** 합계와 건수로 0에 안전한 평균을 계산합니다. */
-  private average(
-    total: string | number,
-    count: number,
-  ): number {
+  private average(total: string | number, count: number): number {
     return count === 0 ? 0 : this.round(Number(total) / count);
   }
 

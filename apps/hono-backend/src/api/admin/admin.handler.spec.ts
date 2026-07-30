@@ -18,6 +18,7 @@ jest.mock("./admin.service.js", () => ({
     listUsers: jest.fn(),
     getUser: jest.fn(),
     updateUserAdminAccess: jest.fn(),
+    deleteUser: jest.fn(),
     listPilotParticipants: jest.fn(),
     updatePilotParticipant: jest.fn(),
     listPlans: jest.fn(),
@@ -83,6 +84,11 @@ function createApp() {
     adminContract.updateUserAdminAccess.method,
     adminContract.updateUserAdminAccess.path,
     ...handlers.updateUserAdminAccess,
+  );
+  app.on(
+    adminContract.deleteUser.method,
+    adminContract.deleteUser.path,
+    ...handlers.deleteUser,
   );
   app.on(
     adminContract.listPilotParticipants.method,
@@ -417,7 +423,7 @@ describe("admin HTTP handlers", () => {
       {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ isAdmin: true }),
+        body: JSON.stringify({ role: "ADMIN" }),
       },
     );
 
@@ -425,7 +431,25 @@ describe("admin HTTP handlers", () => {
     expect(mockedService.updateUserAdminAccess).toHaveBeenCalledWith(
       "admin-user-1",
       userId,
-      true,
+      "ADMIN",
+      "request-1",
+    );
+  });
+
+  it("사용자 삭제 확인 이메일과 행위자 정보를 서비스에 전달한다", async () => {
+    mockedService.deleteUser.mockResolvedValue({ success: true });
+
+    const response = await createApp().request(`/users/${userId}`, {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ confirmationEmail: "user@lynx.local" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mockedService.deleteUser).toHaveBeenCalledWith(
+      "admin-user-1",
+      userId,
+      { confirmationEmail: "user@lynx.local" },
       "request-1",
     );
   });

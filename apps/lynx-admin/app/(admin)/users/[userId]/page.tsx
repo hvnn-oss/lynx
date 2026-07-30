@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   Badge,
@@ -15,18 +15,27 @@ import {
 import {
   getAdminOverview,
   getUser,
+  deleteUser,
   updateUserAdminAccess,
 } from "@/lib/admin-api";
-import type { AdminOverview, AdminUserDetail } from "@/lib/admin-types";
+import type {
+  AdminOverview,
+  AdminRole,
+  AdminUserDetail,
+} from "@/lib/admin-types";
 import { formatDate, formatNumber } from "@/lib/format";
 
 export default function UserDetailPage() {
   const { userId } = useParams<{ userId: string }>();
+  const router = useRouter();
   const [user, setUser] = useState<AdminUserDetail | null>(null);
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
   const [isUpdatingAccess, setIsUpdatingAccess] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   const load = () => {
     setError("");
@@ -73,15 +82,24 @@ export default function UserDetailPage() {
   }
 
   const hasActiveAdminAccess = user.adminAccess?.isActive === true;
-  const isSuperAdmin = user.adminAccess?.role === "SUPER_ADMIN";
+  const targetRole = hasActiveAdminAccess
+    ? (user.adminAccess?.role ?? null)
+    : null;
+  const actorRole = overview?.currentAdmin.role ?? null;
   const canManageAdminAccess =
-    overview?.currentAdmin.role === "SUPER_ADMIN" && !isSuperAdmin;
+    actorRole !== null &&
+    getAdminRoleRank(actorRole) >= getAdminRoleRank("ADMIN") &&
+    getAdminRoleRank(actorRole) > getAdminRoleRank(targetRole);
+  const canDeleteUser =
+    actorRole !== null &&
+    getAdminRoleRank(actorRole) >= getAdminRoleRank("SENIOR_ADMIN") &&
+    !hasActiveAdminAccess;
 
-  const changeAdminAccess = async () => {
-    const nextIsAdmin = !hasActiveAdminAccess;
+  const changeAdminAccess = async (nextRole: AdminRole | null) => {
+    if (nextRole === targetRole) return;
     const confirmed = window.confirm(
-      nextIsAdmin
-        ? `${user.name}님에게 Lynx 관리자 권한을 부여할까요?`
+      nextRole
+        ? `${user.name}님의 플랫폼 권한을 ${getAdminRoleLabelValue(nextRole)}(으)로 변경할까요?`
         : `${user.name}님의 Lynx 관리자 권한을 해제할까요?`,
     );
     if (!confirmed) return;
@@ -89,7 +107,7 @@ export default function UserDetailPage() {
     setActionError("");
     setIsUpdatingAccess(true);
     try {
-      setUser(await updateUserAdminAccess(user.id, nextIsAdmin));
+      setUser(await updateUserAdminAccess(user.id, nextRole));
     } catch (cause) {
       setActionError(
         cause instanceof Error
@@ -114,10 +132,7 @@ export default function UserDetailPage() {
       />
 
       <section className="user-detail-heading">
-        <UserAvatar
-          name={user.name}
-          profileImageUrl={user.profileImageUrl}
-        />
+        <UserAvatar name={user.name} profileImageUrl={user.profileImageUrl} />
         <div>
           <strong>{user.name}</strong>
           <span>{user.email}</span>
@@ -130,11 +145,9 @@ export default function UserDetailPage() {
           <span>관리자 권한</span>
           <strong>{getAdminRoleLabel(user)}</strong>
           <small>
-            {isSuperAdmin
-              ? "최상위 운영 권한"
-              : hasActiveAdminAccess
-                ? "운영 콘솔 접근 가능"
-                : "운영 콘솔 접근 불가"}
+            {hasActiveAdminAccess
+              ? "운영 콘솔 접근 가능"
+              : "운영 콘솔 접근 불가"}
           </small>
         </div>
         <div>
@@ -154,24 +167,28 @@ export default function UserDetailPage() {
 
       <Panel
         title="관리자 권한"
-        description="권한 변경은 감사 기록에 남으며 활성 슈퍼어드민만 수행할 수 있습니다."
+        description="관리자는 자신보다 낮은 등급만 변경할 수 있으며 모든 변경은 감사 기록에 남습니다."
         action={
           canManageAdminAccess ? (
-            <button
-              className={
-                hasActiveAdminAccess
-                  ? "button button-secondary"
-                  : "button button-primary"
-              }
+            <select
+              className="button button-secondary"
+              value={targetRole ?? "NONE"}
               disabled={isUpdatingAccess}
-              onClick={changeAdminAccess}
+              onChange={(event) =>
+                void changeAdminAccess(
+                  event.target.value === "NONE"
+                    ? null
+                    : (event.target.value as AdminRole),
+                )
+              }
             >
-              {isUpdatingAccess
-                ? "변경 중"
-                : hasActiveAdminAccess
-                  ? "관리자 권한 해제"
-                  : "관리자 권한 부여"}
-            </button>
+              <option value="NONE">관리자 권한 없음</option>
+              {getAssignableAdminRoles(actorRole).map((role) => (
+                <option key={role} value={role}>
+                  {getAdminRoleLabelValue(role)}
+                </option>
+              ))}
+            </select>
           ) : undefined
         }
       >
@@ -180,18 +197,63 @@ export default function UserDetailPage() {
             <AdminAccessBadge user={user} />
           </Definition>
           <Definition label="변경 가능 여부">
-            {isSuperAdmin
-              ? "슈퍼어드민 보호 대상"
-              : overview?.currentAdmin.role === "SUPER_ADMIN"
-                ? "변경 가능"
-                : "슈퍼어드민 권한 필요"}
+            {canManageAdminAccess
+              ? "변경 가능"
+              : "동일하거나 높은 등급은 변경할 수 없음"}
           </Definition>
         </div>
         {actionError && <p className="inline-error">{actionError}</p>}
       </Panel>
 
+      {canDeleteUser ? (
+        <Panel
+          title="사용자 삭제"
+          description="사용자 계정과 사용자가 소유한 조직 및 하위 데이터가 영구 삭제됩니다. 이 작업은 되돌릴 수 없습니다."
+        >
+          <label className="field">
+            <span>확인을 위해 사용자 이메일을 입력하세요.</span>
+            <input
+              value={deleteConfirmation}
+              placeholder={user.email}
+              onChange={(event) => setDeleteConfirmation(event.target.value)}
+            />
+          </label>
+          {deleteError ? <p className="inline-error">{deleteError}</p> : null}
+          <div className="panel-actions">
+            <button
+              className="button button-danger"
+              disabled={
+                isDeleting ||
+                deleteConfirmation.trim().toLowerCase() !==
+                  user.email.toLowerCase()
+              }
+              onClick={async () => {
+                setDeleteError("");
+                setIsDeleting(true);
+                try {
+                  await deleteUser(user.id, deleteConfirmation);
+                  router.push("/users");
+                } catch (cause) {
+                  setDeleteError(
+                    cause instanceof Error
+                      ? cause.message
+                      : "사용자를 삭제하지 못했습니다.",
+                  );
+                  setIsDeleting(false);
+                }
+              }}
+            >
+              {isDeleting ? "삭제 중" : "사용자 영구 삭제"}
+            </button>
+          </div>
+        </Panel>
+      ) : null}
+
       <div className="user-detail-grid">
-        <Panel title="계정 정보" description="민감한 인증 값은 표시하지 않습니다.">
+        <Panel
+          title="계정 정보"
+          description="민감한 인증 값은 표시하지 않습니다."
+        >
           <dl className="definition-grid compact">
             <Definition label="이메일">{user.email}</Definition>
             <Definition label="로그인 방식">
@@ -205,7 +267,10 @@ export default function UserDetailPage() {
           </dl>
         </Panel>
 
-        <Panel title="제품 접근" description="파일럿과 사용자 기본 한도 상태입니다.">
+        <Panel
+          title="제품 접근"
+          description="파일럿과 사용자 기본 한도 상태입니다."
+        >
           <dl className="definition-grid compact">
             <Definition label="파일럿 상태">
               {user.pilotAccess ? (
@@ -222,9 +287,7 @@ export default function UserDetailPage() {
             <Definition label="조직 생성 한도">
               {user.entitlement?.maxOwnedOrganizations === null
                 ? "무제한"
-                : formatNumber(
-                    user.entitlement?.maxOwnedOrganizations ?? 0,
-                  )}
+                : formatNumber(user.entitlement?.maxOwnedOrganizations ?? 0)}
             </Definition>
             <Definition label="일일 조직 생성">
               {formatNumber(
@@ -315,9 +378,7 @@ export default function UserDetailPage() {
                     <td>
                       <Badge>{workspace.role}</Badge>
                     </td>
-                    <td className="nowrap">
-                      {formatDate(workspace.joinedAt)}
-                    </td>
+                    <td className="nowrap">{formatDate(workspace.joinedAt)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -359,12 +420,40 @@ function AdminAccessBadge({ user }: { user: AdminUserDetail }) {
   if (user.adminAccess.role === "SUPER_ADMIN") {
     return <Badge tone="warning">슈퍼어드민</Badge>;
   }
-  return <Badge tone="info">관리자</Badge>;
+  if (user.adminAccess.role === "SENIOR_ADMIN") {
+    return <Badge tone="danger">상위 관리자</Badge>;
+  }
+  if (user.adminAccess.role === "ADMIN") {
+    return <Badge tone="info">일반 관리자</Badge>;
+  }
+  return <Badge>뷰어</Badge>;
 }
 
 function getAdminRoleLabel(user: AdminUserDetail): string {
   if (!user.adminAccess?.isActive) return "일반 사용자";
-  return user.adminAccess.role === "SUPER_ADMIN" ? "슈퍼어드민" : "관리자";
+  return getAdminRoleLabelValue(user.adminAccess.role);
+}
+
+function getAdminRoleLabelValue(role: AdminRole): string {
+  if (role === "SUPER_ADMIN") return "슈퍼어드민";
+  if (role === "SENIOR_ADMIN") return "상위 관리자";
+  if (role === "ADMIN") return "일반 관리자";
+  return "뷰어";
+}
+
+function getAdminRoleRank(role: AdminRole | null): number {
+  if (role === "SUPER_ADMIN") return 4;
+  if (role === "SENIOR_ADMIN") return 3;
+  if (role === "ADMIN") return 2;
+  if (role === "VIEWER") return 1;
+  return 0;
+}
+
+function getAssignableAdminRoles(actorRole: AdminRole | null): AdminRole[] {
+  if (!actorRole) return [];
+  return (["SENIOR_ADMIN", "ADMIN", "VIEWER"] as const).filter(
+    (role) => getAdminRoleRank(actorRole) > getAdminRoleRank(role),
+  );
 }
 
 function getPilotLabel(status: "ACTIVE" | "SUSPENDED" | "EXPIRED"): string {

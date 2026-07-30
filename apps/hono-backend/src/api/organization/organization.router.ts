@@ -38,6 +38,21 @@ orgRouter.on(
   ...orgHandlers.listMembers,
 );
 orgRouter.on(
+  organizationContract.updateMemberRole.method,
+  organizationContract.updateMemberRole.path,
+  ...orgHandlers.updateMemberRole,
+);
+orgRouter.on(
+  organizationContract.transferOwner.method,
+  organizationContract.transferOwner.path,
+  ...orgHandlers.transferOwner,
+);
+orgRouter.on(
+  organizationContract.delete.method,
+  organizationContract.delete.path,
+  ...orgHandlers.deleteOrganization,
+);
+orgRouter.on(
   organizationContract.createInvitation.method,
   organizationContract.createInvitation.path,
   ...orgHandlers.createInvitation,

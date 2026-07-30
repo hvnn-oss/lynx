@@ -81,6 +81,17 @@ export class ImageService {
     return storedImage;
   }
 
+  /** 소유자가 일치하는 프로필 이미지 객체를 저장소에서 삭제합니다. */
+  async delete(
+    ownerType: ProfileImageOwnerType,
+    ownerId: string,
+    storageKey: string | null,
+  ): Promise<void> {
+    if (!storageKey) return;
+    this.assertOwnedProfileKey(ownerType, ownerId, storageKey);
+    await this.storage.deleteObject(storageKey);
+  }
+
   /** 저장소 키를 CloudFront 또는 셀프 호스팅 공개 URL로 변환합니다. */
   getUrl(storageKey: string | null): string | null {
     if (!storageKey) return null;

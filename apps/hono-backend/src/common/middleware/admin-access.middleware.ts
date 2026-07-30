@@ -17,6 +17,7 @@ export const requireAdminAccess = createMiddleware<AppEnv>(
     if (!admin) {
       throw new ForbiddenErrorException(ERROR_CODES.ADMIN_ACCESS_REQUIRED);
     }
+    context.set("currentAdminRole", admin.role);
     await next();
   },
 );

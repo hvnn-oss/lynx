@@ -137,7 +137,23 @@ export function createAdminHandlers() {
           await adminService.updateUserAdminAccess(
             context.get("currentUserId"),
             context.req.valid("param").userId,
-            context.req.valid("json").isAdmin,
+            context.req.valid("json").role,
+            context.get("requestId"),
+          ),
+        ),
+      ),
+  );
+
+  const deleteUser = factory.createHandlers(
+    zValidator("param", adminContract.deleteUser.params!),
+    zValidator("json", adminContract.deleteUser.request),
+    async (context) =>
+      context.json(
+        adminContract.deleteUser.response.parse(
+          await adminService.deleteUser(
+            context.get("currentUserId"),
+            context.req.valid("param").userId,
+            context.req.valid("json"),
             context.get("requestId"),
           ),
         ),
@@ -220,6 +236,7 @@ export function createAdminHandlers() {
     listUsers,
     getUser,
     updateUserAdminAccess,
+    deleteUser,
     listPilotParticipants,
     updatePilotParticipant,
     listPlans,

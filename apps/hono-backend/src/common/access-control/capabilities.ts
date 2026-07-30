@@ -1,6 +1,9 @@
 export const CAPABILITIES = {
   ORGANIZATION_READ: "organization:read",
   ORGANIZATION_UPDATE: "organization:update",
+  ORGANIZATION_DELETE: "organization:delete",
+  ORGANIZATION_MEMBER_MANAGE: "organization-member:manage",
+  ORGANIZATION_OWNER_TRANSFER: "organization-owner:transfer",
   WORKSPACE_CREATE: "workspace:create",
   WORKSPACE_READ: "workspace:read",
   WORKSPACE_UPDATE: "workspace:update",

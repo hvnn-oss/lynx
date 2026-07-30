@@ -174,4 +174,133 @@ describe("OrganizationService", () => {
       `profile-images/organizations/${organizationId}/profile`,
     );
   });
+
+  it("Owner가 하위 멤버 역할을 관리자로 변경한다", async () => {
+    const organizationId = randomUUID();
+    const targetUserId = randomUUID();
+    const target = {
+      id: 7,
+      role: USER_PERMISSIONS.MEMBER,
+      joinedAt: new Date("2026-07-30T00:00:00.000Z"),
+      user: {
+        id: targetUserId,
+        name: "Member",
+        email: "member@example.com",
+        profileImageKey: null,
+      },
+    };
+    const repository = createRepository({
+      findLockedMemberByUserId: jest.fn().mockResolvedValue({
+        role: USER_PERMISSIONS.OWNER,
+        user: { id: input.userId },
+      }),
+      findLockedMemberById: jest.fn().mockResolvedValue(target),
+      saveMembership: jest.fn(),
+      listMembers: jest.fn().mockImplementation(async () => [target]),
+    } as Partial<OrganizationRepository>);
+    const accessControl = {
+      assertOrganizationCapability: jest.fn(),
+    } as unknown as AccessControlService;
+    const service = new OrganizationService(repository, accessControl);
+
+    const result = await service.updateMemberRole({
+      userId: input.userId,
+      organizationId,
+      memberId: target.id,
+      update: { role: USER_PERMISSIONS.ADMIN },
+    });
+
+    expect(target.role).toBe(USER_PERMISSIONS.ADMIN);
+    expect(repository.saveMembership).toHaveBeenCalled();
+    expect(result.items[0]).toMatchObject({
+      userId: targetUserId,
+      role: USER_PERMISSIONS.ADMIN,
+    });
+  });
+
+  it("현재 Owner가 다른 멤버에게 소유권을 위임한다", async () => {
+    const organizationId = randomUUID();
+    const nextOwnerUserId = randomUUID();
+    const organization = {
+      id: organizationId,
+      ownerUserId: input.userId,
+    };
+    const previousOwner = {
+      role: USER_PERMISSIONS.OWNER,
+      user: { id: input.userId },
+    };
+    const nextOwner = {
+      role: USER_PERMISSIONS.MEMBER,
+      user: { id: nextOwnerUserId },
+    };
+    const repository = createRepository({
+      findLockedOrganization: jest.fn().mockResolvedValue(organization),
+      findLockedMemberByUserId: jest
+        .fn()
+        .mockResolvedValueOnce(previousOwner)
+        .mockResolvedValueOnce(nextOwner),
+      saveOwnershipTransfer: jest.fn(),
+    } as Partial<OrganizationRepository>);
+    const accessControl = {
+      assertOrganizationCapability: jest.fn(),
+    } as unknown as AccessControlService;
+    const service = new OrganizationService(repository, accessControl);
+
+    await expect(
+      service.transferOwner({
+        userId: input.userId,
+        organizationId,
+        nextOwnerUserId,
+      }),
+    ).resolves.toEqual({
+      previousOwnerUserId: input.userId,
+      ownerUserId: nextOwnerUserId,
+    });
+    expect(previousOwner.role).toBe(USER_PERMISSIONS.ADMIN);
+    expect(nextOwner.role).toBe(USER_PERMISSIONS.OWNER);
+    expect(organization.ownerUserId).toBe(nextOwnerUserId);
+  });
+
+  it("조직 이름을 확인한 뒤 조직과 프로필 이미지를 삭제한다", async () => {
+    const organizationId = randomUUID();
+    const storageKey = `profile-images/organizations/${organizationId}/image.png`;
+    const repository = createRepository({
+      findProfile: jest.fn().mockResolvedValue({
+        organization: {
+          id: organizationId,
+          name: "Lynx",
+          profileImageKey: storageKey,
+        },
+        role: USER_PERMISSIONS.ADMIN,
+      }),
+      deleteOrganization: jest.fn().mockResolvedValue({
+        deleted: true,
+        profileImageKey: storageKey,
+      }),
+    } as Partial<OrganizationRepository>);
+    const accessControl = {
+      assertOrganizationCapability: jest.fn(),
+    } as unknown as AccessControlService;
+    const images = {
+      delete: jest.fn().mockResolvedValue(undefined),
+    } as unknown as ImageService;
+    const service = new OrganizationService(
+      repository,
+      accessControl,
+      () => images,
+    );
+
+    await expect(
+      service.deleteOrganization({
+        userId: input.userId,
+        organizationId,
+        confirmationName: "Lynx",
+      }),
+    ).resolves.toEqual({ success: true });
+    expect(images.delete).toHaveBeenCalledWith(
+      "organization",
+      organizationId,
+      storageKey,
+    );
+  });
 });

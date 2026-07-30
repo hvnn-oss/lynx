@@ -1,4 +1,4 @@
-import type { ApiKeyScope } from "@repo/constants";
+import type { AdminRole, ApiKeyScope } from "@repo/constants";
 import type { Logger } from "pino";
 
 /** Hono 애플리케이션의 요청 생명주기에서 공유하는 context 타입입니다. */
@@ -10,6 +10,8 @@ export type AppEnv = {
     logger: Logger;
     /** Access Token으로 인증된 사용자 식별자입니다. */
     currentUserId: string;
+    /** 관리자 API에서 확인한 현재 플랫폼 관리자 역할입니다. */
+    currentAdminRole: AdminRole;
     /** 인증 수단으로 확인한 현재 워크스페이스 식별자입니다. */
     currentWorkspaceId: string;
     /** 현재 Workspace API 키 record의 식별자입니다. */

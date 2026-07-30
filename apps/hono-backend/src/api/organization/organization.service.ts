@@ -1,6 +1,7 @@
 import {
   DEFAULT_USER_ENTITLEMENTS,
   ERROR_CODES,
+  USER_PERMISSIONS,
   type OrganizationCreationSource,
 } from "@repo/constants";
 import type { EntityManager } from "typeorm";
@@ -14,6 +15,8 @@ import type { OrganizationResponseDto } from "@repo/dto";
 import type {
   OrganizationProfileResponseDto,
   ProfileImageResponseDto,
+  TransferOrganizationOwnerResponseDto,
+  UpdateOrganizationMemberRoleDto,
   UpdateOrganizationProfileDto,
 } from "@repo/dto";
 import type { CreateOrganizationInput } from "../../common/types/org.js";
@@ -28,6 +31,11 @@ import { getImageService } from "../../provider/image/image-provider.js";
 import type { ImageService } from "../../provider/image/image.service.js";
 import { BadRequestErrorException } from "../../common/exceptions/bad-request.js";
 import { env } from "../../common/config/config.js";
+import {
+  canAssignOrganizationRole,
+  canManageOrganizationMember,
+} from "../../common/access-control/organization-role.policy.js";
+import { logger } from "../../common/logger/logger.js";
 
 type ImageServiceFactory = () => ImageService;
 type DefaultProfileImages = {
@@ -96,6 +104,153 @@ export class OrganizationService {
         }),
       ),
     };
+  }
+
+  /** Owner와 Admin이 자신보다 낮은 조직 멤버의 역할을 변경합니다. */
+  async updateMemberRole(input: {
+    userId: string;
+    organizationId: string;
+    memberId: number;
+    update: UpdateOrganizationMemberRoleDto;
+  }) {
+    await this.accessControl.assertOrganizationCapability({
+      userId: input.userId,
+      organizationId: input.organizationId,
+      capability: CAPABILITIES.ORGANIZATION_MEMBER_MANAGE,
+    });
+
+    await this.repository.transaction(async (manager) => {
+      // 같은 조직의 역할 변경은 항상 행위자 다음 대상 순서로 잠가 교착을 피합니다.
+      const actor = await this.repository.findLockedMemberByUserId(
+        manager,
+        input.organizationId,
+        input.userId,
+      );
+      const target = await this.repository.findLockedMemberById(
+        manager,
+        input.organizationId,
+        input.memberId,
+      );
+      if (!actor || !target) {
+        throw new HTTPException(404, {
+          message: ERROR_CODES.ORGANIZATION_MEMBER_NOT_FOUND,
+        });
+      }
+      if (
+        !canManageOrganizationMember(actor.role, target.role) ||
+        !canAssignOrganizationRole(actor.role, input.update.role)
+      ) {
+        throw new HTTPException(403, {
+          message: ERROR_CODES.ORGANIZATION_MEMBER_ROLE_FORBIDDEN,
+        });
+      }
+
+      target.role = input.update.role;
+      await this.repository.saveMembership(manager, target);
+    });
+
+    return this.listMembers(input);
+  }
+
+  /** 현재 Owner가 다른 조직 멤버에게 소유권을 원자적으로 위임합니다. */
+  async transferOwner(input: {
+    userId: string;
+    organizationId: string;
+    nextOwnerUserId: string;
+  }): Promise<TransferOrganizationOwnerResponseDto> {
+    await this.accessControl.assertOrganizationCapability({
+      userId: input.userId,
+      organizationId: input.organizationId,
+      capability: CAPABILITIES.ORGANIZATION_OWNER_TRANSFER,
+    });
+
+    return this.repository.transaction(async (manager) => {
+      const organization = await this.repository.findLockedOrganization(
+        manager,
+        input.organizationId,
+      );
+      const previousOwner = await this.repository.findLockedMemberByUserId(
+        manager,
+        input.organizationId,
+        input.userId,
+      );
+      const nextOwner = await this.repository.findLockedMemberByUserId(
+        manager,
+        input.organizationId,
+        input.nextOwnerUserId,
+      );
+      if (!organization || !previousOwner || !nextOwner) {
+        throw new HTTPException(404, {
+          message: ERROR_CODES.ORGANIZATION_MEMBER_NOT_FOUND,
+        });
+      }
+      if (
+        previousOwner.user.id === nextOwner.user.id ||
+        previousOwner.role !== USER_PERMISSIONS.OWNER ||
+        organization.ownerUserId !== previousOwner.user.id
+      ) {
+        throw new HTTPException(403, {
+          message: ERROR_CODES.ORGANIZATION_OWNER_TRANSFER_FORBIDDEN,
+        });
+      }
+
+      previousOwner.role = USER_PERMISSIONS.ADMIN;
+      nextOwner.role = USER_PERMISSIONS.OWNER;
+      organization.ownerUserId = nextOwner.user.id;
+      await this.repository.saveOwnershipTransfer(
+        manager,
+        organization,
+        previousOwner,
+        nextOwner,
+      );
+      return {
+        previousOwnerUserId: previousOwner.user.id,
+        ownerUserId: nextOwner.user.id,
+      };
+    });
+  }
+
+  /** 조직 이름 확인 후 Owner 또는 Admin 요청으로 조직과 하위 데이터를 삭제합니다. */
+  async deleteOrganization(input: {
+    userId: string;
+    organizationId: string;
+    confirmationName: string;
+  }): Promise<{ success: true }> {
+    await this.accessControl.assertOrganizationCapability({
+      userId: input.userId,
+      organizationId: input.organizationId,
+      capability: CAPABILITIES.ORGANIZATION_DELETE,
+    });
+    const current = await this.findProfile(input);
+    if (current.organization.name !== input.confirmationName) {
+      throw new HTTPException(400, {
+        message: ERROR_CODES.ORGANIZATION_DELETE_CONFIRMATION_MISMATCH,
+      });
+    }
+
+    const result = await this.repository.deleteOrganization(
+      input.organizationId,
+    );
+    if (!result.deleted) {
+      throw new NotFoundErrorException("ORGANIZATION_NOT_FOUND");
+    }
+    if (result.profileImageKey) {
+      await Promise.resolve()
+        .then(() =>
+          this.images().delete(
+            "organization",
+            input.organizationId,
+            result.profileImageKey,
+          ),
+        )
+        .catch((error: unknown) => {
+          logger.warn(
+            { err: error, organizationId: input.organizationId },
+            "deleted organization profile image cleanup failed",
+          );
+        });
+    }
+    return { success: true };
   }
 
   /** OWNER와 ADMIN이 조직 이름을 변경할 수 있게 합니다. */

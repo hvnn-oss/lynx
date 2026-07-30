@@ -216,7 +216,7 @@ export interface OrganizationList {
   nextCursor: string | null;
 }
 
-export type AdminRole = "ADMIN" | "SUPER_ADMIN";
+export type AdminRole = "SUPER_ADMIN" | "SENIOR_ADMIN" | "ADMIN" | "VIEWER";
 export type AdminUserAccessFilter = "NONE" | AdminRole;
 
 export interface AdminUserSummary {
@@ -273,7 +273,7 @@ export interface AdminOverview {
     id: string;
     name: string;
     email: string;
-    role: string;
+    role: AdminRole;
   };
   metrics: {
     organizationCount: number;

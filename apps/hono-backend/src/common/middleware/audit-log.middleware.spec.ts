@@ -72,6 +72,34 @@ describe("describeAuditedMutation", () => {
       organizationId: undefined,
     });
   });
+
+  it("조직 멤버 역할 변경, Owner 위임, 조직 삭제를 구분한다", () => {
+    const organizationId = "5f6c0d7a-b194-4b27-a85f-a9bd0415f12a";
+    expect(
+      describeAuditedMutation(
+        "PATCH",
+        `/organization/${organizationId}/members/7/role`,
+      ),
+    ).toMatchObject({
+      action: "organization_member.role_change",
+      targetId: "7",
+      organizationId,
+    });
+    expect(
+      describeAuditedMutation("POST", `/organization/${organizationId}/owner`),
+    ).toMatchObject({
+      action: "organization_owner.transfer",
+      targetId: organizationId,
+      organizationId,
+    });
+    expect(
+      describeAuditedMutation("DELETE", `/organization/${organizationId}`),
+    ).toMatchObject({
+      action: "organization.delete",
+      targetId: organizationId,
+      organizationId,
+    });
+  });
 });
 
 describe("audit payload capture", () => {

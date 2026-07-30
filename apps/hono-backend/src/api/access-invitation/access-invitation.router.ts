@@ -1,7 +1,9 @@
+import { ADMIN_ROLES } from "@repo/constants";
 import { accessContract } from "@repo/contract";
 import { Hono } from "hono";
 import { requireAdminAccess } from "../../common/middleware/admin-access.middleware.js";
 import { requireAccessToken } from "../../common/middleware/access-token.middleware.js";
+import { requireAdminRole } from "../../common/middleware/admin-role.middleware.js";
 import type { AppEnv } from "../../common/types/app-env.js";
 import { createAccessInvitationHandlers } from "./access-invitation.handler.js";
 
@@ -15,6 +17,7 @@ accessInvitationRouter.use("*", requireAdminAccess);
 accessInvitationRouter.on(
   accessContract.createInvitation.method,
   accessContract.createInvitation.path,
+  requireAdminRole(ADMIN_ROLES.ADMIN),
   ...handlers.create,
 );
 accessInvitationRouter.on(
@@ -25,5 +28,6 @@ accessInvitationRouter.on(
 accessInvitationRouter.on(
   accessContract.revokeInvitation.method,
   accessContract.revokeInvitation.path,
+  requireAdminRole(ADMIN_ROLES.ADMIN),
   ...handlers.revoke,
 );

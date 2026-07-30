@@ -91,6 +91,61 @@ export function createOrgHandlers() {
     },
   );
 
+  /** 조직 관리자가 하위 역할의 멤버 권한을 변경합니다. */
+  const updateMemberRole = factory.createHandlers(
+    zValidator("param", organizationContract.updateMemberRole.params!),
+    zValidator("json", organizationContract.updateMemberRole.request),
+    async (c) => {
+      const { organizationId, memberId } = c.req.valid("param");
+      return c.json(
+        organizationContract.updateMemberRole.response.parse(
+          await orgService.updateMemberRole({
+            userId: c.get("currentUserId"),
+            organizationId,
+            memberId,
+            update: c.req.valid("json"),
+          }),
+        ),
+      );
+    },
+  );
+
+  /** 현재 Owner가 선택한 조직 멤버에게 소유권을 위임합니다. */
+  const transferOwner = factory.createHandlers(
+    zValidator("param", organizationContract.transferOwner.params!),
+    zValidator("json", organizationContract.transferOwner.request),
+    async (c) => {
+      const { organizationId } = c.req.valid("param");
+      return c.json(
+        organizationContract.transferOwner.response.parse(
+          await orgService.transferOwner({
+            userId: c.get("currentUserId"),
+            organizationId,
+            nextOwnerUserId: c.req.valid("json").userId,
+          }),
+        ),
+      );
+    },
+  );
+
+  /** 조직 이름을 재확인한 뒤 조직과 하위 데이터를 삭제합니다. */
+  const deleteOrganization = factory.createHandlers(
+    zValidator("param", organizationContract.delete.params!),
+    zValidator("json", organizationContract.delete.request),
+    async (c) => {
+      const { organizationId } = c.req.valid("param");
+      return c.json(
+        organizationContract.delete.response.parse(
+          await orgService.deleteOrganization({
+            userId: c.get("currentUserId"),
+            organizationId,
+            confirmationName: c.req.valid("json").confirmationName,
+          }),
+        ),
+      );
+    },
+  );
+
   /** 조직 관리자가 새 팀 초대를 발급합니다. */
   const createInvitation = factory.createHandlers(
     zValidator("param", organizationContract.createInvitation.params!),
@@ -164,6 +219,9 @@ export function createOrgHandlers() {
     listInvitations,
     updateProfile,
     listMembers,
+    updateMemberRole,
+    transferOwner,
+    deleteOrganization,
     revokeInvitation,
     uploadProfileImage,
   };

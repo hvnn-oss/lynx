@@ -1,5 +1,4 @@
 import {
-  ADMIN_ROLES,
   ISSUE_STATUS,
   PRODUCT_ACCESS_CAPABILITY,
   PRODUCT_ACCESS_GRANT_STATUS,
@@ -94,6 +93,19 @@ export interface RawAdminUserWorkspace {
   role: string;
   joinedAt: Date;
 }
+
+export type DeleteAdminUserResult =
+  | { status: "NOT_FOUND" }
+  | { status: "ACTIVE_ADMIN" }
+  | {
+      status: "DELETED";
+      userProfileImageKey: string | null;
+      organizationImages: Array<{
+        organizationId: string;
+        profileImageKey: string;
+      }>;
+      deletedOrganizationIds: string[];
+    };
 
 export interface ApiKeyFilters {
   search?: string;
@@ -379,7 +391,11 @@ export class AdminRepository {
     const query = this.dataSource
       .getRepository(WorkspaceApiKeyEntity)
       .createQueryBuilder("apiKey")
-      .innerJoin(WorkspaceEntity, "workspace", "workspace.id = apiKey.workspaceId")
+      .innerJoin(
+        WorkspaceEntity,
+        "workspace",
+        "workspace.id = apiKey.workspaceId",
+      )
       .innerJoin("workspace.organization", "organization")
       .select("COUNT(apiKey.id)", "total")
       .addSelect(
@@ -434,10 +450,7 @@ export class AdminRepository {
       )
       .addSelect('COALESCE(SUM(usage."requestBytes"), 0)', "requestBytes")
       .addSelect('COALESCE(SUM(usage."responseBytes"), 0)', "responseBytes")
-      .addSelect(
-        'COALESCE(SUM(usage."totalLatencyMs"), 0)',
-        "totalLatencyMs",
-      );
+      .addSelect('COALESCE(SUM(usage."totalLatencyMs"), 0)', "totalLatencyMs");
     this.applyOpenApiUsageFilters(query, filters);
     return query.getRawOne<RawOpenApiUsageSummary>();
   }
@@ -528,7 +541,7 @@ export class AdminRepository {
       .andWhere("admin.isActive = true")
       .getRawOne<{
         id: string;
-        role: string;
+        role: AdminRole;
         name: string;
         email: string;
       }>();
@@ -605,9 +618,7 @@ export class AdminRepository {
       .then((rows) => [...new Set(rows.map((row) => row.provider))]);
   }
 
-  listUserOrganizations(
-    userId: string,
-  ): Promise<RawAdminUserOrganization[]> {
+  listUserOrganizations(userId: string): Promise<RawAdminUserOrganization[]> {
     return this.dataSource
       .getRepository(OrganizationUserEntity)
       .createQueryBuilder("membership")
@@ -645,46 +656,119 @@ export class AdminRepository {
       .findOneBy({ userId });
   }
 
-  getUserPilotAccess(
-    userId: string,
-  ): Promise<RawPilotParticipant | undefined> {
+  getUserPilotAccess(userId: string): Promise<RawPilotParticipant | undefined> {
     return this.createPilotParticipantQuery()
       .andWhere("user.id = :userId", { userId })
       .getRawOne<RawPilotParticipant>();
   }
 
-  /**
-   * 기존 관리자 행은 다시 활성화하고, 처음 권한을 받는 사용자는 ADMIN으로 등록합니다.
-   */
-  async setUserAdminAccess(userId: string, isAdmin: boolean): Promise<boolean> {
+  /** 기존 관리자 행을 갱신하고 null 역할이면 운영 콘솔 접근을 비활성화합니다. */
+  async setUserAdminRole(
+    userId: string,
+    role: AdminRole | null,
+    expectedRole: AdminRole | null,
+  ): Promise<"UPDATED" | "NOT_FOUND" | "CONFLICT"> {
     return this.dataSource.transaction(async (manager) => {
-      const user = await manager.getRepository(UserEntity).findOneBy({
-        id: userId,
-      });
-      if (!user) return false;
+      const user = await manager
+        .getRepository(UserEntity)
+        .createQueryBuilder("targetUser")
+        .where("targetUser.id = :userId", { userId })
+        .setLock("pessimistic_write")
+        .getOne();
+      if (!user) return "NOT_FOUND";
 
       const adminRepository = manager.getRepository(AdminUserEntity);
-      const admin = await adminRepository.findOne({
-        where: { user: { id: userId } },
-        relations: { user: true },
-        order: { createdAt: "DESC" },
-      });
+      const admin = await adminRepository
+        .createQueryBuilder("targetAdmin")
+        .where('"targetAdmin"."userId" = :userId', { userId })
+        .orderBy("targetAdmin.createdAt", "DESC")
+        .setLock("pessimistic_write")
+        .getOne();
+      const currentRole = admin?.isActive ? admin.role : null;
+      if (currentRole !== expectedRole) return "CONFLICT";
+
       if (admin) {
-        admin.isActive = isAdmin;
-        if (isAdmin) admin.role = ADMIN_ROLES.ADMIN;
+        admin.isActive = role !== null;
+        if (role) admin.role = role;
         await adminRepository.save(admin);
-        return true;
+        return "UPDATED";
       }
-      if (!isAdmin) return true;
+      if (!role) return "UPDATED";
 
       await adminRepository.save(
         adminRepository.create({
           user,
-          role: ADMIN_ROLES.ADMIN,
+          role,
           isActive: true,
         }),
       );
-      return true;
+      return "UPDATED";
+    });
+  }
+
+  /**
+   * 일반 사용자 계정과 그 사용자가 소유한 조직을 한 트랜잭션에서 삭제합니다.
+   * 활성 관리자 계정은 서비스 계층 검사를 우회해도 삭제되지 않습니다.
+   */
+  async deleteNonAdminUser(userId: string): Promise<DeleteAdminUserResult> {
+    return this.dataSource.transaction(async (manager) => {
+      const user = await manager
+        .getRepository(UserEntity)
+        .createQueryBuilder("targetUser")
+        .where("targetUser.id = :userId", { userId })
+        .setLock("pessimistic_write")
+        .getOne();
+      if (!user) return { status: "NOT_FOUND" };
+
+      const activeAdmin = await manager
+        .getRepository(AdminUserEntity)
+        .createQueryBuilder("targetAdmin")
+        .where('"targetAdmin"."userId" = :userId', { userId })
+        .andWhere("targetAdmin.isActive = true")
+        .setLock("pessimistic_write")
+        .getOne();
+      if (activeAdmin) return { status: "ACTIVE_ADMIN" };
+
+      const organizationRepository = manager.getRepository(OrganizationEntity);
+      const ownedOrganizations = await organizationRepository.findBy({
+        ownerUserId: userId,
+      });
+      const deletedOrganizationIds = ownedOrganizations.map(
+        (organization) => organization.id,
+      );
+      const organizationImages = ownedOrganizations.flatMap((organization) =>
+        organization.profileImageKey
+          ? [
+              {
+                organizationId: organization.id,
+                profileImageKey: organization.profileImageKey,
+              },
+            ]
+          : [],
+      );
+      if (ownedOrganizations.length > 0) {
+        await organizationRepository.remove(ownedOrganizations);
+      }
+
+      // 소유권이 위임된 조직은 생성자 FK만 현재 Owner로 넘겨 계정 삭제를 허용합니다.
+      const createdOrganizations = await organizationRepository.findBy({
+        createdByUserId: userId,
+      });
+      for (const organization of createdOrganizations) {
+        await organizationRepository.update(
+          { id: organization.id },
+          { createdByUserId: organization.ownerUserId },
+        );
+      }
+
+      const userProfileImageKey = user.profileImageKey;
+      await manager.getRepository(UserEntity).remove(user);
+      return {
+        status: "DELETED",
+        userProfileImageKey,
+        organizationImages,
+        deletedOrganizationIds,
+      };
     });
   }
 
@@ -1337,9 +1421,7 @@ export class AdminRepository {
           subquery
             .select("COUNT(organizationMembership.id)")
             .from(OrganizationUserEntity, "organizationMembership")
-            .where(
-              '"organizationMembership"."userId" = "listedUser"."id"',
-            ),
+            .where('"organizationMembership"."userId" = "listedUser"."id"'),
         "organizationCount",
       )
       .addSelect(
@@ -1359,9 +1441,17 @@ export class AdminRepository {
     return this.dataSource
       .getRepository(WorkspaceApiKeyEntity)
       .createQueryBuilder("apiKey")
-      .innerJoin(WorkspaceEntity, "workspace", "workspace.id = apiKey.workspaceId")
+      .innerJoin(
+        WorkspaceEntity,
+        "workspace",
+        "workspace.id = apiKey.workspaceId",
+      )
       .innerJoin("workspace.organization", "organization")
-      .leftJoin(UserEntity, "createdBy", "createdBy.id = apiKey.createdByUserId")
+      .leftJoin(
+        UserEntity,
+        "createdBy",
+        "createdBy.id = apiKey.createdByUserId",
+      )
       .select("apiKey.id", "id")
       .addSelect("apiKey.name", "name")
       .addSelect("apiKey.prefix", "prefix")
@@ -1472,12 +1562,12 @@ export class AdminRepository {
     return this.dataSource
       .getRepository(OpenApiApiKeyUsageHourlyEntity)
       .createQueryBuilder("usage")
+      .innerJoin(WorkspaceApiKeyEntity, "apiKey", "apiKey.id = usage.apiKeyId")
       .innerJoin(
-        WorkspaceApiKeyEntity,
-        "apiKey",
-        "apiKey.id = usage.apiKeyId",
+        WorkspaceEntity,
+        "workspace",
+        "workspace.id = usage.workspaceId",
       )
-      .innerJoin(WorkspaceEntity, "workspace", "workspace.id = usage.workspaceId")
       .innerJoin("workspace.organization", "organization");
   }
 

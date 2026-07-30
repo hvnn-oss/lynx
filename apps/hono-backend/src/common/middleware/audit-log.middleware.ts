@@ -106,7 +106,10 @@ function findManagedResource(
     ["integrations", "integration"],
     ["invitations", "invitation"],
     ["invite", "invitation"],
+    ["members", "organization_member"],
+    ["owner", "organization_owner"],
     ["profile", "organization_profile"],
+    ["organization", "organization"],
   ] as const;
   const found = resources.find(([segment]) => segments.includes(segment));
   if (found) return { segment: found[0], type: found[1] };
@@ -154,6 +157,8 @@ function findOperation(
 ): string | null {
   const tail = segments.slice(segments.indexOf(resourceSegment) + 1);
   if (tail.includes("simulate")) return null;
+  if (resourceSegment === "owner") return "transfer";
+  if (tail.includes("role")) return "role_change";
   if (tail.includes("accept")) return "accept";
   if (tail.includes("retry")) return "retry";
   if (tail.includes("activate")) return "activate";

@@ -26,10 +26,12 @@ import {
   AdminPlanSchema,
   AdminPlanUpdateSchema,
   AdminUserAccessUpdateSchema,
+  AdminUserDeleteSchema,
   AdminUserDetailSchema,
   AdminUserListResponseSchema,
   AdminUserParamsSchema,
   AdminUserQuerySchema,
+  SuccessResponseSchema,
 } from "@repo/dto";
 import { defineEndpoint } from "./util/endpoint.js";
 
@@ -114,6 +116,13 @@ export const adminContract = {
     params: AdminUserParamsSchema,
     request: AdminUserAccessUpdateSchema,
     response: AdminUserDetailSchema,
+  }),
+  deleteUser: defineEndpoint({
+    method: "DELETE",
+    path: "/users/:userId",
+    params: AdminUserParamsSchema,
+    request: AdminUserDeleteSchema,
+    response: SuccessResponseSchema,
   }),
   listPilotParticipants: defineEndpoint({
     method: "GET",

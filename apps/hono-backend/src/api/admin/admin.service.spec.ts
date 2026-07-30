@@ -103,9 +103,7 @@ function participantRow(
   };
 }
 
-function apiKeyRow(
-  overrides: Partial<RawAdminApiKey> = {},
-): RawAdminApiKey {
+function apiKeyRow(overrides: Partial<RawAdminApiKey> = {}): RawAdminApiKey {
   return {
     id: "00000000-0000-4000-8000-000000000007",
     name: "Production SDK",
@@ -126,9 +124,7 @@ function apiKeyRow(
   };
 }
 
-function userRow(
-  overrides: Partial<RawAdminUser> = {},
-): RawAdminUser {
+function userRow(overrides: Partial<RawAdminUser> = {}): RawAdminUser {
   return {
     id: "00000000-0000-4000-8000-000000000009",
     name: "Test User",
@@ -180,7 +176,8 @@ function createService() {
     listUserWorkspaces: jest.fn().mockResolvedValue([]),
     getUserEntitlement: jest.fn().mockResolvedValue(null),
     getUserPilotAccess: jest.fn().mockResolvedValue(undefined),
-    setUserAdminAccess: jest.fn(),
+    setUserAdminRole: jest.fn(),
+    deleteNonAdminUser: jest.fn(),
     listPilotParticipants: jest.fn(),
     getPilotParticipant: jest.fn(),
     updatePilotParticipant: jest.fn(),
@@ -568,23 +565,24 @@ describe("AdminService", () => {
       .mockResolvedValueOnce(
         userRow({ adminRole: "ADMIN", adminIsActive: true }),
       );
-    repository.setUserAdminAccess.mockResolvedValue(true);
+    repository.setUserAdminRole.mockResolvedValue("UPDATED");
 
     const result = await service.updateUserAdminAccess(
       actorId,
       userRow().id,
-      true,
+      "ADMIN",
       "request-1",
     );
 
     expect(result.adminAccess).toEqual({ role: "ADMIN", isActive: true });
-    expect(repository.setUserAdminAccess).toHaveBeenCalledWith(
+    expect(repository.setUserAdminRole).toHaveBeenCalledWith(
       userRow().id,
-      true,
+      "ADMIN",
+      null,
     );
     expect(recorder.record).toHaveBeenCalledWith(
       expect.objectContaining({
-        action: "admin_user.grant",
+        action: "admin_user.role_change",
         targetType: "user",
         targetId: userRow().id,
         requestId: "request-1",
@@ -592,7 +590,7 @@ describe("AdminService", () => {
     );
   });
 
-  it("일반 관리자는 다른 사용자에게 관리자 권한을 부여할 수 없다", async () => {
+  it("일반 관리자는 자신과 같은 관리자 등급을 부여할 수 없다", async () => {
     const { service, repository } = createService();
     repository.getCurrentAdmin.mockResolvedValue({
       id: actorId,
@@ -600,14 +598,15 @@ describe("AdminService", () => {
       name: "Admin",
       email: "admin@lynx.local",
     });
+    repository.getUser.mockResolvedValue(userRow());
 
     await expect(
-      service.updateUserAdminAccess(actorId, userRow().id, true),
+      service.updateUserAdminAccess(actorId, userRow().id, "ADMIN"),
     ).rejects.toMatchObject({
       status: 403,
-      message: ERROR_CODES.ADMIN_SUPER_ADMIN_REQUIRED,
+      message: ERROR_CODES.ADMIN_ROLE_ASSIGNMENT_FORBIDDEN,
     });
-    expect(repository.setUserAdminAccess).not.toHaveBeenCalled();
+    expect(repository.setUserAdminRole).not.toHaveBeenCalled();
   });
 
   it("사용자 관리 화면에서 슈퍼어드민 권한을 변경하지 않는다", async () => {
@@ -623,11 +622,44 @@ describe("AdminService", () => {
     );
 
     await expect(
-      service.updateUserAdminAccess(actorId, userRow().id, false),
+      service.updateUserAdminAccess(actorId, userRow().id, null),
     ).rejects.toMatchObject({
-      status: 409,
-      message: ERROR_CODES.ADMIN_SUPER_ADMIN_PROTECTED,
+      status: 403,
+      message: ERROR_CODES.ADMIN_ROLE_ASSIGNMENT_FORBIDDEN,
     });
-    expect(repository.setUserAdminAccess).not.toHaveBeenCalled();
+    expect(repository.setUserAdminRole).not.toHaveBeenCalled();
+  });
+
+  it("상위 관리자가 일반 사용자와 소유 조직을 삭제하고 감사 기록을 남긴다", async () => {
+    const { service, repository, recorder } = createService();
+    repository.getCurrentAdmin.mockResolvedValue({
+      id: actorId,
+      role: "SENIOR_ADMIN",
+      name: "Senior",
+      email: "senior@lynx.local",
+    });
+    repository.getUser.mockResolvedValue(userRow());
+    repository.deleteNonAdminUser.mockResolvedValue({
+      status: "DELETED",
+      userProfileImageKey: null,
+      organizationImages: [],
+      deletedOrganizationIds: [organizationRow().id],
+    });
+
+    await expect(
+      service.deleteUser(
+        actorId,
+        userRow().id,
+        { confirmationEmail: userRow().email },
+        "request-1",
+      ),
+    ).resolves.toEqual({ success: true });
+    expect(repository.deleteNonAdminUser).toHaveBeenCalledWith(userRow().id);
+    expect(recorder.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "user.delete",
+        targetId: userRow().id,
+      }),
+    );
   });
 });

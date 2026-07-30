@@ -12,7 +12,10 @@
   "invitationHistory": "Invitation history",
   "expires": "Expires {date}",
   "revoke": "Revoke invitation",
+  "transferOwner": "Transfer owner",
+  "transferOwnerConfirmation": "Transfer ownership to {name}? Your role will change to Admin.",
   "roles": {
+    "OWNER": "Owner",
     "ADMIN": "Admin",
     "MEMBER": "Member",
     "VIEWER": "Viewer"
