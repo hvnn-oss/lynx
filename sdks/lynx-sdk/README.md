@@ -2,10 +2,16 @@
 
 TypeScript SDK for tracing, debugging, and governing AI agent runs with Lynx.
 
+## Pilot status
+
+> Lynx is currently a pilot-stage project. APIs and behavior may change before
+> the general release. If you want to join the pilot or evaluate Lynx for your
+> service, contact [partners@hvnn.me](mailto:partners@hvnn.me).
+
 Lynx records what happened during an agent run: user input, agent decisions,
 LLM calls, tool calls, context loading, policy decisions, retries, errors, and
-the final outcome. The SDK is designed for production services, so event
-delivery failures do not stop your application by default.
+the final outcome. The SDK isolates event delivery failures from your
+application by default.
 
 This SDK is designed for Node.js server-side runtimes. Browser and edge runtime
 support are not guaranteed yet.

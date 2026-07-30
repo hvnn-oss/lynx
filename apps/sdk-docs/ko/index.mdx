@@ -5,11 +5,21 @@ description: "TypeScript SDK 또는 언어 독립 OpenAPI로 AI 에이전트를 
 
 Lynx는 하나의 사용자 요청이 LLM 호출, 도구 호출, 정책 판단, 재시도, 최종 결과로 이어지는 과정을 기록합니다. TypeScript SDK를 사용하거나 어떤 실행 환경이든 HTTP로 연결할 수 있습니다.
 
+<Warning>
+  Lynx는 현재 파일럿 단계의 프로젝트이며, 정식 출시 전까지 API와 동작이 변경될
+  수 있습니다. 파일럿 참여 또는 서비스 도입 테스트를 원하면
+  [partners@hvnn.me](mailto:partners@hvnn.me)로 연락해 주세요.
+</Warning>
+
 <CardGroup cols={2}>
   <Card title="TypeScript 빠른 시작" icon="code" href="./sdk/quickstart">
     `@lynxops/sdk`를 설치하고 첫 번째 에이전트 Run을 기록합니다.
   </Card>
-  <Card title="OpenAPI 빠른 시작" icon="brackets-curly" href="./openapi/overview">
+  <Card
+    title="OpenAPI 빠른 시작"
+    icon="brackets-curly"
+    href="./openapi/overview"
+  >
     Python, Go, Java, Rust 등 다른 언어에서 연동 기능이나 SDK를 구현합니다.
   </Card>
 </CardGroup>
