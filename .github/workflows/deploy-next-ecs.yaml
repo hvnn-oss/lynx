@@ -117,8 +117,8 @@ jobs:
 
       - name: Check application
         run: |
-          pnpm --filter "${PACKAGE_FILTER}" lint
-          pnpm --filter "${PACKAGE_FILTER}" build
+          pnpm exec turbo run lint --filter="${PACKAGE_FILTER}"
+          pnpm exec turbo run build --filter="${PACKAGE_FILTER}"
 
       - name: Test application
         if: inputs.run_tests

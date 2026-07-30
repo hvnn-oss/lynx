@@ -15,7 +15,7 @@ RUN pnpm install --frozen-lockfile --ignore-scripts
 
 ARG BACKEND_URL="http://hono-backend:8000"
 ENV BACKEND_URL="$BACKEND_URL"
-RUN pnpm --filter lynx-dashboard build
+RUN pnpm exec turbo run build --filter=lynx-dashboard
 
 FROM node:24-bookworm-slim AS runner
 
