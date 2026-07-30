@@ -69,10 +69,30 @@ export class IssueRecordService {
 
     try {
       if (claimed.record.recordKind === "RECOVERY") {
-        await this.repository.defer(
-          claimed.record.id,
-          new Date(Date.now() + 5 * 60_000),
-        );
+        const context = await this.repository.resolveContext(claimed.record);
+        if (!context.agent) {
+          await this.repository.defer(
+            claimed.record.id,
+            new Date(Date.now() + 30_000),
+          );
+          return true;
+        }
+        await this.issues.recover({
+          workspaceId: claimed.record.workspaceId,
+          environment: claimed.record.environment,
+          agentId: context.agent.id,
+          policyId: this.readString(claimed.record.reportedPolicyId),
+          promptVersionId: claimed.record.reportedPromptVersionId ?? undefined,
+          detectionType: claimed.record.detectionType,
+          toolName: this.readString(claimed.record.payload.toolName),
+          detectedAt: claimed.record.detectedAt,
+          recordId: claimed.record.id,
+          reporterName: claimed.record.sdkInstanceId,
+          healthyObservationCount: this.readRecoveryNumber(
+            claimed.record.payload.healthyObservationCount,
+          ),
+        });
+        await this.repository.completeRecovery(claimed.record.id);
         return true;
       }
 
@@ -282,6 +302,13 @@ export class IssueRecordService {
   /** 외부 payload의 문자열 필드를 안전하게 읽습니다. */
   private readString(value: unknown): string | undefined {
     return typeof value === "string" && value.length > 0 ? value : undefined;
+  }
+
+  /** 숫자 payload 값을 안전하게 좁혀 Recovery 근거에 사용합니다. */
+  private readRecoveryNumber(value: unknown): number | undefined {
+    return typeof value === "number" && Number.isFinite(value)
+      ? value
+      : undefined;
   }
 
   /** 외부 payload에서 문자열 배열만 남깁니다. */

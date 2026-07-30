@@ -60,32 +60,33 @@ await lynx.run(
 
 ## Semantic helper
 
-| Method | 목적 |
-| --- | --- |
-| `userInput(input, metadata?)` | 사용자 입력을 기록합니다. |
-| `decision(reasonOrDecision, options?)` | 에이전트 판단을 기록합니다. |
-| `context(labelOrData, dataOrMetadata?, metadata?)` | 검색되었거나 구성된 컨텍스트를 기록합니다. |
-| `memory(operation, data, metadata?)` | 메모리 접근을 기록합니다. |
-| `outcome(options)` | 명시적인 기술 결과와 비즈니스 결과를 기록합니다. 생략하면 루트 `run()`이 기술 결과를 자동으로 기록합니다. |
-| `setAttributes(attributes)` | 현재 실행의 이후 이벤트에 공통 속성을 붙입니다. |
-| `annotate(label, payload)` | 커스텀 breadcrumb를 기록합니다. |
-| `log(label, payload)` | 커스텀 context 이벤트를 기록합니다. |
+| Method                                             | 목적                                                                                                      |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `userInput(input, metadata?)`                      | 사용자 입력을 기록합니다.                                                                                 |
+| `decision(reasonOrDecision, options?)`             | 에이전트 판단을 기록합니다.                                                                               |
+| `context(labelOrData, dataOrMetadata?, metadata?)` | 검색되었거나 구성된 컨텍스트를 기록합니다.                                                                |
+| `memory(operation, data, metadata?)`               | 메모리 접근을 기록합니다.                                                                                 |
+| `outcome(options)`                                 | 명시적인 기술 결과와 비즈니스 결과를 기록합니다. 생략하면 루트 `run()`이 기술 결과를 자동으로 기록합니다. |
+| `setAttributes(attributes)`                        | 현재 실행의 이후 이벤트에 공통 속성을 붙입니다.                                                           |
+| `annotate(label, payload)`                         | 커스텀 breadcrumb를 기록합니다.                                                                           |
+| `log(label, payload)`                              | 커스텀 context 이벤트를 기록합니다.                                                                       |
 
 ## LLM과 도구 helper
 
-| Method | 목적 |
-| --- | --- |
-| `instrumentLLM(client, options?)` | LLM 클라이언트 객체를 감쌉니다. |
-| `instrumentTool(name, fn, metadata?)` | 도구 함수를 감쌉니다. |
-| `firewallTool(name, fn, options?)` | 도구 함수를 로컬 정책 평가와 함께 감쌉니다. |
+| Method                                | 목적                                                             |
+| ------------------------------------- | ---------------------------------------------------------------- |
+| `instrumentLLM(client, options?)`     | LLM 클라이언트 객체를 감쌉니다.                                  |
+| `guardLLM(client, options?)`          | LLM 입력, 출력, 스트리밍 결과를 로컬 정책으로 검사하며 감쌉니다. |
+| `instrumentTool(name, fn, metadata?)` | 도구 함수를 감쌉니다.                                            |
+| `firewallTool(name, fn, options?)`    | 도구 함수를 로컬 정책 평가와 함께 감쌉니다.                      |
 
 ## 전송 helper
 
-| Method | 목적 |
-| --- | --- |
-| `flush()` | 큐에 쌓인 이벤트를 지금 전송합니다. |
-| `shutdown(options?)` | 타이머를 정리하고 종료 전 마지막 전송을 시도합니다. |
-| `getStatus()` | 로컬 큐, 서킷 브레이커, 전송 상태를 반환합니다. |
+| Method               | 목적                                                                |
+| -------------------- | ------------------------------------------------------------------- |
+| `flush()`            | 큐에 쌓인 이벤트를 지금 전송합니다.                                 |
+| `shutdown(options?)` | 타이머를 정리하고 종료 전 마지막 전송을 시도합니다.                 |
+| `getStatus()`        | 이벤트 전송, 이슈 기록, 서킷 브레이커, 실행 설정 상태를 반환합니다. |
 
 ## `LynxPolicyError`
 
@@ -103,32 +104,36 @@ if (error instanceof LynxPolicyError) {
 
 ## 설정 옵션
 
-| Option | 설명 |
-| --- | --- |
-| `clientId` | 필수 클라이언트 또는 서비스 이름입니다. |
-| `endpoint` | Lynx API endpoint입니다. 기본값은 `https://api.lynxops.co`입니다. |
-| `workspaceId` | 이벤트에 붙일 기본 workspace ID입니다. |
-| `agentId` | 이벤트에 붙일 기본 agent ID입니다. |
-| `apiKey` | 이벤트 전송에 사용하는 API key입니다. |
-| `appVersion` | 애플리케이션 버전 메타데이터입니다. |
-| `deploymentId` | 배포 ID 메타데이터입니다. |
-| `environment` | 실행 환경 메타데이터입니다. |
-| `policyVersion` | 기본 정책 버전 메타데이터입니다. |
-| `sampleRate` | `0`부터 `1`까지의 기록 비율입니다. |
-| `captureInput` | 입력 필드를 기록할 수 있는지 정합니다. |
-| `captureOutput` | 출력 필드를 기록할 수 있는지 정합니다. |
-| `captureMode` | `full`, `metadata-only`, `smart` 중 하나입니다. |
-| `maxPayloadLength` | `smart` 모드에서 보관할 문자열 최대 길이입니다. |
-| `delivery.mode` | `BACKGROUND` 또는 `BLOCKING`입니다. |
-| `delivery.timeoutMs` | 한 번의 전송 요청 timeout입니다. |
-| `delivery.flushOnRunEnd` | `run()` callback이 끝난 뒤 flush를 시도할지 정합니다. |
-| `delivery.flushIntervalMs` | 백그라운드 전송 주기입니다. |
-| `delivery.batchSize` | 이벤트 묶음 크기입니다. |
-| `delivery.maxQueueSize` | 메모리에 보관할 최대 이벤트 수입니다. |
-| `delivery.overflowStrategy` | `DROP_OLDEST` 또는 `DROP_NEWEST`입니다. |
-| `circuitBreaker.enabled` | 전송용 서킷 브레이커를 사용할지 정합니다. |
-| `circuitBreaker.failureThreshold` | 서킷 브레이커를 열기 전 연속 실패 횟수입니다. |
-| `circuitBreaker.cooldownMs` | 다시 전송을 시도하기 전 대기 시간입니다. |
+| Option                                    | 설명                                                                    |
+| ----------------------------------------- | ----------------------------------------------------------------------- |
+| `clientId`                                | 필수 클라이언트 또는 서비스 이름입니다.                                 |
+| `endpoint`                                | Lynx API endpoint입니다. 기본값은 `https://api.lynxops.co`입니다.       |
+| `workspaceId`                             | 이벤트에 붙일 기본 workspace ID입니다.                                  |
+| `agentId`                                 | 이벤트에 붙일 기본 agent ID입니다.                                      |
+| `apiKey`                                  | 이벤트 전송에 사용하는 API key입니다.                                   |
+| `appVersion`                              | 애플리케이션 버전 메타데이터입니다.                                     |
+| `deploymentId`                            | 배포 ID 메타데이터입니다.                                               |
+| `environment`                             | 실행 환경 메타데이터입니다.                                             |
+| `policyVersion`                           | 기본 정책 버전 메타데이터입니다.                                        |
+| `sampleRate`                              | `0`부터 `1`까지의 기록 비율입니다.                                      |
+| `captureInput`                            | 입력 필드를 기록할 수 있는지 정합니다.                                  |
+| `captureOutput`                           | 출력 필드를 기록할 수 있는지 정합니다.                                  |
+| `captureMode`                             | `full`, `metadata-only`, `smart` 중 하나입니다.                         |
+| `maxPayloadLength`                        | `smart` 모드에서 보관할 문자열 최대 길이입니다.                         |
+| `runtimeConfig.maxStaleAgeMs`             | 마지막으로 검증된 설정을 사용할 최대 기간입니다. 기본값은 24시간입니다. |
+| `runtimeConfig.requireSignature`          | 서명되지 않은 실행 설정을 거절합니다.                                   |
+| `runtimeConfig.requireTargetMatch`        | 환경이 다르거나 Agent를 찾지 못한 설정을 거절합니다.                    |
+| `issueReporting.recoverySuccessThreshold` | 정상화 기록을 보내기 전에 필요한 연속 정상 실행 횟수입니다.             |
+| `delivery.mode`                           | `BACKGROUND` 또는 `BLOCKING`입니다.                                     |
+| `delivery.timeoutMs`                      | 한 번의 전송 요청 timeout입니다.                                        |
+| `delivery.flushOnRunEnd`                  | `run()` callback이 끝난 뒤 flush를 시도할지 정합니다.                   |
+| `delivery.flushIntervalMs`                | 백그라운드 전송 주기입니다.                                             |
+| `delivery.batchSize`                      | 이벤트 묶음 크기입니다.                                                 |
+| `delivery.maxQueueSize`                   | 메모리에 보관할 최대 이벤트 수입니다.                                   |
+| `delivery.overflowStrategy`               | `DROP_OLDEST` 또는 `DROP_NEWEST`입니다.                                 |
+| `circuitBreaker.enabled`                  | 전송용 서킷 브레이커를 사용할지 정합니다.                               |
+| `circuitBreaker.failureThreshold`         | 서킷 브레이커를 열기 전 연속 실패 횟수입니다.                           |
+| `circuitBreaker.cooldownMs`               | 다시 전송을 시도하기 전 대기 시간입니다.                                |
 
 ## 관련 문서
 

@@ -3,6 +3,7 @@ import {
   IssueRepository,
   issueRepository,
   type PersistIssueResult,
+  type RecoverIssueInput,
 } from "./issue.repository.js";
 import type { RecordIssueInput } from "../../../common/types/issue.js";
 import {
@@ -52,6 +53,11 @@ export class IssueService {
       reproductionSteps: input.reproductionSteps ?? [],
       tags: input.tags ?? [],
     });
+  }
+
+  /** SDK가 보낸 정상화 근거로 기존 열린 이슈를 해결 처리합니다. */
+  recover(input: RecoverIssueInput) {
+    return this.repository.recover(input);
   }
 
   private requiresPromptVersionInFingerprint(category: IssueCategory): boolean {

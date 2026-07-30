@@ -203,6 +203,19 @@ export class IssueRecordRepository {
     });
   }
 
+  /** 별도 탐지 평가가 필요 없는 Recovery record를 최종 처리합니다. */
+  async completeRecovery(recordId: string): Promise<void> {
+    await AppDataSource.getRepository(IssueRecordProcessingEntity).update(
+      { recordId },
+      {
+        status: ISSUE_RECORD_STATUS.DECIDED,
+        decidedAt: new Date(),
+        nextEvaluationAt: null,
+        lastErrorCode: null,
+      },
+    );
+  }
+
   /** context가 아직 준비되지 않은 record를 재평가 대상으로 되돌립니다. */
   async defer(recordId: string, nextEvaluationAt: Date): Promise<void> {
     await AppDataSource.getRepository(IssueRecordProcessingEntity).update(

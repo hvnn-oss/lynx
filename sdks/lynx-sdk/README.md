@@ -166,6 +166,7 @@ await lynx.run(
     workspaceId: "workspace_123",
     agentId: "agent_invoice",
     sessionId: "session_456",
+    assignmentKey: "user_789",
   },
   async () => {
     lynx.userInput("Can this invoice be paid?");
@@ -183,6 +184,7 @@ Useful identifiers:
 | `workspaceId`   | Tenant boundary for Lynx ingestion and dashboards.                              |
 | `agentId`       | Stable agent identifier.                                                        |
 | `agentName`     | Human-readable agent name shown in debugging views.                             |
+| `assignmentKey` | Stable user, tenant, or session key used for prompt A/B assignment.             |
 | `environment`   | Runtime environment such as `production`, `staging`, or `local`.                |
 | `appVersion`    | Application release metadata.                                                   |
 | `deploymentId`  | Deployment metadata for incident correlation.                                   |
@@ -316,6 +318,26 @@ try {
 }
 ```
 
+Use `guardLLM()` when both model input and output must be evaluated locally.
+For async iterable streams, output is checked before each chunk is yielded and
+a bounded trailing text buffer detects matches split across chunks.
+
+```ts
+const guardedModel = lynx.guardLLM(openai, {
+  modelLabel: "support-model",
+  firewall: {
+    input: {
+      select: (request) => request.messages,
+      riskLevel: "HIGH",
+    },
+    output: {
+      select: (response) => response.output_text,
+      riskLevel: "HIGH",
+    },
+  },
+});
+```
+
 Policy behavior:
 
 | Policy result      | Behavior                                              |
@@ -378,6 +400,9 @@ console.log({
   droppedEvents: status.droppedEvents,
   circuitState: status.circuitState,
   pendingTransmissions: status.pendingTransmissions,
+  issueQueueSize: status.issueReporting.queueSize,
+  droppedIssueRecords: status.issueReporting.droppedRecords,
+  runtimeConfigUsable: status.runtimeConfig.isUsable,
 });
 ```
 
@@ -403,6 +428,10 @@ const lynx = new LynxTracer({
   runtimeConfig: {
     enabled: true,
     refreshIntervalMs: 60_000,
+    maxStaleAgeMs: 24 * 60 * 60 * 1000,
+    requireSignature: true,
+    signaturePublicKey: process.env.LYNX_RUNTIME_CONFIG_SIGNATURE_PUBLIC_KEY,
+    requireTargetMatch: true,
     cache: {
       enabled: true,
       path: "./.lynxconf",
@@ -425,39 +454,42 @@ const lynx = new LynxTracer({
 });
 ```
 
-| Option                            | Description                                                            |
-| --------------------------------- | ---------------------------------------------------------------------- |
-| `clientId`                        | Required service or client identifier.                                 |
-| `endpoint`                        | Lynx API endpoint. Defaults to `https://api.lynxops.co`.               |
-| `workspaceId`                     | Default workspace id attached to events.                               |
-| `agentId`                         | Default agent id attached to events.                                   |
-| `apiKey`                          | Lynx ingestion API key. Sent as a bearer token.                        |
-| `appVersion`                      | Application version metadata.                                          |
-| `deploymentId`                    | Deployment id metadata.                                                |
-| `environment`                     | Runtime environment metadata.                                          |
-| `policyVersion`                   | Default policy version metadata.                                       |
-| `sampleRate`                      | Trace sampling ratio from `0` to `1`.                                  |
-| `captureInput`                    | Whether input payloads can be captured.                                |
-| `captureOutput`                   | Whether output payloads can be captured.                               |
-| `captureMode`                     | `full`, `metadata-only`, or `smart`.                                   |
-| `maxPayloadLength`                | Backward-compatible per-string truncation limit.                       |
-| `maxPayloadBytes`                 | Maximum UTF-8 JSON size retained for one event payload.                |
-| `smartDetailLatencyThresholdMs`   | Latency threshold for preserving masked detail in `smart` mode.        |
-| `runtimeConfig.enabled`           | Loads managed prompts and firewall policies before the first run.      |
-| `runtimeConfig.refreshIntervalMs` | Background runtime configuration refresh interval.                     |
-| `runtimeConfig.cache.enabled`     | Persists the last validated bundle. Defaults to `false`.               |
-| `runtimeConfig.cache.path`        | Exact `.lynxconf` path. Uses the OS user cache directory when omitted. |
-| `runtimeConfig.cache.storage`     | Custom byte storage for environments without a writable filesystem.    |
-| `delivery.mode`                   | `BACKGROUND` or `BLOCKING`.                                            |
-| `delivery.timeoutMs`              | Timeout for one event delivery request.                                |
-| `delivery.flushOnRunEnd`          | Whether `run()` tries to flush after the wrapped work finishes.        |
-| `delivery.flushIntervalMs`        | Background flush interval.                                             |
-| `delivery.batchSize`              | Batch size for delivery.                                               |
-| `delivery.maxQueueSize`           | Maximum queued events in memory.                                       |
-| `delivery.overflowStrategy`       | `DROP_OLDEST` or `DROP_NEWEST`.                                        |
-| `circuitBreaker.enabled`          | Enables delivery circuit breaker protection.                           |
-| `circuitBreaker.failureThreshold` | Consecutive delivery failures before opening the breaker.              |
-| `circuitBreaker.cooldownMs`       | Cooldown before retrying after the breaker opens.                      |
+| Option                             | Description                                                            |
+| ---------------------------------- | ---------------------------------------------------------------------- |
+| `clientId`                         | Required service or client identifier.                                 |
+| `endpoint`                         | Lynx API endpoint. Defaults to `https://api.lynxops.co`.               |
+| `workspaceId`                      | Default workspace id attached to events.                               |
+| `agentId`                          | Default agent id attached to events.                                   |
+| `apiKey`                           | Workspace API key sent only through `X-API-Key`.                       |
+| `appVersion`                       | Application version metadata.                                          |
+| `deploymentId`                     | Deployment id metadata.                                                |
+| `environment`                      | Runtime environment metadata.                                          |
+| `policyVersion`                    | Default policy version metadata.                                       |
+| `sampleRate`                       | Trace sampling ratio from `0` to `1`.                                  |
+| `captureInput`                     | Whether input payloads can be captured.                                |
+| `captureOutput`                    | Whether output payloads can be captured.                               |
+| `captureMode`                      | `full`, `metadata-only`, or `smart`.                                   |
+| `maxPayloadLength`                 | Backward-compatible per-string truncation limit.                       |
+| `maxPayloadBytes`                  | Maximum UTF-8 JSON size retained for one event payload.                |
+| `smartDetailLatencyThresholdMs`    | Latency threshold for preserving masked detail in `smart` mode.        |
+| `runtimeConfig.enabled`            | Loads managed prompts and firewall policies before the first run.      |
+| `runtimeConfig.refreshIntervalMs`  | Background runtime configuration refresh interval.                     |
+| `runtimeConfig.maxStaleAgeMs`      | Maximum age of a validated bundle. Defaults to 24 hours.               |
+| `runtimeConfig.requireSignature`   | Rejects runtime bundles without a valid Ed25519 signature.             |
+| `runtimeConfig.requireTargetMatch` | Rejects another environment or an unresolved Agent scope.              |
+| `runtimeConfig.cache.enabled`      | Persists the last validated bundle. Defaults to `false`.               |
+| `runtimeConfig.cache.path`         | Exact `.lynxconf` path. Uses the OS user cache directory when omitted. |
+| `runtimeConfig.cache.storage`      | Custom byte storage for environments without a writable filesystem.    |
+| `delivery.mode`                    | `BACKGROUND` or `BLOCKING`.                                            |
+| `delivery.timeoutMs`               | Timeout for one event delivery request.                                |
+| `delivery.flushOnRunEnd`           | Whether `run()` tries to flush after the wrapped work finishes.        |
+| `delivery.flushIntervalMs`         | Background flush interval.                                             |
+| `delivery.batchSize`               | Batch size for delivery.                                               |
+| `delivery.maxQueueSize`            | Maximum queued events in memory.                                       |
+| `delivery.overflowStrategy`        | `DROP_OLDEST` or `DROP_NEWEST`.                                        |
+| `circuitBreaker.enabled`           | Enables delivery circuit breaker protection.                           |
+| `circuitBreaker.failureThreshold`  | Consecutive delivery failures before opening the breaker.              |
+| `circuitBreaker.cooldownMs`        | Cooldown before retrying after the breaker opens.                      |
 
 ## Environment Variables
 

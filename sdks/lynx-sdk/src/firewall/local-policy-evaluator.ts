@@ -30,6 +30,23 @@ const UNSAFE_PATH_SEGMENTS = new Set(["__proto__", "prototype", "constructor"]);
  * JavaScript is never executed.
  */
 export class LocalPolicyEvaluator {
+  /** Validates one policy before a runtime bundle becomes executable. */
+  validatePolicy(policy: LynxRuntimePolicySnapshot): void {
+    if (
+      !policy.policyId ||
+      !policy.name ||
+      !policy.version ||
+      !policy.condition.trim()
+    ) {
+      throw new Error("Lynx policy metadata is incomplete");
+    }
+    this.validateExpression(policy.condition.trim());
+    this.readAction(policy.action);
+    if (this.readSeverity(policy.severity) === undefined) {
+      throw new Error(`Unsupported Lynx policy severity: ${policy.severity}`);
+    }
+  }
+
   /**
    * Evaluates every active policy and returns the strongest matching decision.
    *
@@ -90,6 +107,37 @@ export class LocalPolicyEvaluator {
     const actual = this.readPath(path, context);
     const expected = this.parseLiteral(rawExpected);
     return this.compare(actual, operator, expected);
+  }
+
+  /** Parses every boolean branch without short-circuiting on runtime values. */
+  private validateExpression(expression: string): void {
+    const normalized = this.stripOuterParentheses(expression);
+    const orParts = this.splitTopLevel(normalized, "OR");
+    if (orParts.length > 1) {
+      for (const part of orParts) this.validateExpression(part);
+      return;
+    }
+    const andParts = this.splitTopLevel(normalized, "AND");
+    if (andParts.length > 1) {
+      for (const part of andParts) this.validateExpression(part);
+      return;
+    }
+    if (/^NOT\s+/i.test(normalized)) {
+      this.validateExpression(normalized.replace(/^NOT\s+/i, ""));
+      return;
+    }
+
+    const parsed = CONDITION_PATTERN.exec(normalized);
+    if (!parsed) {
+      throw new Error(`Unsupported Lynx policy condition: ${expression}`);
+    }
+    const path = parsed[1]!;
+    for (const segment of path.split(".")) {
+      if (UNSAFE_PATH_SEGMENTS.has(segment)) {
+        throw new Error(`Unsafe Lynx policy path segment: ${segment}`);
+      }
+    }
+    this.parseLiteral(parsed[3]!);
   }
 
   /** Splits a boolean expression only at operators outside quotes and groups. */

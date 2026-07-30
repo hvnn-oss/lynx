@@ -7,7 +7,8 @@ import type {
 } from "./runtime-config.types.js";
 
 const MAGIC = Buffer.from("LXCF", "ascii");
-const FORMAT_VERSION = 2;
+const LEGACY_FORMAT_VERSION = 2;
+const FORMAT_VERSION = 3;
 const GZIP_CODEC = 1;
 const HEADER_LENGTH = MAGIC.length + 1 + 1 + 32;
 const gzipAsync = promisify(gzip);
@@ -32,6 +33,13 @@ type CompactPolicy = [
   action: string,
 ];
 
+type CompactExperiment = [
+  experimentId: string,
+  promptId: string,
+  assignmentSalt: string,
+  variants: [weight: number, prompt: CompactPrompt][],
+];
+
 type CompactCachePayload = [
   identity: string,
   savedAt: number,
@@ -39,6 +47,14 @@ type CompactCachePayload = [
   etag: string | null,
   prompts: CompactPrompt[],
   policies: CompactPolicy[],
+  experiments: CompactExperiment[] | null,
+  target:
+    | [
+        environment: string,
+        requestedAgentId: string | null,
+        resolvedAgentId: string | null,
+      ]
+    | null,
   signing: [algorithm: "Ed25519", keyId: string, signature: string] | null,
 ];
 
@@ -68,6 +84,31 @@ export async function encodeRuntimeConfigCache(
       policy.severity,
       policy.action,
     ]),
+    snapshot.bundle.experiments
+      ? snapshot.bundle.experiments.map((experiment) => [
+          experiment.experimentId,
+          experiment.promptId,
+          experiment.assignmentSalt,
+          experiment.variants.map((variant) => [
+            variant.weight,
+            [
+              variant.prompt.promptId,
+              variant.prompt.name,
+              variant.prompt.versionId,
+              variant.prompt.version,
+              variant.prompt.content,
+              variant.prompt.contentHash,
+            ],
+          ]),
+        ])
+      : null,
+    snapshot.bundle.target
+      ? [
+          snapshot.bundle.target.environment,
+          snapshot.bundle.target.requestedAgentId ?? null,
+          snapshot.bundle.target.resolvedAgentId ?? null,
+        ]
+      : null,
     snapshot.bundle.signing
       ? [
           snapshot.bundle.signing.algorithm,
@@ -101,7 +142,11 @@ export async function decodeRuntimeConfigCache(
   if (!file.subarray(0, MAGIC.length).equals(MAGIC)) {
     throw new Error("Runtime configuration cache has an invalid signature");
   }
-  if (file[MAGIC.length] !== FORMAT_VERSION) {
+  const formatVersion = file[MAGIC.length];
+  if (
+    formatVersion !== LEGACY_FORMAT_VERSION &&
+    formatVersion !== FORMAT_VERSION
+  ) {
     throw new Error("Runtime configuration cache version is unsupported");
   }
   if (file[MAGIC.length + 1] !== GZIP_CODEC) {
@@ -119,15 +164,25 @@ export async function decodeRuntimeConfigCache(
   }
 
   const json = await gunzipAsync(compressed);
-  return parsePayload(JSON.parse(json.toString("utf8")) as unknown);
+  return parsePayload(
+    JSON.parse(json.toString("utf8")) as unknown,
+    formatVersion,
+  );
 }
 
 /** Expands the versioned tuple representation into the public bundle shape. */
-function parsePayload(value: unknown): RuntimeConfigCacheSnapshot {
-  if (!Array.isArray(value) || value.length !== 7) {
+function parsePayload(
+  value: unknown,
+  formatVersion: number,
+): RuntimeConfigCacheSnapshot {
+  const expectedLength = formatVersion === LEGACY_FORMAT_VERSION ? 7 : 9;
+  if (!Array.isArray(value) || value.length !== expectedLength) {
     throw new Error("Runtime configuration cache payload is invalid");
   }
-  const [identity, savedAt, revision, etag, prompts, policies, signing] = value;
+  const [identity, savedAt, revision, etag, prompts, policies] = value;
+  const experiments = formatVersion === LEGACY_FORMAT_VERSION ? [] : value[6];
+  const target = formatVersion === LEGACY_FORMAT_VERSION ? null : value[7];
+  const signing = formatVersion === LEGACY_FORMAT_VERSION ? value[6] : value[8];
   if (
     typeof identity !== "string" ||
     typeof savedAt !== "number" ||
@@ -135,7 +190,8 @@ function parsePayload(value: unknown): RuntimeConfigCacheSnapshot {
     typeof revision !== "string" ||
     (etag !== null && typeof etag !== "string") ||
     !Array.isArray(prompts) ||
-    !Array.isArray(policies)
+    !Array.isArray(policies) ||
+    (experiments !== null && !Array.isArray(experiments))
   ) {
     throw new Error("Runtime configuration cache metadata is invalid");
   }
@@ -144,6 +200,11 @@ function parsePayload(value: unknown): RuntimeConfigCacheSnapshot {
     revision,
     prompts: prompts.map(parsePrompt),
     policies: policies.map(parsePolicy),
+    experiments:
+      formatVersion === LEGACY_FORMAT_VERSION
+        ? undefined
+        : experiments?.map(parseExperiment),
+    target: parseTarget(target),
     signing: parseSigning(signing),
   };
   return {
@@ -151,6 +212,55 @@ function parsePayload(value: unknown): RuntimeConfigCacheSnapshot {
     savedAt,
     etag: etag ?? undefined,
     bundle,
+  };
+}
+
+/** Expands one compact prompt experiment and all immutable variants. */
+function parseExperiment(value: unknown) {
+  const fields = readTuple(value, 4, "experiment");
+  if (!Array.isArray(fields[3])) {
+    throw new Error(
+      "Runtime configuration cache experiment variants are invalid",
+    );
+  }
+  return {
+    experimentId: readString(fields[0], "experimentId"),
+    promptId: readString(fields[1], "experiment promptId"),
+    assignmentSalt: readString(fields[2], "experiment assignmentSalt"),
+    variants: fields[3].map((variant) => {
+      const variantFields = readTuple(variant, 2, "experiment variant");
+      if (
+        typeof variantFields[0] !== "number" ||
+        !Number.isInteger(variantFields[0])
+      ) {
+        throw new Error(
+          "Runtime configuration cache experiment weight is invalid",
+        );
+      }
+      return {
+        weight: variantFields[0],
+        prompt: parsePrompt(variantFields[1]),
+      };
+    }),
+  };
+}
+
+/** Expands optional environment and Agent resolution metadata. */
+function parseTarget(value: unknown): RuntimeConfigBundle["target"] {
+  if (value === null) return undefined;
+  const fields = readTuple(value, 3, "target");
+  const requestedAgentId = readNullableString(
+    fields[1],
+    "target requestedAgentId",
+  );
+  const resolvedAgentId = readNullableString(
+    fields[2],
+    "target resolvedAgentId",
+  );
+  return {
+    environment: readString(fields[0], "target environment"),
+    requestedAgentId: requestedAgentId ?? undefined,
+    resolvedAgentId: resolvedAgentId ?? undefined,
   };
 }
 
@@ -215,4 +325,10 @@ function readString(value: unknown, label: string, allowEmpty = false): string {
     throw new Error(`Runtime configuration cache ${label} is invalid`);
   }
   return value;
+}
+
+/** Reads a nullable compact string field. */
+function readNullableString(value: unknown, label: string): string | null {
+  if (value === null) return null;
+  return readString(value, label);
 }

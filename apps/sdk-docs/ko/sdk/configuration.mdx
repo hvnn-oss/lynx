@@ -42,23 +42,23 @@ const lynx = new LynxTracer({
 
 ## 수집 옵션
 
-| 옵션 | 기본값 | 설명 |
-| --- | --- | --- |
-| `sampleRate` | `1` | 기록할 실행 비율입니다. `0`부터 `1`까지 설정합니다. |
-| `captureInput` | `true` | 입력 필드를 기록할 수 있는지 정합니다. |
-| `captureOutput` | `true` | 출력 필드를 기록할 수 있는지 정합니다. |
-| `captureMode` | `"smart"` | `full`, `metadata-only`, `smart` 중 하나입니다. |
-| `maxPayloadLength` | — | 이전 설정과 호환되는 문자열별 축약 한도입니다. |
-| `maxPayloadBytes` | `65536` | 이벤트 payload 하나에 보관할 UTF-8 JSON 최대 크기입니다. |
-| `smartDetailLatencyThresholdMs` | `10000` | `smart` 모드에서 마스킹된 상세 데이터를 보존할 지연 시간 기준입니다. |
+| 옵션                            | 기본값    | 설명                                                                 |
+| ------------------------------- | --------- | -------------------------------------------------------------------- |
+| `sampleRate`                    | `1`       | 기록할 실행 비율입니다. `0`부터 `1`까지 설정합니다.                  |
+| `captureInput`                  | `true`    | 입력 필드를 기록할 수 있는지 정합니다.                               |
+| `captureOutput`                 | `true`    | 출력 필드를 기록할 수 있는지 정합니다.                               |
+| `captureMode`                   | `"smart"` | `full`, `metadata-only`, `smart` 중 하나입니다.                      |
+| `maxPayloadLength`              | —         | 이전 설정과 호환되는 문자열별 축약 한도입니다.                       |
+| `maxPayloadBytes`               | `65536`   | 이벤트 payload 하나에 보관할 UTF-8 JSON 최대 크기입니다.             |
+| `smartDetailLatencyThresholdMs` | `10000`   | `smart` 모드에서 마스킹된 상세 데이터를 보존할 지연 시간 기준입니다. |
 
 ## 수집 모드
 
-| 모드 | 동작 |
-| --- | --- |
-| `full` | `captureInput`, `captureOutput` 설정이 허용하는 입력과 출력을 보관합니다. |
-| `metadata-only` | 입력과 출력 원문을 제거하고 hash, 길이, 지연 시간, 사용량, 오류, 메타데이터를 남깁니다. |
-| `smart` | 주요 메타데이터를 남기고 긴 문자열은 줄입니다. 실패와 정책 이벤트는 디버깅에 필요한 정보를 보존합니다. |
+| 모드            | 동작                                                                                                   |
+| --------------- | ------------------------------------------------------------------------------------------------------ |
+| `full`          | `captureInput`, `captureOutput` 설정이 허용하는 입력과 출력을 보관합니다.                              |
+| `metadata-only` | 입력과 출력 원문을 제거하고 hash, 길이, 지연 시간, 사용량, 오류, 메타데이터를 남깁니다.                |
+| `smart`         | 주요 메타데이터를 남기고 긴 문자열은 줄입니다. 실패와 정책 이벤트는 디버깅에 필요한 정보를 보존합니다. |
 
 ```ts
 const lynx = new LynxTracer({
@@ -99,35 +99,35 @@ const lynx = new LynxTracer({
 import { lynx } from "@lynxops/sdk";
 ```
 
-| 변수 | 설명 |
-| --- | --- |
-| `LYNX_CLIENT_ID` | 클라이언트 또는 서비스 이름입니다. 기본값은 `local_dev_env`입니다. |
-| `LYNX_ENDPOINT` | endpoint를 바꿀 때 사용합니다. 기본값은 `https://api.lynxops.co`입니다. |
-| `LYNX_API_KEY` | 이벤트 전송에 사용하는 API key입니다. |
-| `LYNX_WORKSPACE_ID` | 기본 workspace ID입니다. |
-| `LYNX_AGENT_ID` | 기본 agent ID입니다. |
-| `LYNX_SESSION_ID` | `run()`에 session ID를 넘기지 않았을 때 사용할 기본 session ID입니다. |
-| `LYNX_SAMPLE_RATE` | `0`부터 `1`까지의 기록 비율입니다. |
-| `LYNX_CAPTURE_INPUT` | `true` 또는 `false`입니다. |
-| `LYNX_CAPTURE_OUTPUT` | `true` 또는 `false`입니다. |
-| `LYNX_CAPTURE_MODE` | `full`, `metadata-only`, `smart` 중 하나입니다. |
-| `LYNX_MAX_PAYLOAD_LENGTH` | payload 문자열 최대 길이입니다. |
-| `LYNX_MAX_PAYLOAD_BYTES` | 이벤트 payload 하나에 보관할 UTF-8 JSON 최대 byte입니다. |
-| `LYNX_SMART_DETAIL_LATENCY_THRESHOLD_MS` | `smart` 모드의 상세 데이터 보존 지연 시간 기준입니다. |
-| `LYNX_APP_VERSION` | 애플리케이션 버전 메타데이터입니다. |
-| `LYNX_DEPLOYMENT_ID` | 배포 ID 메타데이터입니다. |
-| `LYNX_ENVIRONMENT` | 실행 환경입니다. 없으면 `NODE_ENV`를 사용합니다. |
-| `LYNX_POLICY_VERSION` | 기본 정책 버전 메타데이터입니다. |
-| `LYNX_DELIVERY_MODE` | `BACKGROUND` 또는 `BLOCKING`입니다. |
-| `LYNX_DELIVERY_TIMEOUT_MS` | 전송 timeout입니다. 단위는 millisecond입니다. |
-| `LYNX_DELIVERY_FLUSH_ON_RUN_END` | `true` 또는 `false`입니다. |
-| `LYNX_DELIVERY_FLUSH_INTERVAL_MS` | 백그라운드 전송 주기입니다. 단위는 millisecond입니다. |
-| `LYNX_DELIVERY_BATCH_SIZE` | 한 번에 보낼 이벤트 묶음 크기입니다. |
-| `LYNX_DELIVERY_MAX_QUEUE_SIZE` | 메모리 큐에 보관할 최대 이벤트 수입니다. |
-| `LYNX_DELIVERY_OVERFLOW_STRATEGY` | `DROP_OLDEST` 또는 `DROP_NEWEST`입니다. |
-| `LYNX_CIRCUIT_BREAKER_ENABLED` | `true` 또는 `false`입니다. |
-| `LYNX_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | 서킷 브레이커를 열기 전 연속 실패 횟수입니다. |
-| `LYNX_CIRCUIT_BREAKER_COOLDOWN_MS` | 다시 전송을 시도하기 전 대기 시간입니다. |
+| 변수                                     | 설명                                                                    |
+| ---------------------------------------- | ----------------------------------------------------------------------- |
+| `LYNX_CLIENT_ID`                         | 클라이언트 또는 서비스 이름입니다. 기본값은 `local_dev_env`입니다.      |
+| `LYNX_ENDPOINT`                          | endpoint를 바꿀 때 사용합니다. 기본값은 `https://api.lynxops.co`입니다. |
+| `LYNX_API_KEY`                           | 이벤트 전송에 사용하는 API key입니다.                                   |
+| `LYNX_WORKSPACE_ID`                      | 기본 workspace ID입니다.                                                |
+| `LYNX_AGENT_ID`                          | 기본 agent ID입니다.                                                    |
+| `LYNX_SESSION_ID`                        | `run()`에 session ID를 넘기지 않았을 때 사용할 기본 session ID입니다.   |
+| `LYNX_SAMPLE_RATE`                       | `0`부터 `1`까지의 기록 비율입니다.                                      |
+| `LYNX_CAPTURE_INPUT`                     | `true` 또는 `false`입니다.                                              |
+| `LYNX_CAPTURE_OUTPUT`                    | `true` 또는 `false`입니다.                                              |
+| `LYNX_CAPTURE_MODE`                      | `full`, `metadata-only`, `smart` 중 하나입니다.                         |
+| `LYNX_MAX_PAYLOAD_LENGTH`                | payload 문자열 최대 길이입니다.                                         |
+| `LYNX_MAX_PAYLOAD_BYTES`                 | 이벤트 payload 하나에 보관할 UTF-8 JSON 최대 byte입니다.                |
+| `LYNX_SMART_DETAIL_LATENCY_THRESHOLD_MS` | `smart` 모드의 상세 데이터 보존 지연 시간 기준입니다.                   |
+| `LYNX_APP_VERSION`                       | 애플리케이션 버전 메타데이터입니다.                                     |
+| `LYNX_DEPLOYMENT_ID`                     | 배포 ID 메타데이터입니다.                                               |
+| `LYNX_ENVIRONMENT`                       | 실행 환경입니다. 없으면 `NODE_ENV`를 사용합니다.                        |
+| `LYNX_POLICY_VERSION`                    | 기본 정책 버전 메타데이터입니다.                                        |
+| `LYNX_DELIVERY_MODE`                     | `BACKGROUND` 또는 `BLOCKING`입니다.                                     |
+| `LYNX_DELIVERY_TIMEOUT_MS`               | 전송 timeout입니다. 단위는 millisecond입니다.                           |
+| `LYNX_DELIVERY_FLUSH_ON_RUN_END`         | `true` 또는 `false`입니다.                                              |
+| `LYNX_DELIVERY_FLUSH_INTERVAL_MS`        | 백그라운드 전송 주기입니다. 단위는 millisecond입니다.                   |
+| `LYNX_DELIVERY_BATCH_SIZE`               | 한 번에 보낼 이벤트 묶음 크기입니다.                                    |
+| `LYNX_DELIVERY_MAX_QUEUE_SIZE`           | 메모리 큐에 보관할 최대 이벤트 수입니다.                                |
+| `LYNX_DELIVERY_OVERFLOW_STRATEGY`        | `DROP_OLDEST` 또는 `DROP_NEWEST`입니다.                                 |
+| `LYNX_CIRCUIT_BREAKER_ENABLED`           | `true` 또는 `false`입니다.                                              |
+| `LYNX_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | 서킷 브레이커를 열기 전 연속 실패 횟수입니다.                           |
+| `LYNX_CIRCUIT_BREAKER_COOLDOWN_MS`       | 다시 전송을 시도하기 전 대기 시간입니다.                                |
 
 ## 보안 메모
 
@@ -139,3 +139,21 @@ import { lynx } from "@lynxops/sdk";
 
 - [전송과 안정성 이해하기](/ko/sdk/delivery)
 - [에이전트 실행 추적하기](/ko/sdk/tracing)
+
+## 실행 설정 안전성
+
+- `LYNX_RUNTIME_CONFIG_MAX_STALE_AGE_MS`: 마지막 정상 설정을 사용할 수
+  있는 최대 기간입니다. 기본값은 24시간입니다.
+- `LYNX_RUNTIME_CONFIG_REQUIRE_SIGNATURE`: `true`이면 서명되지 않은 설정
+  번들을 거절합니다.
+- `LYNX_RUNTIME_CONFIG_SIGNATURE_PUBLIC_KEY`: 설정 번들의 Ed25519 서명을
+  확인할 공개 키입니다.
+- `LYNX_RUNTIME_CONFIG_REQUIRE_TARGET_MATCH`: 다른 환경의 설정이거나
+  Agent를 찾지 못한 설정을 거절합니다.
+- `LYNX_RUNTIME_CONFIG_CACHE_ENABLED`: 검증된 설정을 `.lynxconf`에
+  저장합니다.
+- `LYNX_RUNTIME_CONFIG_CACHE_PATH`: `.lynxconf`를 저장할 정확한 경로입니다.
+- `LYNX_ISSUE_RECOVERY_SUCCESS_THRESHOLD`: 자동 정상화 기록을 보내기 전에
+  필요한 연속 정상 실행 횟수입니다. 기본값은 3회입니다.
+- `LYNX_APPROVAL_MAX_REQUEST_ATTEMPTS`: 일시적인 승인 API 실패 시 요청을
+  시도할 최대 횟수입니다. 기본값은 3회입니다.

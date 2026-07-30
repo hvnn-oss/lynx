@@ -917,3 +917,141 @@ test("firewallTool records policy events and blocks unsafe calls", async () => {
     false,
   );
 });
+
+test("uses canonical SHA-256 hashes for equivalent tool inputs", async () => {
+  const batches = [];
+  globalThis.fetch = async (_url, init) => {
+    batches.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+  const tracer = createTracer({
+    delivery: { batchSize: 100, flushIntervalMs: 60_000 },
+  });
+  const tool = tracer.instrumentTool("canonical-input", async () => "ok");
+
+  await tracer.run("HashAgent", async () => {
+    await tool({ first: 1, second: 2 });
+    await tool({ second: 2, first: 1 });
+  });
+  await tracer.shutdown();
+
+  const hashes = batches
+    .flat()
+    .filter((event) => event.eventType === "TOOL_CALL")
+    .map((event) => event.payload.argsHash);
+  assert.equal(hashes.length, 2);
+  assert.equal(hashes[0].length, 64);
+  assert.equal(hashes[0], hashes[1]);
+});
+
+test("sampling never disables loop issue detection", async () => {
+  const issueRecords = [];
+  globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith("/issue-records")) {
+      issueRecords.push(JSON.parse(init.body));
+      return new Response(
+        JSON.stringify({
+          recordId: "0fa018de-b66c-409c-b553-bf4230d92eef",
+          status: "RECEIVED",
+          isNew: true,
+        }),
+        { status: 202 },
+      );
+    }
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+  const tracer = createTracer({
+    sampleRate: 0,
+    issueReporting: { enabled: true },
+  });
+  const repeated = tracer.instrumentTool("sampled-loop", async () => "ok");
+
+  await tracer.run("SampledAgent", async () => {
+    for (let index = 0; index < 5; index += 1) {
+      await repeated({ stable: true });
+    }
+  });
+  await tracer.shutdown();
+
+  assert.equal(issueRecords.length, 1);
+  assert.equal(issueRecords[0].detectionType, "LOOP_DETECTED");
+});
+
+test("reports recovery after consecutive healthy policy observations", async () => {
+  const issueRecords = [];
+  globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith("/issue-records")) {
+      issueRecords.push(JSON.parse(init.body));
+      return new Response(
+        JSON.stringify({
+          recordId:
+            issueRecords.length === 1
+              ? "fece671f-18b1-4400-8ed1-0097cc56e878"
+              : "73c49289-2ec8-4209-9916-86e4fce23857",
+          status: "RECEIVED",
+          isNew: true,
+        }),
+        { status: 202 },
+      );
+    }
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+  let shouldBlock = true;
+  const tracer = createTracer({
+    issueReporting: {
+      enabled: true,
+      recoverySuccessThreshold: 3,
+    },
+  });
+  const guarded = tracer.firewallTool(
+    "recoverable-tool",
+    async () => "ok",
+    {
+      beforeCall: () => ({
+        action: shouldBlock ? "BLOCK" : "ALLOW",
+        policyId: shouldBlock ? "recoverable-policy" : undefined,
+      }),
+    },
+  );
+
+  await assert.rejects(() =>
+    tracer.run("RecoveryAgent", () => guarded({ stable: true })),
+  );
+  shouldBlock = false;
+  for (let index = 0; index < 3; index += 1) {
+    await tracer.run("RecoveryAgent", () => guarded({ stable: true }));
+  }
+  await tracer.shutdown();
+
+  assert.deepEqual(
+    issueRecords.map((record) => record.recordKind),
+    ["DETECTION", "RECOVERY"],
+  );
+  assert.equal(issueRecords[1].payload.healthyObservationCount, 3);
+});
+
+test("exposes permanent issue reporting failures without retrying them", async () => {
+  let issueRequestCount = 0;
+  globalThis.fetch = async (url) => {
+    if (String(url).endsWith("/issue-records")) {
+      issueRequestCount += 1;
+      return new Response("unauthorized", { status: 401 });
+    }
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+  const tracer = createTracer({
+    issueReporting: { enabled: true, maxAttempts: 5 },
+  });
+  const warned = tracer.firewallTool("warned-tool", async () => "ok", {
+    beforeCall: () => ({ action: "WARN", policyId: "warn-policy" }),
+  });
+
+  await tracer.run("StatusAgent", () => warned({ value: 1 }));
+  await tracer.shutdown();
+
+  const status = tracer.getStatus().issueReporting;
+  assert.equal(issueRequestCount, 1);
+  assert.equal(status.permanentlyRejectedRecords, 1);
+  assert.equal(status.queueSize, 0);
+  assert.equal(status.lastError, "http_401");
+});

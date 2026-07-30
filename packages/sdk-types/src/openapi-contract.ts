@@ -70,10 +70,32 @@ export const SdkRuntimePolicySchema = z.object({
   action: z.string(),
 });
 
+export const SdkRuntimePromptExperimentSchema = z.object({
+  experimentId: z.string(),
+  promptId: z.string().uuid(),
+  assignmentSalt: z.string().min(1).max(128),
+  variants: z
+    .array(
+      z.object({
+        weight: z.number().int().min(1).max(100),
+        prompt: SdkRuntimePromptSchema,
+      }),
+    )
+    .min(2),
+});
+
+export const SdkRuntimeConfigTargetSchema = z.object({
+  environment: z.string().min(1).max(30),
+  requestedAgentId: z.string().min(1).max(255).optional(),
+  resolvedAgentId: z.string().uuid().optional(),
+});
+
 export const SdkRuntimeConfigResponseSchema = z.object({
   revision: z.string(),
   prompts: z.array(SdkRuntimePromptSchema),
   policies: z.array(SdkRuntimePolicySchema),
+  experiments: z.array(SdkRuntimePromptExperimentSchema).optional(),
+  target: SdkRuntimeConfigTargetSchema.optional(),
   signing: z
     .object({
       algorithm: z.literal("Ed25519"),
@@ -93,7 +115,11 @@ export const SdkCreateFirewallApprovalSchema = z.object({
   toolName: z.string().min(1).max(255),
   inputHash: z.string().min(1).max(64),
   reason: z.string().max(2_000).optional(),
-  timeoutMs: z.number().int().min(1_000).max(24 * 60 * 60 * 1_000),
+  timeoutMs: z
+    .number()
+    .int()
+    .min(1_000)
+    .max(24 * 60 * 60 * 1_000),
 });
 
 export const SdkFirewallApprovalStatusResponseSchema = z.object({
@@ -138,3 +164,4 @@ export type SdkFirewallApprovalStatusResponse = z.infer<
 export type SdkIssueRecordAcceptedResponse = z.infer<
   typeof SdkIssueRecordAcceptedResponseSchema
 >;
+export type SdkCreateIssueRecord = z.infer<typeof SdkCreateIssueRecordSchema>;

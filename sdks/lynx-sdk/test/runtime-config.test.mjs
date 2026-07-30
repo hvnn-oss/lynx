@@ -555,3 +555,287 @@ test("issue reporting failure does not fail an allowed tool call", async () => {
   });
   await tracer.shutdown();
 });
+
+test("rejects malformed managed policy bundles before publication", async () => {
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        revision: "invalid-policy-revision",
+        prompts: [],
+        policies: [
+          {
+            policyId: "bad-policy",
+            name: "Malformed policy",
+            description: null,
+            version: "v1",
+            condition: "globalThis.process.exit()",
+            severity: "HIGH",
+            action: "BLOCK",
+          },
+        ],
+      }),
+      { status: 200 },
+    );
+  const tracer = createTracer();
+
+  await assert.rejects(
+    () => tracer.initialize(),
+    /Unsupported Lynx policy condition/,
+  );
+  assert.equal(tracer.getStatus().runtimeConfig.state, "ERROR");
+  await tracer.shutdown();
+});
+
+test("rejects an unresolved Agent when strict target matching is enabled", async () => {
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        revision: "target-mismatch-revision",
+        prompts: [],
+        policies: [],
+        experiments: [],
+        target: {
+          environment: "production",
+          requestedAgentId: "missing-agent",
+        },
+      }),
+      { status: 200 },
+    );
+  const tracer = createTracer({
+    agentId: "missing-agent",
+    environment: "production",
+    runtimeConfig: {
+      enabled: false,
+      requireTargetMatch: true,
+    },
+  });
+
+  await assert.rejects(
+    () => tracer.initialize(),
+    /target does not match/,
+  );
+  await tracer.shutdown();
+});
+
+test("selects prompt experiment variants per run assignment key", async () => {
+  const baseline = prompt("v1", "Baseline");
+  const variant = prompt("v2", "Variant");
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        revision: "experiment-revision",
+        prompts: [baseline],
+        policies: [],
+        experiments: [
+          {
+            experimentId: "experiment-1",
+            promptId: baseline.promptId,
+            assignmentSalt: "stable-salt",
+            variants: [
+              { weight: 50, prompt: baseline },
+              { weight: 50, prompt: variant },
+            ],
+          },
+        ],
+      }),
+      { status: 200 },
+    );
+  const tracer = createTracer();
+  const assignments = new Map();
+
+  for (let index = 0; index < 100 && assignments.size < 2; index += 1) {
+    await tracer.run(
+      {
+        agentName: "ExperimentAgent",
+        sessionId: `session-${index}`,
+        assignmentKey: `user-${index}`,
+      },
+      async () => {
+        const first = await tracer.getPrompt("support-agent");
+        const pinned = await tracer.getPrompt("support-agent");
+        assert.strictEqual(first, pinned);
+        assignments.set(first.version, `user-${index}`);
+      },
+    );
+  }
+
+  assert.deepEqual([...assignments.keys()].sort(), ["v1", "v2"]);
+  await tracer.shutdown();
+});
+
+test("guardLLM blocks a phrase split across streaming chunks", async () => {
+  globalThis.fetch = async (url) => {
+    if (String(url).endsWith("/runtime-config")) {
+      return new Response(
+        JSON.stringify({
+          revision: "stream-policy-revision",
+          prompts: [],
+          policies: [
+            {
+              policyId: "stream-policy",
+              name: "Block split output",
+              description: null,
+              version: "v1",
+              condition: "output.value contains 'blocked'",
+              severity: "HIGH",
+              action: "BLOCK",
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    }
+    if (String(url).endsWith("/issue-records")) {
+      return new Response(
+        JSON.stringify({
+          recordId: "fef5ba31-68f4-457e-92bf-fbfa7448399e",
+          status: "RECEIVED",
+          isNew: true,
+        }),
+        { status: 202 },
+      );
+    }
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+  const tracer = createTracer({ runtimeConfig: { enabled: true } });
+  const client = tracer.guardLLM({
+    async streamText() {
+      return (async function* () {
+        yield "block";
+        yield "ed";
+      })();
+    },
+  });
+  const chunks = [];
+
+  await assert.rejects(
+    () =>
+      tracer.run("GuardedAgent", async () => {
+        for await (const chunk of await client.streamText({
+          model: "test-model",
+        })) {
+          chunks.push(chunk);
+        }
+      }),
+    LynxPolicyError,
+  );
+  await tracer.shutdown();
+
+  assert.deepEqual(chunks, ["block"]);
+});
+
+test("stops using a runtime bundle after its stale deadline", async () => {
+  let requestCount = 0;
+  globalThis.fetch = async () => {
+    requestCount += 1;
+    if (requestCount === 1) {
+      return new Response(
+        JSON.stringify({
+          revision: "short-lived-revision",
+          prompts: [prompt("v1", "Short lived")],
+          policies: [],
+        }),
+        { status: 200 },
+      );
+    }
+    return new Response("unavailable", { status: 503 });
+  };
+  const tracer = createTracer({
+    runtimeConfig: {
+      enabled: false,
+      maxStaleAgeMs: 1,
+    },
+  });
+
+  assert.equal(
+    (await tracer.getPrompt("support-agent")).content,
+    "Short lived",
+  );
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  await assert.rejects(
+    () => tracer.getPrompt("support-agent"),
+    /maximum stale age/,
+  );
+  assert.equal(tracer.getStatus().runtimeConfig.isUsable, false);
+  await tracer.shutdown();
+});
+
+test("cancels approval polling through the run AbortSignal", async () => {
+  const controller = new AbortController();
+  globalThis.fetch = async (url, init) => {
+    const path = String(url);
+    if (path.endsWith("/runtime-config")) {
+      return new Response(
+        JSON.stringify({
+          revision: "approval-abort-policy",
+          prompts: [],
+          policies: [
+            {
+              policyId: "abort-policy",
+              name: "Approval required",
+              description: null,
+              version: "v1",
+              condition: "tool.sideEffect == true",
+              severity: "HIGH",
+              action: "REQUIRE_APPROVAL",
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    }
+    if (path.endsWith("/firewall-approvals") && init.method === "POST") {
+      setTimeout(
+        () => controller.abort(new Error("request cancelled")),
+        5,
+      );
+      return new Response(
+        JSON.stringify({
+          id: "a8e14d12-44e6-4b22-b8ef-eb558d2edbae",
+          status: "PENDING",
+          expiresAt: "2026-07-31T00:00:00.000Z",
+          decidedAt: null,
+          decisionReason: null,
+        }),
+        { status: 201 },
+      );
+    }
+    if (path.endsWith("/issue-records")) {
+      return new Response(
+        JSON.stringify({
+          recordId: "7aac39cf-d62b-4070-bfdd-b22cae923b69",
+          status: "RECEIVED",
+          isNew: true,
+        }),
+        { status: 202 },
+      );
+    }
+    return new Response("unexpected", { status: 500 });
+  };
+  const tracer = createTracer({
+    runtimeConfig: { enabled: true },
+    approval: {
+      enabled: true,
+      pollIntervalMs: 100,
+      timeoutMs: 1_000,
+    },
+  });
+  const guarded = tracer.firewallTool(
+    "cancelled-write",
+    async () => "should-not-run",
+    { sideEffect: true, riskLevel: "HIGH" },
+  );
+
+  await assert.rejects(
+    () =>
+      tracer.run(
+        {
+          agentName: "ApprovalAgent",
+          signal: controller.signal,
+        },
+        () => guarded({ value: 1 }),
+      ),
+    /request cancelled/,
+  );
+  await tracer.shutdown();
+});

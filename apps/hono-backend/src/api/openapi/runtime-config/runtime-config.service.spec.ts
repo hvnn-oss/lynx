@@ -86,6 +86,8 @@ it("signs the exact runtime bundle with the configured Ed25519 key", async () =>
       revision: result.revision,
       prompts: result.prompts,
       policies: result.policies,
+      experiments: result.experiments,
+      target: result.target,
     });
     expect(result.signing?.keyId).toBe("test-key");
     expect(
@@ -102,7 +104,7 @@ it("signs the exact runtime bundle with the configured Ed25519 key", async () =>
   }
 });
 
-it("prioritizes Agent deployments and assigns an A/B variant deterministically", async () => {
+it("prioritizes Agent deployments and returns A/B variants for local assignment", async () => {
   const promptId = "72adbb57-96ad-4d3d-a2dc-8faf071673e5";
   const internalAgentId = "34640358-38db-4bc7-a700-6d61d1536298";
   const defaultVersion = {
@@ -145,10 +147,15 @@ it("prioritizes Agent deployments and assigns an A/B variant deterministically",
         promptId,
         agentId: internalAgentId,
         assignmentSalt: "stable-salt",
-        variants: [{ versionId: experimentVersion.id, weight: 100 }],
+        variants: [
+          { versionId: agentVersion.id, weight: 50 },
+          { versionId: experimentVersion.id, weight: 50 },
+        ],
       },
     ]),
-    listPromptVersions: jest.fn().mockResolvedValue([experimentVersion]),
+    listPromptVersions: jest
+      .fn()
+      .mockResolvedValue([agentVersion, experimentVersion]),
     listPolicies: jest.fn().mockResolvedValue([]),
   } as unknown as RuntimeConfigRepository;
   const service = new RuntimeConfigService(repository);
@@ -169,10 +176,31 @@ it("prioritizes Agent deployments and assigns an A/B variant deterministically",
   expect(first.prompts[0]).toEqual(
     expect.objectContaining({
       promptId,
-      versionId: experimentVersion.id,
-      content: "experiment",
+      versionId: agentVersion.id,
+      content: "agent",
     }),
   );
+  expect(first.experiments).toEqual([
+    expect.objectContaining({
+      experimentId: "experiment-1",
+      promptId,
+      variants: [
+        expect.objectContaining({
+          weight: 50,
+          prompt: expect.objectContaining({ versionId: agentVersion.id }),
+        }),
+        expect.objectContaining({
+          weight: 50,
+          prompt: expect.objectContaining({ versionId: experimentVersion.id }),
+        }),
+      ],
+    }),
+  ]);
+  expect(first.target).toEqual({
+    environment: "staging",
+    requestedAgentId: "orbit-assistant",
+    resolvedAgentId: internalAgentId,
+  });
   expect(second).toBe(first);
   expect(repository.listPromptDeployments).toHaveBeenCalledWith(
     "workspace-1",

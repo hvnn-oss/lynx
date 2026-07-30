@@ -1,16 +1,12 @@
-import { LlmInstrumentationRule, LynxToolMetadata } from "../core/types.js";
+import {
+  LynxLlmFirewallBoundaryOptions,
+  LynxLlmInstrumentationOptions,
+  LynxToolMetadata,
+} from "../core/types.js";
 import { generateSpanId } from "../utils/id.js";
 import { extractTokenUsage } from "../utils/usage.js";
 import { LynxTracer } from "../core/tracer.js";
-
-function stableHash(data: any): string {
-  const str = typeof data === "string" ? data : JSON.stringify(data ?? "");
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
-  }
-  return hash.toString(16).padStart(8, "0");
-}
+import { createStableHash } from "../utils/stable-hash.js";
 
 function getProvider(path: string[], model?: string): string {
   const pathStr = path.join(".");
@@ -60,8 +56,10 @@ function extractLlmMetadata(input: any, path: string[]) {
     maxTokens,
     seed: input?.seed,
     promptVersion: input?.promptVersion,
-    systemPromptHash: systemMessage ? stableHash(systemMessage) : undefined,
-    userPromptHash: userMessage ? stableHash(userMessage) : undefined,
+    systemPromptHash: systemMessage
+      ? createStableHash(systemMessage)
+      : undefined,
+    userPromptHash: userMessage ? createStableHash(userMessage) : undefined,
     messageCount: messages?.length,
     contextLength: getTextLength(input),
   };
@@ -100,6 +98,7 @@ function wrapAsyncIterable<T extends AsyncIterable<unknown>>(
   source: T,
   onComplete: () => void,
   onError: (error: unknown) => void,
+  onChunk?: (chunk: unknown) => void,
 ): T {
   let isSettled = false;
   const settleComplete = () => {
@@ -121,7 +120,10 @@ function wrapAsyncIterable<T extends AsyncIterable<unknown>>(
       }
       return async function* () {
         try {
-          for await (const chunk of target) yield chunk;
+          for await (const chunk of target) {
+            onChunk?.(chunk);
+            yield chunk;
+          }
           settleComplete();
         } catch (error) {
           settleError(error);
@@ -165,12 +167,7 @@ function createChildContext(
 export function instrumentLLM<T extends object>(
   tracer: LynxTracer,
   instance: T,
-  optionsOrLabel:
-    | string
-    | {
-        modelLabel?: string;
-        customRule?: Partial<LlmInstrumentationRule>;
-      } = "llm.inference",
+  optionsOrLabel: string | LynxLlmInstrumentationOptions = "llm.inference",
 ): T {
   const options =
     typeof optionsOrLabel === "string"
@@ -179,6 +176,7 @@ export function instrumentLLM<T extends object>(
 
   const modelLabel = options.modelLabel ?? "llm.inference";
   const customRule = options.customRule;
+  const firewall = options.firewall;
 
   const isTargetLLMMethod = (path: string[]): boolean => {
     if (customRule?.isTargetMethod) {
@@ -226,6 +224,15 @@ export function instrumentLLM<T extends object>(
       ? customRule.extractInput(args)
       : args[0];
     const llmMetadata = extractLlmMetadata(rawInput, callPath);
+    if (firewall?.input !== false && firewall?.input) {
+      evaluateFirewallBoundary(
+        tracer,
+        "INPUT",
+        rawInput,
+        firewall.input,
+        `${modelLabel}.input`,
+      );
+    }
 
     if (context) {
       tracer.captureInternal(
@@ -312,10 +319,60 @@ export function instrumentLLM<T extends object>(
       // A streaming provider resolves before generation finishes. Keep its
       // iterable shape and close the Span only after the consumer reaches EOF.
       if (isAsyncIterable(resolvedResult)) {
+        const maxCapturedStreamChars = 64 * 1024;
+        let capturedStreamText = "";
+        let hasTextChunks = false;
+        let firewallStreamText = "";
         return wrapAsyncIterable(
           resolvedResult,
-          () => captureEnd(resolvedResult),
+          () => captureEnd(hasTextChunks ? capturedStreamText : resolvedResult),
           captureStreamError,
+          (chunk) => {
+            if (typeof chunk === "string") {
+              hasTextChunks = true;
+              capturedStreamText = (capturedStreamText + chunk).slice(
+                -maxCapturedStreamChars,
+              );
+            }
+            if (firewall?.output !== false && firewall?.output) {
+              const selected = selectFirewallValue(chunk, firewall.output);
+              if (typeof selected === "string") {
+                const maxBuffer = Math.max(
+                  1,
+                  firewall.output.maxStreamBufferChars ?? 8_192,
+                );
+                firewallStreamText = (firewallStreamText + selected).slice(
+                  -maxBuffer,
+                );
+                evaluateFirewallBoundary(
+                  tracer,
+                  "OUTPUT",
+                  firewallStreamText,
+                  firewall.output,
+                  `${modelLabel}.output`,
+                  false,
+                );
+              } else {
+                evaluateFirewallBoundary(
+                  tracer,
+                  "OUTPUT",
+                  selected,
+                  firewall.output,
+                  `${modelLabel}.output`,
+                  false,
+                );
+              }
+            }
+          },
+        );
+      }
+      if (firewall?.output !== false && firewall?.output) {
+        evaluateFirewallBoundary(
+          tracer,
+          "OUTPUT",
+          rawOutputForFirewall(resolvedResult, customRule?.extractOutput),
+          firewall.output,
+          `${modelLabel}.output`,
         );
       }
       captureEnd(resolvedResult);
@@ -383,6 +440,91 @@ export function instrumentLLM<T extends object>(
   return createRecursiveProxy(instance);
 }
 
+/** Selects the provider-specific value inspected by one firewall boundary. */
+function selectFirewallValue(
+  value: unknown,
+  options: LynxLlmFirewallBoundaryOptions,
+): unknown {
+  if (options.select) return options.select(value);
+  return extractTextLike(value) ?? value;
+}
+
+/** Extracts common provider text shapes without binding to one vendor SDK. */
+function extractTextLike(
+  value: unknown,
+  depth = 0,
+  visited = new WeakSet<object>(),
+): string | undefined {
+  if (typeof value === "string") return value;
+  if (depth > 5 || value === null || typeof value !== "object") {
+    return undefined;
+  }
+  if (visited.has(value)) return undefined;
+  visited.add(value);
+  try {
+    if (Array.isArray(value)) {
+      const parts = value
+        .map((item) => extractTextLike(item, depth + 1, visited))
+        .filter((item): item is string => Boolean(item));
+      return parts.length > 0 ? parts.join("\n") : undefined;
+    }
+    const record = value as Record<string, unknown>;
+    for (const key of [
+      "output_text",
+      "text",
+      "content",
+      "input",
+      "prompt",
+      "messages",
+      "contents",
+      "choices",
+      "delta",
+      "message",
+    ]) {
+      if (!(key in record)) continue;
+      const text = extractTextLike(record[key], depth + 1, visited);
+      if (text !== undefined) return text;
+    }
+    return undefined;
+  } finally {
+    visited.delete(value);
+  }
+}
+
+/** Uses the custom telemetry extractor before an optional boundary selector. */
+function rawOutputForFirewall(
+  result: unknown,
+  extractOutput?: (result: any) => any,
+): unknown {
+  return extractOutput ? extractOutput(result) : result;
+}
+
+/** Evaluates one LLM boundary while removing wrapper-only options. */
+function evaluateFirewallBoundary(
+  tracer: LynxTracer,
+  phase: "INPUT" | "OUTPUT",
+  value: unknown,
+  options: LynxLlmFirewallBoundaryOptions,
+  defaultLabel: string,
+  applySelector = true,
+): void {
+  const {
+    select,
+    maxStreamBufferChars: _maxStreamBufferChars,
+    ...firewallOptions
+  } = options;
+  const selected = applySelector ? selectFirewallValue(value, options) : value;
+  const resolvedOptions = {
+    ...firewallOptions,
+    label: firewallOptions.label ?? defaultLabel,
+  };
+  if (phase === "INPUT") {
+    tracer.firewallInput(selected, resolvedOptions);
+  } else {
+    tracer.firewallOutput(selected, resolvedOptions);
+  }
+}
+
 /**
  * Wraps a tool function with Lynx telemetry instrumentation.
  *
@@ -426,7 +568,7 @@ export function instrumentTool<T extends (...args: any[]) => any>(
           externalTarget: metadata.externalTarget,
           idempotencyKey: metadata.idempotencyKey,
           args: args[0],
-          argsHash: stableHash(args[0]),
+          argsHash: createStableHash(args[0]),
           input: args[0],
           phase: "start",
           spanId,

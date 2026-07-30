@@ -164,4 +164,55 @@ describe("IssueRecordService", () => {
       expect.any(Date),
     );
   });
+
+  it("resolves a matching issue after a validated recovery record", async () => {
+    const record = {
+      id: "53d6cd3a-cdf8-44db-aa0f-1b99953bb35f",
+      workspaceId: "70302e18-767c-42d3-9674-80c302475981",
+      sdkInstanceId: "sdk-instance-1",
+      recordKind: "RECOVERY",
+      detectionType: "FIREWALL_BLOCK",
+      clientAgentId: "agent-1",
+      reportedPolicyId: "17",
+      reportedPromptVersionId: null,
+      environment: "production",
+      detectedAt: new Date("2026-07-24T00:00:00.000Z"),
+      payload: {
+        toolName: "refund",
+        healthyObservationCount: 3,
+      },
+    };
+    const repository = {
+      claimNext: jest.fn().mockResolvedValue({
+        record,
+        processing: { attemptCount: 1 },
+      }),
+      resolveContext: jest.fn().mockResolvedValue({
+        session: null,
+        agent: { id: "0ea13b56-4257-49d8-86fd-6b812f920ddb" },
+        event: null,
+      }),
+      completeRecovery: jest.fn().mockResolvedValue(undefined),
+    } as unknown as IssueRecordRepository;
+    const issues = {
+      recover: jest.fn().mockResolvedValue({
+        id: "2e83787a-f2db-4491-9000-94db05906403",
+      }),
+    } as unknown as IssueService;
+    const service = new IssueRecordService(repository, issues);
+
+    await expect(service.processNext()).resolves.toBe(true);
+
+    expect(issues.recover).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId: record.workspaceId,
+        agentId: "0ea13b56-4257-49d8-86fd-6b812f920ddb",
+        policyId: "17",
+        detectionType: "FIREWALL_BLOCK",
+        toolName: "refund",
+        healthyObservationCount: 3,
+      }),
+    );
+    expect(repository.completeRecovery).toHaveBeenCalledWith(record.id);
+  });
 });

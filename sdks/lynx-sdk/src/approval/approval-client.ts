@@ -32,6 +32,9 @@ interface ApprovalStatus {
 const DEFAULT_APPROVAL_TIMEOUT_MS = 5 * 60_000;
 const DEFAULT_POLL_INTERVAL_MS = 1_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 2_000;
+const DEFAULT_MAX_REQUEST_ATTEMPTS = 3;
+
+class PermanentApprovalRequestError extends Error {}
 
 /**
  * Creates and polls server-backed approval requests for one protected tool call.
@@ -45,7 +48,11 @@ export class ApprovalClient {
   ) {}
 
   /** Waits until an operator approves, rejects, or the request expires. */
-  async request(input: ApprovalRequestInput): Promise<ApprovalStatus> {
+  async request(
+    input: ApprovalRequestInput,
+    signal?: AbortSignal,
+  ): Promise<ApprovalStatus> {
+    signal?.throwIfAborted();
     if (!this.options.enabled) {
       throw new Error("Lynx approval flow is not enabled");
     }
@@ -64,6 +71,7 @@ export class ApprovalClient {
           method: "POST",
           body: JSON.stringify(request),
         },
+        signal,
       ),
     );
     const deadline = Date.now() + timeoutMs;
@@ -74,11 +82,16 @@ export class ApprovalClient {
           this.options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
           Math.max(0, deadline - Date.now()),
         ),
+        signal,
       );
       current = SdkFirewallApprovalStatusResponseSchema.parse(
-        await this.send(`/openapi/v1/firewall-approvals/${created.id}`, {
-          method: "GET",
-        }),
+        await this.send(
+          `/openapi/v1/firewall-approvals/${created.id}`,
+          {
+            method: "GET",
+          },
+          signal,
+        ),
       );
     }
     return current.status === "PENDING"
@@ -87,41 +100,85 @@ export class ApprovalClient {
   }
 
   /** Executes one bounded authenticated approval API request. */
-  private async send(path: string, init: RequestInit): Promise<unknown> {
-    const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      this.options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
+  private async send(
+    path: string,
+    init: RequestInit,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    const maxAttempts = Math.max(
+      1,
+      this.options.maxRequestAttempts ?? DEFAULT_MAX_REQUEST_ATTEMPTS,
     );
-    timeout.unref?.();
-    try {
-      const response = await fetch(
-        `${this.connection.endpoint.replace(/\/$/, "")}${path}`,
-        {
-          ...init,
-          headers: {
-            "Content-Type": "application/json",
-            "X-API-Key": this.connection.apiKey!,
-            "X-Lynx-Client-ID": this.connection.clientId,
-          },
-          signal: controller.signal,
-        },
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      signal?.throwIfAborted();
+      const controller = new AbortController();
+      const abortFromCaller = () => controller.abort(signal?.reason);
+      signal?.addEventListener("abort", abortFromCaller, { once: true });
+      const timeout = setTimeout(
+        () => controller.abort(),
+        this.options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
       );
-      if (!response.ok) {
-        throw new Error(
+      timeout.unref?.();
+      try {
+        const response = await fetch(
+          `${this.connection.endpoint.replace(/\/$/, "")}${path}`,
+          {
+            ...init,
+            headers: {
+              "Content-Type": "application/json",
+              "X-API-Key": this.connection.apiKey!,
+              "X-Lynx-Client-ID": this.connection.clientId,
+            },
+            signal: controller.signal,
+          },
+        );
+        if (response.ok) return response.json();
+        const error = new Error(
           `Lynx approval request failed with status ${response.status}`,
         );
+        if (!this.isRetryableStatus(response.status)) {
+          throw new PermanentApprovalRequestError(error.message);
+        }
+        if (attempt === maxAttempts) {
+          throw error;
+        }
+        lastError = error;
+      } catch (error) {
+        if (signal?.aborted) throw signal.reason ?? error;
+        if (error instanceof PermanentApprovalRequestError) throw error;
+        lastError = error;
+        if (attempt === maxAttempts) throw error;
+      } finally {
+        clearTimeout(timeout);
+        signal?.removeEventListener("abort", abortFromCaller);
       }
-      return response.json();
-    } finally {
-      clearTimeout(timeout);
+      await this.delay(Math.min(1_000, 100 * 2 ** (attempt - 1)), signal);
     }
+    throw lastError ?? new Error("Lynx approval request failed");
   }
 
   /** Waits for the next status poll while the protected tool call is pending. */
-  private delay(milliseconds: number): Promise<void> {
-    return new Promise((resolve) => {
-      setTimeout(resolve, Math.max(0, milliseconds));
+  private delay(milliseconds: number, signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => {
+          signal?.removeEventListener("abort", onAbort);
+          resolve();
+        },
+        Math.max(0, milliseconds),
+      );
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(signal?.reason ?? new Error("Lynx approval was aborted"));
+      };
+      signal?.addEventListener("abort", onAbort, { once: true });
     });
+  }
+
+  /** Returns whether one HTTP status may succeed when retried. */
+  private isRetryableStatus(status: number): boolean {
+    return status === 408 || status === 429 || status >= 500;
   }
 }

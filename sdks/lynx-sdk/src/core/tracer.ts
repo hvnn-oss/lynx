@@ -3,7 +3,6 @@ import {
   LynxConfig,
   LynxContext,
   LynxRunOptions,
-  LlmInstrumentationRule,
   LynxEventDto,
   LynxFirewallContentOptions,
   LynxFirewallToolOptions,
@@ -15,6 +14,7 @@ import {
   LynxShutdownOptions,
   LynxStatus,
   LynxPromptSnapshot,
+  LynxLlmInstrumentationOptions,
 } from "./types.js";
 import { processPayload } from "../utils/payload.js";
 import {
@@ -32,9 +32,21 @@ import { createRuntimeConfigCache } from "../runtime-config/runtime-config-cache
 import { LocalPolicyEvaluator } from "../firewall/local-policy-evaluator.js";
 import { IssueRecordReporter } from "../issue-reporting/issue-record-reporter.js";
 import { ApprovalClient } from "../approval/approval-client.js";
+import { createStableHash } from "../utils/stable-hash.js";
 import { assertValidAgentId } from "../utils/agent-id.js";
 
 export const DEFAULT_ENDPOINT = "https://api.lynxops.co";
+const MAX_ACTIVE_DETECTIONS = 1_000;
+
+interface ActiveDetection {
+  detectionType: string;
+  agentId: string;
+  policyId?: string;
+  promptVersionId?: string;
+  payload: Record<string, unknown>;
+  evidence?: Record<string, unknown>;
+  healthyObservations: number;
+}
 
 export class LynxPolicyError extends Error {
   constructor(
@@ -51,15 +63,6 @@ export class LynxPolicyError extends Error {
     super(message);
     this.name = "LynxPolicyError";
   }
-}
-
-function stableHash(data: any): string {
-  const str = typeof data === "string" ? data : JSON.stringify(data ?? "");
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
-  }
-  return hash.toString(16).padStart(8, "0");
 }
 
 /**
@@ -98,6 +101,7 @@ export class LynxTracer {
   private readonly localPolicyEvaluator = new LocalPolicyEvaluator();
   private readonly issueReporter: IssueRecordReporter;
   private readonly approvalClient: ApprovalClient;
+  private readonly activeDetections = new Map<string, ActiveDetection>();
 
   /**
    * Creates a tracer with the provided Lynx telemetry configuration.
@@ -143,6 +147,11 @@ export class LynxTracer {
         agentId: this.config.agentId,
         apiKey: this.config.apiKey,
       }),
+      this.config.clientId,
+      {
+        environment: this.config.environment,
+        agentId: this.config.agentId,
+      },
     );
     this.issueReporter = new IssueRecordReporter(
       {
@@ -253,7 +262,10 @@ export class LynxTracer {
     const pinnedPrompt = context?.promptVersions?.[id];
     if (pinnedPrompt) return pinnedPrompt;
 
-    const prompt = await this.runtimeConfig.getPrompt(id);
+    const prompt = await this.runtimeConfig.getPrompt(
+      id,
+      context?.assignmentKey,
+    );
     if (context) {
       context.promptVersions ??= {};
       context.promptVersions[id] = prompt;
@@ -275,6 +287,7 @@ export class LynxTracer {
     return {
       ...this.delivery.getStatus(),
       runtimeConfig: this.runtimeConfig.getStatus(),
+      issueReporting: this.issueReporter.getStatus(),
     };
   }
 
@@ -362,6 +375,11 @@ export class LynxTracer {
       parentContext?.sessionId ??
       process.env.LYNX_SESSION_ID ??
       `session_${runId}`;
+    const assignmentKey =
+      options.assignmentKey ??
+      parentContext?.assignmentKey ??
+      sessionId ??
+      this.config.clientId;
 
     const sampled = parentContext
       ? (parentContext.sampled ?? true)
@@ -378,6 +396,8 @@ export class LynxTracer {
       workspaceId,
       agentId,
       sessionId,
+      assignmentKey,
+      signal: options.signal ?? parentContext?.signal,
       outcomeState: parentContext?.outcomeState ?? {
         hasRecordedOutcome: false,
       },
@@ -650,7 +670,12 @@ export class LynxTracer {
     if (context.outcomeState) {
       context.outcomeState.hasRecordedOutcome = true;
     }
-    this.captureInternal("SESSION_OUTCOME", "session.outcome", options, context);
+    this.captureInternal(
+      "SESSION_OUTCOME",
+      "session.outcome",
+      options,
+      context,
+    );
   }
 
   /**
@@ -713,6 +738,10 @@ export class LynxTracer {
     ) {
       context.firewallState.totalCost += capturedCost;
     }
+    // Safety detection must run before telemetry sampling. Sampling controls
+    // storage volume, while loop and policy signals remain operational.
+    const loopPayload = this.detectLoop(eventType, label, payload, context);
+
     // Tail-based/adaptive sampling fallback keeps error-related events even
     // when the current context is sampled out, so failures remain debuggable.
     const isError =
@@ -723,7 +752,6 @@ export class LynxTracer {
       return;
     }
 
-    const loopPayload = this.detectLoop(eventType, label, payload, context);
     const processedPayload = processPayload(
       {
         ...context.attributes,
@@ -810,14 +838,34 @@ export class LynxTracer {
    */
   instrumentLLM<T extends object>(
     instance: T,
-    optionsOrLabel:
-      | string
-      | {
-          modelLabel?: string;
-          customRule?: Partial<LlmInstrumentationRule>;
-        } = "llm.inference",
+    optionsOrLabel: string | LynxLlmInstrumentationOptions = "llm.inference",
   ): T {
     return instrumentLLM(this, instance, optionsOrLabel);
+  }
+
+  /**
+   * Wraps an LLM client with telemetry and local input/output policy checks.
+   *
+   * Non-streaming output is checked before it is returned. Async iterable
+   * output is checked before each chunk is yielded, using a bounded trailing
+   * text buffer so matches split across chunks are still detected.
+   *
+   * @typeParam T LLM client object type.
+   * @param instance LLM client instance to protect.
+   * @param options Provider extraction and firewall boundary options.
+   * @returns A proxy with the same public interface as `instance`.
+   */
+  guardLLM<T extends object>(
+    instance: T,
+    options: LynxLlmInstrumentationOptions = {},
+  ): T {
+    return instrumentLLM(this, instance, {
+      ...options,
+      firewall: {
+        input: options.firewall?.input ?? {},
+        output: options.firewall?.output ?? {},
+      },
+    });
   }
 
   /**
@@ -965,42 +1013,147 @@ export class LynxTracer {
     if (decision.action === "ALLOW") return;
     const context = LynxTracer.storage.getStore();
     if (!context) return;
-    const promptVersionId = Object.values(context.promptVersions ?? {})[0]
-      ?.versionId;
+    const promptVersionIds = this.getPinnedPromptVersionIds(context);
+    const promptVersionId =
+      promptVersionIds.length === 1 ? promptVersionIds[0] : undefined;
+    const agentId = context.agentId ?? context.agentName;
+    const argsHash = createStableHash(evaluatedValue);
+    const detectionType =
+      decision.action === "WARN" ? "FIREWALL_WARN" : "FIREWALL_BLOCK";
+    const payload = {
+      toolName,
+      action: decision.action,
+      reason: decision.reason,
+      severity: decision.severity,
+      policyName:
+        typeof decision.metadata?.policyName === "string"
+          ? decision.metadata.policyName
+          : undefined,
+      condition:
+        typeof decision.metadata?.condition === "string"
+          ? decision.metadata.condition
+          : undefined,
+      phase,
+      argsHash,
+    };
+    const evidence = {
+      spanId: context.spanId,
+      policyVersion: decision.policyVersion,
+      managedPolicy: decision.metadata?.managedPolicy === true,
+      promptVersionIds:
+        promptVersionIds.length > 0 ? promptVersionIds : undefined,
+    };
     this.issueReporter.report({
       sdkInstanceId: this.config.clientId,
       clientRecordId: generateEventId(),
       recordKind: "DETECTION",
-      detectionType:
-        decision.action === "WARN" ? "FIREWALL_WARN" : "FIREWALL_BLOCK",
+      detectionType,
       runId: context.runId,
       sessionId: context.sessionId,
-      agentId: context.agentId ?? context.agentName,
+      agentId,
       policyId: decision.policyId,
       promptVersionId,
       detectedAt: Date.now(),
+      payload,
+      evidence,
+    });
+    this.rememberDetection(
+      this.createPolicyDetectionKey(agentId, phase, toolName, argsHash),
+      {
+        detectionType,
+        agentId,
+        policyId: decision.policyId,
+        promptVersionId,
+        payload,
+        evidence,
+        healthyObservations: 0,
+      },
+    );
+  }
+
+  /** Counts a healthy policy observation toward recovery. */
+  private reportPolicyRecovery(
+    toolName: string,
+    evaluatedValue: unknown,
+    phase: "TOOL_INPUT" | "INPUT" | "OUTPUT",
+  ): void {
+    const context = LynxTracer.storage.getStore();
+    if (!context) return;
+    const agentId = context.agentId ?? context.agentName;
+    const argsHash = createStableHash(evaluatedValue);
+    this.observeHealthyDetection(
+      this.createPolicyDetectionKey(agentId, phase, toolName, argsHash),
+      context,
+    );
+  }
+
+  /** Builds the local correlation key used before server fingerprinting. */
+  private createPolicyDetectionKey(
+    agentId: string,
+    phase: "TOOL_INPUT" | "INPUT" | "OUTPUT",
+    toolName: string,
+    argsHash: string,
+  ): string {
+    return `policy:${agentId}:${phase}:${toolName}:${argsHash}`;
+  }
+
+  /** Retains a bounded set of detections that may later recover. */
+  private rememberDetection(key: string, detection: ActiveDetection): void {
+    if (
+      !this.activeDetections.has(key) &&
+      this.activeDetections.size >= MAX_ACTIVE_DETECTIONS
+    ) {
+      const oldestKey = this.activeDetections.keys().next().value;
+      if (typeof oldestKey === "string")
+        this.activeDetections.delete(oldestKey);
+    }
+    this.activeDetections.set(key, detection);
+  }
+
+  /** Emits one recovery after enough consecutive healthy observations. */
+  private observeHealthyDetection(key: string, context: LynxContext): void {
+    const detection = this.activeDetections.get(key);
+    if (!detection) return;
+    detection.healthyObservations += 1;
+    const threshold = Math.max(
+      1,
+      this.config.issueReporting?.recoverySuccessThreshold ?? 3,
+    );
+    if (detection.healthyObservations < threshold) return;
+
+    this.issueReporter.report({
+      sdkInstanceId: this.config.clientId,
+      clientRecordId: generateEventId(),
+      recordKind: "RECOVERY",
+      detectionType: detection.detectionType,
+      runId: context.runId,
+      sessionId: context.sessionId,
+      agentId: detection.agentId,
+      policyId: detection.policyId,
+      promptVersionId: detection.promptVersionId,
+      detectedAt: Date.now(),
       payload: {
-        toolName,
-        action: decision.action,
-        reason: decision.reason,
-        severity: decision.severity,
-        policyName:
-          typeof decision.metadata?.policyName === "string"
-            ? decision.metadata.policyName
-            : undefined,
-        condition:
-          typeof decision.metadata?.condition === "string"
-            ? decision.metadata.condition
-            : undefined,
-        phase,
-        argsHash: stableHash(evaluatedValue),
+        ...detection.payload,
+        recovered: true,
+        healthyObservationCount: detection.healthyObservations,
       },
       evidence: {
-        spanId: context.spanId,
-        policyVersion: decision.policyVersion,
-        managedPolicy: decision.metadata?.managedPolicy === true,
+        ...detection.evidence,
+        recoverySpanId: context.spanId,
       },
     });
+    this.activeDetections.delete(key);
+  }
+
+  /** Returns unique prompt versions instead of alias-expanded duplicates. */
+  private getPinnedPromptVersionIds(context: LynxContext): string[] {
+    return [
+      ...new Set(
+        Object.values(context.promptVersions ?? {}).map(
+          (prompt) => prompt.versionId,
+        ),
+      ),
+    ].sort();
   }
 
   /**
@@ -1080,7 +1233,7 @@ export class LynxTracer {
       ...content,
       phase,
       toolName: label,
-      valueHash: stableHash(value),
+      valueHash: createStableHash(value),
       action: decision.action,
       allow: decision.allow,
       policyId: decision.policyId,
@@ -1091,13 +1244,18 @@ export class LynxTracer {
     });
     this.reportPolicyDetection(label, value, decision, phase);
 
-    if (decision.allow) return decision;
+    if (decision.allow) {
+      if (decision.action === "ALLOW") {
+        this.reportPolicyRecovery(label, value, phase);
+      }
+      return decision;
+    }
 
     this.capture("POLICY_VIOLATION", `policy.violation:${label}`, {
       ...content,
       phase,
       toolName: label,
-      valueHash: stableHash(value),
+      valueHash: createStableHash(value),
       action: decision.action,
       policyId: decision.policyId,
       policyVersion: decision.policyVersion,
@@ -1175,7 +1333,7 @@ export class LynxTracer {
         toolName,
         input,
         args,
-        argsHash: stableHash(input),
+        argsHash: createStableHash(input),
         action: decision.action,
         allow: decision.allow,
         policyId: decision.policyId,
@@ -1205,16 +1363,19 @@ export class LynxTracer {
         }
         let approval;
         try {
-          approval = await this.approvalClient.request({
-            clientRequestId: generateEventId(),
-            runId: context.runId,
-            sessionId: context.sessionId ?? `session_${context.runId}`,
-            agentId: context.agentId ?? context.agentName,
-            policyId: decision.policyId,
-            toolName,
-            inputHash: stableHash(input),
-            reason: decision.reason,
-          });
+          approval = await this.approvalClient.request(
+            {
+              clientRequestId: generateEventId(),
+              runId: context.runId,
+              sessionId: context.sessionId ?? `session_${context.runId}`,
+              agentId: context.agentId ?? context.agentName,
+              policyId: decision.policyId,
+              toolName,
+              inputHash: createStableHash(input),
+              reason: decision.reason,
+            },
+            context.signal,
+          );
         } catch (error) {
           throw new LynxPolicyError(
             error instanceof Error
@@ -1260,7 +1421,7 @@ export class LynxTracer {
           toolName,
           input,
           args,
-          argsHash: stableHash(input),
+          argsHash: createStableHash(input),
           action: decision.action,
           policyId: decision.policyId,
           policyVersion:
@@ -1287,6 +1448,9 @@ export class LynxTracer {
         );
       }
 
+      if (decision.action === "ALLOW") {
+        this.reportPolicyRecovery(toolName, input, "TOOL_INPUT");
+      }
       const instrumented = this.instrumentTool(toolName, fn, options);
       return instrumented(...args);
     }) as unknown as T;
@@ -1328,7 +1492,7 @@ export class LynxTracer {
 
     // The key includes arguments, so normal repeated use of one tool with
     // different inputs does not look like a runaway loop.
-    const argsHash = stableHash(
+    const argsHash = createStableHash(
       payload?.args ?? payload?.input ?? payload?.model ?? label,
     );
     const key = `${eventType}:${label}:${argsHash}`;
@@ -1336,13 +1500,29 @@ export class LynxTracer {
     const loopCount = (context.eventCounts[key] ?? 0) + 1;
     context.eventCounts[key] = loopCount;
 
+    const agentId = context.agentId ?? context.agentName;
+    const detectionKey = `loop:${agentId}:${eventType}:${label}:${argsHash}`;
     if (loopCount < 5) {
+      this.observeHealthyDetection(detectionKey, context);
       return { argsHash };
     }
 
     if (loopCount === 5) {
-      const promptVersionId = Object.values(context.promptVersions ?? {})[0]
-        ?.versionId;
+      const promptVersionIds = this.getPinnedPromptVersionIds(context);
+      const promptVersionId =
+        promptVersionIds.length === 1 ? promptVersionIds[0] : undefined;
+      const detectionPayload = {
+        eventType,
+        label,
+        argsHash,
+        loopCount,
+      };
+      const detectionEvidence = {
+        spanId: context.spanId,
+        parentSpanId: context.parentSpanId,
+        promptVersionIds:
+          promptVersionIds.length > 0 ? promptVersionIds : undefined,
+      };
       this.issueReporter.report({
         sdkInstanceId: this.config.clientId,
         clientRecordId: generateEventId(),
@@ -1350,19 +1530,19 @@ export class LynxTracer {
         detectionType: "LOOP_DETECTED",
         runId: context.runId,
         sessionId: context.sessionId,
-        agentId: context.agentId ?? context.agentName,
+        agentId,
         promptVersionId,
         detectedAt: Date.now(),
-        payload: {
-          eventType,
-          label,
-          argsHash,
-          loopCount,
-        },
-        evidence: {
-          spanId: context.spanId,
-          parentSpanId: context.parentSpanId,
-        },
+        payload: detectionPayload,
+        evidence: detectionEvidence,
+      });
+      this.rememberDetection(detectionKey, {
+        detectionType: "LOOP_DETECTED",
+        agentId,
+        promptVersionId,
+        payload: detectionPayload,
+        evidence: detectionEvidence,
+        healthyObservations: 0,
       });
     }
 

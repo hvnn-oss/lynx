@@ -52,17 +52,37 @@ export const lynx = new LynxTracer({
       process.env.LYNX_RUNTIME_CONFIG_REFRESH_INTERVAL_MS,
     ),
     requestTimeoutMs: parseNum(process.env.LYNX_RUNTIME_CONFIG_TIMEOUT_MS),
-    refreshJitterRatio: parseNum(
-      process.env.LYNX_RUNTIME_CONFIG_JITTER_RATIO,
+    refreshJitterRatio: parseNum(process.env.LYNX_RUNTIME_CONFIG_JITTER_RATIO),
+    signaturePublicKey: process.env.LYNX_RUNTIME_CONFIG_SIGNATURE_PUBLIC_KEY,
+    requireSignature: parseBool(
+      process.env.LYNX_RUNTIME_CONFIG_REQUIRE_SIGNATURE,
     ),
+    maxStaleAgeMs: parseNum(process.env.LYNX_RUNTIME_CONFIG_MAX_STALE_AGE_MS),
+    requireTargetMatch: parseBool(
+      process.env.LYNX_RUNTIME_CONFIG_REQUIRE_TARGET_MATCH,
+    ),
+    cache: {
+      enabled: parseBool(process.env.LYNX_RUNTIME_CONFIG_CACHE_ENABLED),
+      path: process.env.LYNX_RUNTIME_CONFIG_CACHE_PATH,
+    },
   },
   issueReporting: {
     enabled: parseBool(process.env.LYNX_ISSUE_REPORTING_ENABLED),
     timeoutMs: parseNum(process.env.LYNX_ISSUE_REPORTING_TIMEOUT_MS),
-    maxQueueSize: parseNum(
-      process.env.LYNX_ISSUE_REPORTING_MAX_QUEUE_SIZE,
-    ),
+    maxQueueSize: parseNum(process.env.LYNX_ISSUE_REPORTING_MAX_QUEUE_SIZE),
     maxAttempts: parseNum(process.env.LYNX_ISSUE_REPORTING_MAX_ATTEMPTS),
+    recoverySuccessThreshold: parseNum(
+      process.env.LYNX_ISSUE_RECOVERY_SUCCESS_THRESHOLD,
+    ),
+  },
+  approval: {
+    enabled: parseBool(process.env.LYNX_APPROVAL_ENABLED),
+    timeoutMs: parseNum(process.env.LYNX_APPROVAL_TIMEOUT_MS),
+    pollIntervalMs: parseNum(process.env.LYNX_APPROVAL_POLL_INTERVAL_MS),
+    requestTimeoutMs: parseNum(process.env.LYNX_APPROVAL_REQUEST_TIMEOUT_MS),
+    maxRequestAttempts: parseNum(
+      process.env.LYNX_APPROVAL_MAX_REQUEST_ATTEMPTS,
+    ),
   },
 
   delivery: {

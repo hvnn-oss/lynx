@@ -60,32 +60,33 @@ await lynx.run(
 
 ## Semantic helpers
 
-| Method | Purpose |
-| --- | --- |
-| `userInput(input, metadata?)` | Records user input. |
-| `decision(reasonOrDecision, options?)` | Records an agent decision. |
-| `context(labelOrData, dataOrMetadata?, metadata?)` | Records retrieved or constructed context. |
-| `memory(operation, data, metadata?)` | Records memory access. |
-| `outcome(options)` | Records an explicit technical and business outcome. A root `run()` records a technical outcome automatically when omitted. |
-| `setAttributes(attributes)` | Attaches attributes to later events in the current run. |
-| `annotate(label, payload)` | Records a custom breadcrumb. |
-| `log(label, payload)` | Records a custom context event. |
+| Method                                             | Purpose                                                                                                                    |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `userInput(input, metadata?)`                      | Records user input.                                                                                                        |
+| `decision(reasonOrDecision, options?)`             | Records an agent decision.                                                                                                 |
+| `context(labelOrData, dataOrMetadata?, metadata?)` | Records retrieved or constructed context.                                                                                  |
+| `memory(operation, data, metadata?)`               | Records memory access.                                                                                                     |
+| `outcome(options)`                                 | Records an explicit technical and business outcome. A root `run()` records a technical outcome automatically when omitted. |
+| `setAttributes(attributes)`                        | Attaches attributes to later events in the current run.                                                                    |
+| `annotate(label, payload)`                         | Records a custom breadcrumb.                                                                                               |
+| `log(label, payload)`                              | Records a custom context event.                                                                                            |
 
 ## LLM and tool helpers
 
-| Method | Purpose |
-| --- | --- |
-| `instrumentLLM(client, options?)` | Wraps an LLM client object. |
-| `instrumentTool(name, fn, metadata?)` | Wraps a tool function. |
-| `firewallTool(name, fn, options?)` | Wraps a tool with local policy evaluation. |
+| Method                                | Purpose                                                                    |
+| ------------------------------------- | -------------------------------------------------------------------------- |
+| `instrumentLLM(client, options?)`     | Wraps an LLM client object.                                                |
+| `guardLLM(client, options?)`          | Wraps an LLM client with local input, output, and streaming policy checks. |
+| `instrumentTool(name, fn, metadata?)` | Wraps a tool function.                                                     |
+| `firewallTool(name, fn, options?)`    | Wraps a tool with local policy evaluation.                                 |
 
 ## Delivery helpers
 
-| Method | Purpose |
-| --- | --- |
-| `flush()` | Sends queued events now. |
-| `shutdown(options?)` | Clears timers and performs a best-effort final flush. |
-| `getStatus()` | Returns local queue, circuit breaker, and delivery state. |
+| Method               | Purpose                                                                               |
+| -------------------- | ------------------------------------------------------------------------------------- |
+| `flush()`            | Sends queued events now.                                                              |
+| `shutdown(options?)` | Clears timers and performs a best-effort final flush.                                 |
+| `getStatus()`        | Returns telemetry, issue reporting, circuit breaker, and runtime configuration state. |
 
 ## `LynxPolicyError`
 
@@ -103,32 +104,36 @@ if (error instanceof LynxPolicyError) {
 
 ## Configuration options
 
-| Option | Description |
-| --- | --- |
-| `clientId` | Required client or service identifier. |
-| `endpoint` | Lynx API endpoint. Defaults to `https://api.lynxops.co`. |
-| `workspaceId` | Default workspace ID attached to events. |
-| `agentId` | Default agent ID attached to events. |
-| `apiKey` | API key for event ingestion. |
-| `appVersion` | Application version metadata. |
-| `deploymentId` | Deployment ID metadata. |
-| `environment` | Runtime environment metadata. |
-| `policyVersion` | Default policy version metadata. |
-| `sampleRate` | Sampling ratio from `0` to `1`. |
-| `captureInput` | Whether input fields may be recorded. |
-| `captureOutput` | Whether output fields may be recorded. |
-| `captureMode` | `full`, `metadata-only`, or `smart`. |
-| `maxPayloadLength` | Maximum string length kept in `smart` mode. |
-| `delivery.mode` | `BACKGROUND` or `BLOCKING`. |
-| `delivery.timeoutMs` | Timeout for one delivery request. |
-| `delivery.flushOnRunEnd` | Whether `run()` tries to flush after the callback finishes. |
-| `delivery.flushIntervalMs` | Background flush interval. |
-| `delivery.batchSize` | Event batch size. |
-| `delivery.maxQueueSize` | Maximum queued event count in memory. |
-| `delivery.overflowStrategy` | `DROP_OLDEST` or `DROP_NEWEST`. |
-| `circuitBreaker.enabled` | Enables delivery circuit breaker protection. |
-| `circuitBreaker.failureThreshold` | Consecutive failures before opening the breaker. |
-| `circuitBreaker.cooldownMs` | Cooldown before another send attempt. |
+| Option                                    | Description                                                     |
+| ----------------------------------------- | --------------------------------------------------------------- |
+| `clientId`                                | Required client or service identifier.                          |
+| `endpoint`                                | Lynx API endpoint. Defaults to `https://api.lynxops.co`.        |
+| `workspaceId`                             | Default workspace ID attached to events.                        |
+| `agentId`                                 | Default agent ID attached to events.                            |
+| `apiKey`                                  | API key for event ingestion.                                    |
+| `appVersion`                              | Application version metadata.                                   |
+| `deploymentId`                            | Deployment ID metadata.                                         |
+| `environment`                             | Runtime environment metadata.                                   |
+| `policyVersion`                           | Default policy version metadata.                                |
+| `sampleRate`                              | Sampling ratio from `0` to `1`.                                 |
+| `captureInput`                            | Whether input fields may be recorded.                           |
+| `captureOutput`                           | Whether output fields may be recorded.                          |
+| `captureMode`                             | `full`, `metadata-only`, or `smart`.                            |
+| `maxPayloadLength`                        | Maximum string length kept in `smart` mode.                     |
+| `runtimeConfig.maxStaleAgeMs`             | Maximum age of the last validated bundle. Defaults to 24 hours. |
+| `runtimeConfig.requireSignature`          | Rejects unsigned runtime bundles.                               |
+| `runtimeConfig.requireTargetMatch`        | Rejects an environment mismatch or unresolved Agent.            |
+| `issueReporting.recoverySuccessThreshold` | Healthy observations required before sending recovery.          |
+| `delivery.mode`                           | `BACKGROUND` or `BLOCKING`.                                     |
+| `delivery.timeoutMs`                      | Timeout for one delivery request.                               |
+| `delivery.flushOnRunEnd`                  | Whether `run()` tries to flush after the callback finishes.     |
+| `delivery.flushIntervalMs`                | Background flush interval.                                      |
+| `delivery.batchSize`                      | Event batch size.                                               |
+| `delivery.maxQueueSize`                   | Maximum queued event count in memory.                           |
+| `delivery.overflowStrategy`               | `DROP_OLDEST` or `DROP_NEWEST`.                                 |
+| `circuitBreaker.enabled`                  | Enables delivery circuit breaker protection.                    |
+| `circuitBreaker.failureThreshold`         | Consecutive failures before opening the breaker.                |
+| `circuitBreaker.cooldownMs`               | Cooldown before another send attempt.                           |
 
 ## Related pages
 

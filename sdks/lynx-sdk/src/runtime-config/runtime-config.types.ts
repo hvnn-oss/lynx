@@ -1,5 +1,7 @@
 import type {
+  LynxPromptExperimentSnapshot,
   LynxPromptSnapshot,
+  LynxRuntimeConfigTarget,
   LynxRuntimePolicySnapshot,
 } from "../core/types.js";
 
@@ -11,6 +13,10 @@ export interface RuntimeConfigBundle {
   prompts: LynxPromptSnapshot[];
   /** Active firewall policies available for local evaluation. */
   policies: LynxRuntimePolicySnapshot[];
+  /** Active prompt experiments assigned locally per run. */
+  experiments?: LynxPromptExperimentSnapshot[];
+  /** Environment and Agent scope resolved by the server. */
+  target?: LynxRuntimeConfigTarget;
   /** Server signature covering revision, prompts, and policies. */
   signing?: {
     algorithm: "Ed25519";

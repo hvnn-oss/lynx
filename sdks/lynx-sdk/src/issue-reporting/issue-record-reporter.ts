@@ -1,25 +1,16 @@
-import type { LynxIssueReportingOptions } from "../core/types.js";
+import type {
+  LynxIssueReportingOptions,
+  LynxIssueReportingStatus,
+  SdkCreateIssueRecord,
+} from "../core/types.js";
 import {
   SdkCreateIssueRecordSchema,
   SdkIssueRecordAcceptedResponseSchema,
 } from "@repo/sdk-types";
+import { SDK_VERSION } from "../version.js";
 
 /** Wire contract accepted by the Lynx issue-record ingestion endpoint. */
-export interface SdkIssueRecord {
-  sdkInstanceId: string;
-  clientRecordId: string;
-  recordKind: "DETECTION" | "RECOVERY";
-  detectionType: string;
-  runId?: string;
-  sessionId?: string;
-  eventId?: string;
-  agentId: string;
-  policyId?: string;
-  promptVersionId?: string;
-  detectedAt: number;
-  payload: Record<string, unknown>;
-  evidence?: Record<string, unknown>;
-}
+export type SdkIssueRecord = SdkCreateIssueRecord;
 
 interface QueuedIssueRecord {
   record: SdkIssueRecord;
@@ -37,6 +28,7 @@ const DEFAULT_MAX_QUEUE_SIZE = 100;
 const DEFAULT_MAX_ATTEMPTS = 5;
 const DEFAULT_TIMEOUT_MS = 1_000;
 const MAX_RETRY_DELAY_MS = 30_000;
+type DeliveryResult = "DELIVERED" | "RETRYABLE" | "PERMANENT";
 
 /**
  * Sends SDK detections through an isolated, bounded background queue.
@@ -50,6 +42,11 @@ export class IssueRecordReporter {
   private activeDrain?: Promise<void>;
   private retryTimer?: ReturnType<typeof setTimeout>;
   private isShuttingDown = false;
+  private droppedRecords = 0;
+  private permanentlyRejectedRecords = 0;
+  private pendingTransmissions = 0;
+  private lastDeliveryAt?: string;
+  private lastError?: string;
 
   constructor(
     private readonly connection: IssueRecordReporterConnection,
@@ -59,12 +56,26 @@ export class IssueRecordReporter {
   /** Enqueues one detection and starts delivery without waiting for network I/O. */
   report(record: SdkIssueRecord): void {
     if (!this.isEnabled() || this.isShuttingDown) return;
-    const maxQueueSize =
-      this.options.maxQueueSize ?? DEFAULT_MAX_QUEUE_SIZE;
+    const maxQueueSize = this.options.maxQueueSize ?? DEFAULT_MAX_QUEUE_SIZE;
     if (maxQueueSize <= 0) return;
-    if (this.queue.length >= maxQueueSize) this.queue.shift();
+    if (this.queue.length >= maxQueueSize) {
+      this.queue.shift();
+      this.droppedRecords += 1;
+    }
     this.queue.push({ record, attempts: 0, availableAt: Date.now() });
     this.drainInBackground();
+  }
+
+  /** Returns queue health without performing network work. */
+  getStatus(): LynxIssueReportingStatus {
+    return {
+      queueSize: this.queue.length,
+      droppedRecords: this.droppedRecords,
+      permanentlyRejectedRecords: this.permanentlyRejectedRecords,
+      pendingTransmissions: this.pendingTransmissions,
+      lastDeliveryAt: this.lastDeliveryAt,
+      lastError: this.lastError,
+    };
   }
 
   /** Stops retry timers and makes a final bounded attempt for queued records. */
@@ -116,11 +127,17 @@ export class IssueRecordReporter {
         return;
       }
       this.queue.shift();
-      const delivered = await this.send(queued.record);
-      if (delivered) continue;
+      const result = await this.send(queued.record);
+      if (result === "DELIVERED") continue;
+      if (result === "PERMANENT") {
+        this.permanentlyRejectedRecords += 1;
+        continue;
+      }
 
       queued.attempts += 1;
-      if (queued.attempts >= (this.options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS)) {
+      if (
+        queued.attempts >= (this.options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS)
+      ) {
         continue;
       }
       queued.availableAt =
@@ -135,7 +152,7 @@ export class IssueRecordReporter {
   }
 
   /** Sends one record and classifies every failure as isolated best-effort loss. */
-  private async send(record: SdkIssueRecord): Promise<boolean> {
+  private async send(record: SdkIssueRecord): Promise<DeliveryResult> {
     const controller = new AbortController();
     const timeout = setTimeout(
       () => controller.abort(),
@@ -144,7 +161,11 @@ export class IssueRecordReporter {
     timeout.unref?.();
     try {
       const request = SdkCreateIssueRecordSchema.safeParse(record);
-      if (!request.success) return false;
+      if (!request.success) {
+        this.lastError = "invalid_issue_record";
+        return "PERMANENT";
+      }
+      this.pendingTransmissions += 1;
       const response = await fetch(
         `${this.connection.endpoint.replace(/\/$/, "")}/openapi/v1/issue-records`,
         {
@@ -153,18 +174,36 @@ export class IssueRecordReporter {
             "Content-Type": "application/json",
             "X-API-Key": this.connection.apiKey!,
             "X-Lynx-Client-ID": this.connection.clientId,
+            "X-Lynx-SDK-Version": SDK_VERSION,
           },
           body: JSON.stringify(request.data),
           signal: controller.signal,
         },
       );
-      if (!response.ok) return false;
-      return SdkIssueRecordAcceptedResponseSchema.safeParse(
+      if (!response.ok) {
+        this.lastError = `http_${response.status}`;
+        return response.status === 408 ||
+          response.status === 429 ||
+          response.status >= 500
+          ? "RETRYABLE"
+          : "PERMANENT";
+      }
+      const isAccepted = SdkIssueRecordAcceptedResponseSchema.safeParse(
         await response.json().catch(() => undefined),
       ).success;
-    } catch {
-      return false;
+      if (!isAccepted) {
+        this.lastError = "invalid_issue_record_response";
+        return "RETRYABLE";
+      }
+      this.lastDeliveryAt = new Date().toISOString();
+      this.lastError = undefined;
+      return "DELIVERED";
+    } catch (error) {
+      this.lastError =
+        error instanceof Error ? error.name : "issue_record_failed";
+      return "RETRYABLE";
     } finally {
+      if (this.pendingTransmissions > 0) this.pendingTransmissions -= 1;
       clearTimeout(timeout);
     }
   }
@@ -172,10 +211,13 @@ export class IssueRecordReporter {
   /** Schedules exactly one retry timer for the oldest unavailable record. */
   private scheduleRetry(delayMs: number): void {
     if (this.retryTimer || this.isShuttingDown) return;
-    this.retryTimer = setTimeout(() => {
-      this.retryTimer = undefined;
-      this.drainInBackground();
-    }, Math.max(0, delayMs));
+    this.retryTimer = setTimeout(
+      () => {
+        this.retryTimer = undefined;
+        this.drainInBackground();
+      },
+      Math.max(0, delayMs),
+    );
     this.retryTimer.unref?.();
   }
 }

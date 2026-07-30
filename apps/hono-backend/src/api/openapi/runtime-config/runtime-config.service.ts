@@ -39,11 +39,9 @@ export class RuntimeConfigService {
     workspaceId: string,
     environment = "production",
     agentId?: string,
-    clientId = "anonymous",
+    _clientId = "anonymous",
   ): Promise<RuntimeConfigResponseDto> {
-    const cacheKey = [workspaceId, environment, agentId ?? "", clientId].join(
-      "\0",
-    );
+    const cacheKey = [workspaceId, environment, agentId ?? ""].join("\0");
     const cached = this.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return cached.config;
     if (cached) this.cache.delete(cacheKey);
@@ -88,24 +86,46 @@ export class RuntimeConfigService {
     const versionById = new Map(
       experimentVersions.map((version) => [version.id, version]),
     );
-    const experimentByPromptId = new Map(
-      selectedExperiments.map((experiment) => [
-        experiment.promptId,
-        experiment,
+    const prompts = selectedDeployments.map((deployment) =>
+      this.toPromptSnapshot(
+        deployment.promptId,
+        deployment.prompt.name,
+        deployment.version,
+      ),
+    );
+    const deploymentByPromptId = new Map(
+      selectedDeployments.map((deployment) => [
+        deployment.promptId,
+        deployment,
       ]),
     );
-    const prompts = selectedDeployments.map((deployment) => {
-      const experiment = experimentByPromptId.get(deployment.promptId);
-      const version = experiment
-        ? this.selectExperimentVersion(experiment, versionById, clientId)
-        : deployment.version;
+    const runtimeExperiments = selectedExperiments.map((experiment) => {
+      const deployment = deploymentByPromptId.get(experiment.promptId);
+      if (!deployment) {
+        throw new Error(
+          `Prompt experiment ${experiment.id} has no active deployment`,
+        );
+      }
       return {
-        promptId: deployment.promptId,
-        name: deployment.prompt.name,
-        versionId: version.id,
-        version: version.version,
-        content: version.content,
-        contentHash: version.contentHash ?? this.hash(version.content),
+        experimentId: experiment.id,
+        promptId: experiment.promptId,
+        assignmentSalt: experiment.assignmentSalt,
+        variants: experiment.variants.map((variant) => {
+          const version = versionById.get(variant.versionId);
+          if (!version) {
+            throw new Error(
+              `Prompt experiment ${experiment.id} references a missing version`,
+            );
+          }
+          return {
+            weight: variant.weight,
+            prompt: this.toPromptSnapshot(
+              experiment.promptId,
+              deployment.prompt.name,
+              version,
+            ),
+          };
+        }),
       };
     });
     const policies = policyEntities.map((revision) => ({
@@ -117,22 +137,37 @@ export class RuntimeConfigService {
       severity: revision.severity,
       action: revision.action,
     }));
+    const target = {
+      environment,
+      requestedAgentId: agentId,
+      resolvedAgentId,
+    };
     // 정렬된 전체 결과를 해싱해 같은 대상에는 항상 같은 revision을 부여합니다.
     const revision = this.hash(
       JSON.stringify({
         prompts,
         policies,
+        experiments: runtimeExperiments,
+        target,
         signingKeyId: env.RUNTIME_CONFIG_SIGNING_PRIVATE_KEY
           ? env.RUNTIME_CONFIG_SIGNING_KEY_ID
           : null,
       }),
     );
 
-    const signingPayload = JSON.stringify({ revision, prompts, policies });
+    const signingPayload = JSON.stringify({
+      revision,
+      prompts,
+      policies,
+      experiments: runtimeExperiments,
+      target,
+    });
     const config: RuntimeConfigResponseDto = {
       revision,
       prompts,
       policies,
+      experiments: runtimeExperiments,
+      target,
       signing: env.RUNTIME_CONFIG_SIGNING_PRIVATE_KEY
         ? {
             algorithm: "Ed25519",
@@ -210,6 +245,22 @@ export class RuntimeConfigService {
   }
 
   /** 문자열의 SHA-256 해시를 소문자 16진수로 반환합니다. */
+  /** DB 버전을 SDK가 실행 중 변경할 수 없는 프롬프트 스냅샷으로 변환합니다. */
+  private toPromptSnapshot(
+    promptId: string,
+    name: string,
+    version: PromptVersionEntity,
+  ) {
+    return {
+      promptId,
+      name,
+      versionId: version.id,
+      version: version.version,
+      content: version.content,
+      contentHash: version.contentHash ?? this.hash(version.content),
+    };
+  }
+
   private hash(value: string): string {
     return createHash("sha256").update(value, "utf8").digest("hex");
   }

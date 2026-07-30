@@ -50,6 +50,32 @@ reaches completion. An error raised while consuming the stream is recorded on
 the same span. If a stream is created but never consumed, it has a start event
 without an end event.
 
+## Guard an LLM client
+
+Use `guardLLM()` when managed policies must inspect model input and output in
+addition to recording the call.
+
+```ts
+const guardedOpenAI = lynx.guardLLM(openai, {
+  modelLabel: "support-model",
+  firewall: {
+    input: {
+      select: (request) => request.messages,
+      riskLevel: "HIGH",
+    },
+    output: {
+      select: (response) => response.output_text,
+      riskLevel: "HIGH",
+    },
+  },
+});
+```
+
+For async iterable streams, Lynx evaluates output before yielding each chunk.
+A bounded trailing text buffer detects policy matches split across adjacent
+chunks. If a policy blocks, iteration throws `LynxPolicyError` before the
+matching chunk is returned.
+
 ## Wrap a tool
 
 Use `instrumentTool()` when you want to record a tool call without adding a policy check.

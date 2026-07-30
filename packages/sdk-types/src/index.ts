@@ -22,6 +22,8 @@ export interface LynxContext {
   };
   /** Request-local counters used for repeated-call detection. */
   eventCounts?: Record<string, number>;
+  /** Optional cancellation propagated to approval and guarded operations. */
+  signal?: AbortSignal;
   /** Run-local counters used by stateful firewall policies. */
   firewallState?: {
     startedAt: number;
@@ -32,6 +34,8 @@ export interface LynxContext {
   attributes?: Record<string, any>;
   /** Prompt versions pinned for the lifetime of this run. */
   promptVersions?: Record<string, LynxPromptSnapshot>;
+  /** Stable subject used to select prompt experiment variants within this run. */
+  assignmentKey?: string;
 }
 
 /**
@@ -43,6 +47,15 @@ export interface LynxRunOptions {
   agentId?: string;
   sessionId?: string;
   runId?: string;
+  /** Cancels approval polling and other request-bound control operations. */
+  signal?: AbortSignal;
+  /**
+   * Stable experiment subject such as a user or tenant identifier.
+   *
+   * When omitted, the session identifier is used so one session stays on the
+   * same prompt variant.
+   */
+  assignmentKey?: string;
 }
 
 /**
@@ -157,6 +170,8 @@ export interface LynxApprovalOptions {
   pollIntervalMs?: number;
   /** Deadline for each create or status HTTP request. */
   requestTimeoutMs?: number;
+  /** Attempts for transient create or status request failures. */
+  maxRequestAttempts?: number;
 }
 
 /** Controls the bounded background queue used to submit issue records. */
@@ -169,6 +184,24 @@ export interface LynxIssueReportingOptions {
   maxQueueSize?: number;
   /** Maximum delivery attempts before an issue record is discarded. */
   maxAttempts?: number;
+  /** Consecutive healthy observations required before reporting recovery. */
+  recoverySuccessThreshold?: number;
+}
+
+/** Local delivery health for automatic issue and recovery records. */
+export interface LynxIssueReportingStatus {
+  /** Records currently waiting for their first or a retry attempt. */
+  queueSize: number;
+  /** Records evicted because the bounded queue reached capacity. */
+  droppedRecords: number;
+  /** Records rejected locally or by a permanent HTTP response. */
+  permanentlyRejectedRecords: number;
+  /** Records currently being transmitted. */
+  pendingTransmissions: number;
+  /** ISO timestamp of the most recent accepted record. */
+  lastDeliveryAt?: string;
+  /** Sanitized reason for the latest delivery failure. */
+  lastError?: string;
 }
 
 /** Controls how the SDK loads and refreshes managed prompts and policies. */
@@ -189,6 +222,10 @@ export interface LynxRuntimeConfigOptions {
   signaturePublicKey?: string;
   /** Rejects unsigned bundles instead of accepting them for compatibility. */
   requireSignature?: boolean;
+  /** Maximum age of a last-known-good bundle after refresh failures. */
+  maxStaleAgeMs?: number;
+  /** Rejects bundles resolved for a different environment or unknown Agent. */
+  requireTargetMatch?: boolean;
   /** Optional persistent cache for the last validated runtime configuration. */
   cache?: LynxRuntimeConfigCacheOptions;
 }
@@ -246,6 +283,36 @@ export interface LynxPromptSnapshot {
   contentHash: string;
 }
 
+/** One weighted immutable version in a prompt experiment. */
+export interface LynxPromptExperimentVariant {
+  /** Percentage bucket weight from 1 through 100. */
+  weight: number;
+  /** Exact immutable prompt version selected by this variant. */
+  prompt: LynxPromptSnapshot;
+}
+
+/** Active prompt experiment evaluated locally for each run assignment key. */
+export interface LynxPromptExperimentSnapshot {
+  /** Stable server-side experiment identifier. */
+  experimentId: string;
+  /** Prompt whose deployed version is being compared. */
+  promptId: string;
+  /** Server-generated salt preventing assignment prediction across experiments. */
+  assignmentSalt: string;
+  /** Weighted prompt versions whose total weight must equal 100. */
+  variants: LynxPromptExperimentVariant[];
+}
+
+/** Scope that the server used while constructing one runtime bundle. */
+export interface LynxRuntimeConfigTarget {
+  /** Environment embedded in the authenticated workspace API key. */
+  environment: string;
+  /** Agent identifier requested by the SDK, when supplied. */
+  requestedAgentId?: string;
+  /** Workspace Agent UUID resolved by the server, when found. */
+  resolvedAgentId?: string;
+}
+
 /** Immutable description of one active remotely managed firewall policy. */
 export interface LynxRuntimePolicySnapshot {
   /** Stable server-side policy identifier. */
@@ -280,6 +347,16 @@ export interface LynxRuntimeConfigStatus {
   promptCount: number;
   /** Number of active policies in the current last-known-good bundle. */
   policyCount: number;
+  /** Number of active prompt experiments available for local assignment. */
+  experimentCount: number;
+  /** Age of the last successfully validated bundle. */
+  staleAgeMs?: number;
+  /** Whether prompts and policies are still safe to execute locally. */
+  isUsable: boolean;
+  /** Server-resolved scope for the current bundle. */
+  target?: LynxRuntimeConfigTarget;
+  /** Indicates a configured environment or Agent scope mismatch. */
+  targetMismatch?: boolean;
   /** Persistent cache health and location. */
   cache: LynxRuntimeConfigCacheStatus;
 }
@@ -379,6 +456,32 @@ export interface LynxFirewallContentOptions {
   captureContent?: boolean;
 }
 
+/** Content selection and buffering options for guarded LLM calls. */
+export interface LynxLlmFirewallBoundaryOptions extends LynxFirewallContentOptions {
+  /** Selects the exact value evaluated from a provider request or response. */
+  select?: (value: any) => unknown;
+  /** Maximum trailing characters retained while inspecting a text stream. */
+  maxStreamBufferChars?: number;
+}
+
+/** Options shared by telemetry-only and firewall-enabled LLM wrappers. */
+export interface LynxLlmInstrumentationOptions {
+  /** Event label used for the generated LLM Span. */
+  modelLabel?: string;
+  /** Provider-specific extraction and cost hooks. */
+  customRule?: Partial<LlmInstrumentationRule>;
+  /**
+   * Optional local input and output policy boundaries.
+   *
+   * Omit this for telemetry-only instrumentation. `guardLLM()` enables both
+   * boundaries by default.
+   */
+  firewall?: {
+    input?: false | LynxLlmFirewallBoundaryOptions;
+    output?: false | LynxLlmFirewallBoundaryOptions;
+  };
+}
+
 /** @deprecated Use `LynxFirewallToolOptions`. */
 export type LynxGuardToolOptions<TArgs extends any[] = any[]> =
   LynxFirewallToolOptions<TArgs>;
@@ -396,6 +499,8 @@ export interface LynxStatus {
   pendingTransmissions: number;
   /** Health and freshness of managed prompts and policies. */
   runtimeConfig: LynxRuntimeConfigStatus;
+  /** Health of the isolated issue and recovery reporting queue. */
+  issueReporting: LynxIssueReportingStatus;
 }
 
 export * from "./openapi-contract.js";

@@ -1,4 +1,5 @@
 import {
+  ISSUE_ACTOR_TYPE,
   ISSUE_ACTIVITY_TYPE,
   ISSUE_FINGERPRINT_VERSION,
   ISSUE_SEVERITY,
@@ -60,6 +61,20 @@ export interface PersistIssueResult {
   isReopened: boolean;
 }
 
+export interface RecoverIssueInput {
+  workspaceId: string;
+  environment: string;
+  agentId: string;
+  policyId?: string;
+  promptVersionId?: string;
+  detectionType: string;
+  toolName?: string;
+  detectedAt: Date;
+  recordId: string;
+  reporterName: string;
+  healthyObservationCount?: number;
+}
+
 export class IssueRepository {
   findPromptVersion(workspaceId: string, promptVersionId: string) {
     return AppDataSource.getRepository(PromptVersionEntity).findOne({
@@ -74,6 +89,83 @@ export class IssueRepository {
     return AppDataSource.transaction((manager) =>
       this.recordInTransaction(manager, input),
     );
+  }
+
+  /** 충분한 정상 실행 근거가 도착하면 가장 최근의 동일 이슈를 해결 처리합니다. */
+  recover(input: RecoverIssueInput): Promise<IssueEntity | null> {
+    return AppDataSource.transaction(async (manager) => {
+      const query = manager
+        .getRepository(IssueEntity)
+        .createQueryBuilder("issue")
+        .where("issue.workspaceId = :workspaceId", {
+          workspaceId: input.workspaceId,
+        })
+        .andWhere("issue.environment = :environment", {
+          environment: input.environment,
+        })
+        .andWhere("issue.agentId = :agentId", { agentId: input.agentId })
+        .andWhere("issue.status IN (:...statuses)", {
+          statuses: [ISSUE_STATUS.OPEN, ISSUE_STATUS.INVESTIGATING],
+        })
+        .andWhere(":detectionType = ANY(issue.tags)", {
+          detectionType: input.detectionType,
+        });
+      if (input.policyId) {
+        query.andWhere("issue.policyId = :policyId", {
+          policyId: input.policyId,
+        });
+      } else {
+        query.andWhere("issue.policyId IS NULL");
+      }
+      if (input.promptVersionId) {
+        query.andWhere(
+          "issue.representativePromptVersionId = :promptVersionId",
+          { promptVersionId: input.promptVersionId },
+        );
+      }
+      if (input.toolName) {
+        query.andWhere(
+          `EXISTS (
+            SELECT 1
+            FROM issue_occurrence occurrence
+            WHERE occurrence."issueId" = issue.id
+              AND occurrence.evidence -> 'recordPayload' ->> 'toolName' = :toolName
+          )`,
+          { toolName: input.toolName },
+        );
+      }
+      const issue = await query
+        .orderBy("issue.lastSeenAt", "DESC")
+        .addOrderBy("issue.id", "DESC")
+        .setLock("pessimistic_write")
+        .getOne();
+      if (!issue) return null;
+
+      const previousStatus = issue.status;
+      issue.status = ISSUE_STATUS.RESOLVED;
+      issue.resolvedAt = input.detectedAt;
+      issue.resolvedByUserId = null;
+      await manager.getRepository(IssueEntity).save(issue);
+      const activityRepository = manager.getRepository(IssueActivityEntity);
+      await activityRepository.save(
+        activityRepository.create({
+          workspaceId: input.workspaceId,
+          issueId: issue.id,
+          type: ISSUE_ACTIVITY_TYPE.STATUS_CHANGED,
+          actorType: ISSUE_ACTOR_TYPE.SDK,
+          actorUserId: null,
+          actorName: input.reporterName,
+          body: null,
+          metadata: {
+            from: previousStatus,
+            to: ISSUE_STATUS.RESOLVED,
+            recoveryRecordId: input.recordId,
+            healthyObservationCount: input.healthyObservationCount,
+          },
+        }),
+      );
+      return issue;
+    });
   }
 
   private async recordInTransaction(

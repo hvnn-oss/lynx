@@ -86,7 +86,7 @@ export class DeliveryManager {
     await this.waitWithin(this.shutdownWork, options.timeoutMs);
   }
 
-  getStatus(): Omit<LynxStatus, "runtimeConfig"> {
+  getStatus(): Omit<LynxStatus, "runtimeConfig" | "issueReporting"> {
     return {
       queueSize: this.eventQueue.length + this.retryQueue.length,
       droppedEvents: this.droppedEventCount,
@@ -111,7 +111,10 @@ export class DeliveryManager {
     return this.activeFlush;
   }
 
-  private async waitWithin(work: Promise<void>, timeoutMs: number): Promise<void> {
+  private async waitWithin(
+    work: Promise<void>,
+    timeoutMs: number,
+  ): Promise<void> {
     let timeout: NodeJS.Timeout | undefined;
     const deadline = new Promise<void>((resolve) => {
       timeout = setTimeout(resolve, Math.max(0, timeoutMs));
@@ -155,7 +158,10 @@ export class DeliveryManager {
     return batch;
   }
 
-  private handleResult(batch: LynxEventDto[], result: DeliveryBatchResult): void {
+  private handleResult(
+    batch: LynxEventDto[],
+    result: DeliveryBatchResult,
+  ): void {
     if (result.status === "success") {
       this.recordSuccess();
       return;
@@ -189,14 +195,18 @@ export class DeliveryManager {
     event: LynxEventDto,
     isRetry: boolean,
   ): boolean {
-    const maxQueueSize = this.config.delivery?.maxQueueSize ?? DEFAULT_MAX_QUEUE_SIZE;
+    const maxQueueSize =
+      this.config.delivery?.maxQueueSize ?? DEFAULT_MAX_QUEUE_SIZE;
     if (maxQueueSize <= 0) {
       this.droppedEventCount += 1;
       return false;
     }
     if (this.eventQueue.length + this.retryQueue.length >= maxQueueSize) {
       this.droppedEventCount += 1;
-      if ((this.config.delivery?.overflowStrategy ?? "DROP_OLDEST") === "DROP_NEWEST") {
+      if (
+        (this.config.delivery?.overflowStrategy ?? "DROP_OLDEST") ===
+        "DROP_NEWEST"
+      ) {
         return false;
       }
       // A retry predates newly captured telemetry. When preserving the oldest
@@ -242,11 +252,15 @@ export class DeliveryManager {
     ) {
       this.circuitOpenedAt = Date.now();
     }
-    this.backoffDelayMs = retryAfterMs ?? Math.min(this.backoffDelayMs * 2, MAX_BACKOFF_MS);
+    this.backoffDelayMs =
+      retryAfterMs ?? Math.min(this.backoffDelayMs * 2, MAX_BACKOFF_MS);
   }
 
   private isCircuitOpen(): boolean {
-    if (!(this.config.circuitBreaker?.enabled ?? true) || this.circuitOpenedAt === 0) {
+    if (
+      !(this.config.circuitBreaker?.enabled ?? true) ||
+      this.circuitOpenedAt === 0
+    ) {
       return false;
     }
     return (
