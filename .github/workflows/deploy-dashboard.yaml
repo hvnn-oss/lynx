@@ -1,0 +1,45 @@
+name: Build and Deploy Lynx Dashboard
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/lynx-dashboard/**"
+      - "packages/constants/**"
+      - "packages/contract/**"
+      - "packages/dto/**"
+      - "packages/ui/**"
+      - "package.json"
+      - ".npmrc"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "turbo.json"
+      - ".github/workflows/deploy-dashboard.yaml"
+      - ".github/workflows/deploy-next-ecs.yaml"
+  workflow_dispatch:
+    inputs:
+      publish_only:
+        description: Build and publish the image without updating ECS.
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-dashboard-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy-next-ecs.yaml
+    with:
+      app_name: Lynx Dashboard
+      package_filter: lynx-dashboard
+      dockerfile: apps/lynx-dashboard/Dockerfile
+      environment_name: dashboard-deploy-prod
+      cache_scope: lynx-dashboard
+      run_tests: true
+      publish_only: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_only }}

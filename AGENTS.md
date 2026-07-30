@@ -41,17 +41,22 @@ Lynx의 현재 제품 정의는 "AI 에이전트용 실행 디버깅 및 런타�
 ## 저장소 구조
 
 ```text
-apps/backend
-NestJS API, 이벤트 수집, 인증, 관측 API, 디버깅 API를 담당한다.
+apps/hono-backend
+Hono 기반 API다. 인증, 관리 API, SDK용 OpenAPI, 이벤트 수집, 이슈 처리,
+방화벽, 프롬프트 운영과 백그라운드 worker를 담당한다.
 
 apps/lynx-dashboard
 Next.js 대시보드다. 운영자가 실행 상태, 비용, 오류, 정책 이벤트를 확인한다.
 
-apps/lynx-landing
-제품 소개와 개발자 진입점을 담당한다.
+apps/lynx-admin
+Next.js 내부 관리자 앱이다. 감사 기록, 조직과 요금제, 파일럿 대상,
+Workspace API Key와 OpenAPI 사용량을 관리한다.
+
+apps/acme-ai
+`@lynxops/sdk`의 수집, 프롬프트, 방화벽 동작을 검증하는 예제 Agent 앱이다.
 
 apps/sdk-docs
-SDK 문서 사이트다. 문서는 실제 SDK API와 항상 맞아야 한다.
+SDK와 OpenAPI 공개 문서 사이트다. 문서는 실제 외부 계약과 항상 맞아야 한다.
 
 sdks/lynx-sdk
 고객 서비스에 설치되는 TypeScript SDK다.
@@ -63,7 +68,10 @@ packages/dto
 백엔드와 프론트엔드가 공유하는 요청과 응답 계약이다.
 
 packages/sdk-types
-SDK와 서버가 공유하는 이벤트 타입이다.
+SDK와 수집 서버가 공유하는 이벤트 타입과 공개 OpenAPI 계약이다.
+
+packages/contract
+관리 API의 HTTP method, path, params, request, response 계약을 관리한다.
 
 packages/constants
 공통 상수, 권한, 에러 코드, 정책 값을 둔다.
@@ -87,12 +95,16 @@ Run
   Human Approval Span
 ```
 
-주요 식별자는 `runId`, `traceId`, `spanId`, `parentSpanId`, `sessionId`, `workspaceId`, `agentId`, `environment`, `agentVersion`, `promptVersion`이다.
+현재 외부 계약의 주요 식별자는 `organizationId`, `workspaceId`,
+`sessionId`, `runId`, `spanId`, `parentSpanId`, `agentId`, `environment`,
+`agentVersion`, `promptVersionId`다. 별도 `traceId` 필드를 가정하지 않고
+하나의 실행 추적 경계는 `runId`로 표현한다.
 
 새 기능을 만들 때는 먼저 이 질문에 답한다.
 
 - 이 데이터가 어떤 Run 또는 Session에 붙는가.
-- 테넌트 경계는 `workspaceId`, `projectId`, `environment`, `agentId` 중 어디까지 필요한가.
+- 테넌트 경계는 `organizationId`, `workspaceId`, API Key의 `environment`,
+  `agentId` 중 어디까지 필요한가.
 - 원본 이벤트, 세션 요약, 집계 데이터, 사용량 데이터 중 어디에 저장해야 하는가.
 - 고객 서비스가 Lynx 서버 장애에 끌려가지 않는가.
 
@@ -119,15 +131,25 @@ SDK는 고객 서비스 안에서 동작한다. 그래서 기능보다 안전성
 
 백엔드는 수집 계약과 조회 계약을 안정적으로 유지한다.
 
-- 컨트롤러는 요청 검증과 라우팅에 집중한다.
+- Router는 경로, middleware, Zod validator 연결에 집중한다.
+- Handler는 검증된 요청을 읽고 서비스 결과를 외부 응답 계약으로 변환한다.
 - 서비스는 유스케이스 단위로 읽히게 작성한다.
+- Repository는 TypeORM과 SQL을 통한 영속성 접근만 담당한다.
 - DTO는 외부 계약이다. 필드 이름을 바꿀 때는 SDK, 대시보드, 문서를 함께 확인한다.
 - 엔티티는 저장 모델이다. 화면 편의를 위해 엔티티를 무리하게 바꾸지 않는다.
 - 테넌트 경계와 API key 검증을 우회하지 않는다.
 - 이벤트 수집은 일부 이벤트 실패가 전체 배치를 불필요하게 망치지 않도록 다룬다.
 - 보존 정책, 집계, 사용량 계산은 원본 이벤트 조회와 분리하는 방향을 유지한다.
 
-초기 인프라는 PostgreSQL과 Redis 중심으로 둔다. Kafka, ClickHouse, OpenSearch 같은 대규모 구성은 실제 사용량이 필요해질 때 도입한다.
+`apps/hono-backend/src/api/<domain>`에는 원칙적으로 domain별 `router`,
+`handler`, `service`, `repository`와 대응 테스트만 둔다. 여러 domain이
+공유하는 middleware, 보안, 설정, 타입과 운영 서비스는 `src/common`에,
+교체 가능한 외부 연동 구현은 `src/provider`에 둔다.
+
+현재 인프라는 PostgreSQL과 Redis 프로토콜 호환 저장소를 사용한다. 로컬
+Compose는 Valkey를 사용하며 AWS에서는 ElastiCache for Valkey를 사용할 수
+있다. Kafka, ClickHouse, OpenSearch 같은 대규모 구성은 실제 사용량이
+필요해질 때 검토한다.
 
 ## 대시보드 원칙
 
@@ -180,7 +202,7 @@ TypeScript 스타일은 현재 코드베이스를 따른다.
 - SDK는 ESM 기준 import에 `.js` 확장자를 유지한다.
 - 앱과 패키지는 기존 import alias를 따른다.
 - Prettier 포맷을 기준으로 한다.
-- 백엔드 코드는 NestJS의 module, controller, service 구조를 따른다.
+- 백엔드는 Hono의 router, handler, service, repository 구조를 따른다.
 - 프론트엔드 컴포넌트는 props 타입을 가까이에 두고, 화면 전용 helper는 같은 파일 하단에 둔다.
 - 공유 가능한 타입과 상수는 `packages`로 올리되, 성급하게 추상화하지 않는다.
 
@@ -214,11 +236,12 @@ pnpm test
 SDK 변경은 다음을 우선 확인한다.
 
 ```bash
-pnpm --filter @repo/sdk build
-pnpm --filter @repo/sdk test
+pnpm --filter @lynxops/sdk build
+pnpm --filter @lynxops/sdk test
 ```
 
-백엔드 API 변경은 관련 service, controller spec을 함께 확인한다.
+백엔드 API 변경은 관련 router, handler, service, repository spec을 함께
+확인한다.
 
 대시보드 변경은 타입 체크와 화면 상태를 확인한다. 로딩, 에러, 빈 데이터, 데모 데이터 상태를 놓치지 않는다.
 

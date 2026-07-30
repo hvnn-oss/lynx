@@ -1,0 +1,41 @@
+name: Build and Deploy Lynx Admin
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/lynx-admin/**"
+      - "package.json"
+      - ".npmrc"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "turbo.json"
+      - ".github/workflows/deploy-admin.yaml"
+      - ".github/workflows/deploy-next-ecs.yaml"
+  workflow_dispatch:
+    inputs:
+      publish_only:
+        description: Build and publish the image without updating ECS.
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-admin-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy-next-ecs.yaml
+    with:
+      app_name: Lynx Admin
+      package_filter: lynx-admin
+      dockerfile: apps/lynx-admin/Dockerfile
+      environment_name: admin-deploy-prod
+      cache_scope: lynx-admin
+      run_tests: false
+      publish_only: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_only }}
