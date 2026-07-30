@@ -88,18 +88,28 @@ export class IssueRecordReporter {
       await work;
       return;
     }
-    await Promise.race([
-      work,
-      new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, Math.max(0, timeoutMs));
-        timer.unref?.();
-      }),
-    ]);
+    await this.waitWithin(work, timeoutMs);
   }
 
   /** Returns whether automatic issue reporting has been explicitly enabled. */
   private isEnabled(): boolean {
     return this.options.enabled === true && Boolean(this.connection.apiKey);
+  }
+
+  /** Waits for shutdown work without letting an unreachable server hang exit. */
+  private async waitWithin(
+    work: Promise<void>,
+    timeoutMs: number,
+  ): Promise<void> {
+    let timeout: NodeJS.Timeout | undefined;
+    const deadline = new Promise<void>((resolve) => {
+      timeout = setTimeout(resolve, Math.max(0, timeoutMs));
+    });
+    try {
+      await Promise.race([work, deadline]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
   }
 
   /** Starts one drain operation while coalescing concurrent report calls. */

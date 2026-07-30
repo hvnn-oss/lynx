@@ -119,7 +119,6 @@ export class ApprovalClient {
         () => controller.abort(),
         this.options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
       );
-      timeout.unref?.();
       try {
         const response = await fetch(
           `${this.connection.endpoint.replace(/\/$/, "")}${path}`,

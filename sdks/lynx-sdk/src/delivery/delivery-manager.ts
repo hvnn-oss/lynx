@@ -118,7 +118,9 @@ export class DeliveryManager {
     let timeout: NodeJS.Timeout | undefined;
     const deadline = new Promise<void>((resolve) => {
       timeout = setTimeout(resolve, Math.max(0, timeoutMs));
-      timeout.unref?.();
+      // The caller explicitly awaits this deadline. Keeping it referenced
+      // guarantees shutdown resolves even when the transport is the only
+      // remaining pending work, which does not keep Node's event loop alive.
     });
     try {
       await Promise.race([work, deadline]);
