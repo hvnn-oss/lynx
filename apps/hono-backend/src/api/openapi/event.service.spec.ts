@@ -64,6 +64,40 @@ describe("OpenAPIEventService", () => {
     expect(result.rejectedEventIds).toEqual([]);
   });
 
+  it("stores legacy and omitted schema versions as 1.0", async () => {
+    const repository = {
+      findEvent: jest.fn().mockResolvedValue(null),
+      findOrCreateAgent: jest.fn().mockResolvedValue({ id: "agent-1" }),
+      findOrCreateSession: jest.fn().mockResolvedValue({ id: "session-1" }),
+      findOrCreateRun: jest.fn().mockResolvedValue({ id: "run-1" }),
+      saveEvent: jest.fn().mockResolvedValue({ id: "stored-event" }),
+    } as unknown as OpenAPIEventRepository;
+    const service = new OpenAPIEventService(repository);
+
+    const result = await service.ingestBatch("workspace-1", "prod", [
+      event({ schemaVersion: "1" }),
+      event({ eventId: "event-2" }),
+    ]);
+
+    expect(result.accepted).toBe(2);
+    expect(repository.saveEvent).toHaveBeenNthCalledWith(
+      1,
+      "workspace-1",
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ schemaVersion: "1.0" }),
+    );
+    expect(repository.saveEvent).toHaveBeenNthCalledWith(
+      2,
+      "workspace-1",
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ schemaVersion: "1.0" }),
+    );
+  });
+
   it("LLM 종료 이벤트에 서버 추정 비용을 저장한다", async () => {
     const repository = {
       findEvent: jest.fn().mockResolvedValue(null),

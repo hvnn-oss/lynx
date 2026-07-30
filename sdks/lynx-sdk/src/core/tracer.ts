@@ -16,6 +16,7 @@ import {
   LynxPromptSnapshot,
   LynxLlmInstrumentationOptions,
 } from "./types.js";
+import { LYNX_EVENT_SCHEMA_VERSION } from "@repo/sdk-types";
 import { processPayload } from "../utils/payload.js";
 import {
   generateTraceId,
@@ -797,7 +798,7 @@ export class LynxTracer {
       workspaceId: context.workspaceId,
       agentId: context.agentId,
       sessionId: context.sessionId,
-      schemaVersion: "1",
+      schemaVersion: LYNX_EVENT_SCHEMA_VERSION,
     };
 
     const queued = this.delivery.enqueue(eventDto);

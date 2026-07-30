@@ -4,6 +4,37 @@ const MAX_EVENT_PAYLOAD_BYTES = 256 * 1024;
 const MAX_EVENT_AGE_MS = 30 * 24 * 60 * 60 * 1_000;
 const MAX_EVENT_FUTURE_SKEW_MS = 5 * 60 * 1_000;
 
+/** Current event wire-contract version emitted by official Lynx SDKs. */
+export const LYNX_EVENT_SCHEMA_VERSION = "1.0" as const;
+
+/** Previously published versions accepted during the compatibility window. */
+export const LYNX_LEGACY_EVENT_SCHEMA_VERSIONS = ["1"] as const;
+
+export const SdkEventSchemaVersionSchema = z.enum([
+  LYNX_EVENT_SCHEMA_VERSION,
+  ...LYNX_LEGACY_EVENT_SCHEMA_VERSIONS,
+]);
+
+/**
+ * Converts an omitted or legacy event version to the current stored version.
+ *
+ * Validation rejects unknown versions before this function is called.
+ */
+export function normalizeSdkEventSchemaVersion(
+  schemaVersion?: string,
+): typeof LYNX_EVENT_SCHEMA_VERSION {
+  if (
+    schemaVersion === undefined ||
+    schemaVersion === LYNX_EVENT_SCHEMA_VERSION ||
+    LYNX_LEGACY_EVENT_SCHEMA_VERSIONS.includes(
+      schemaVersion as (typeof LYNX_LEGACY_EVENT_SCHEMA_VERSIONS)[number],
+    )
+  ) {
+    return LYNX_EVENT_SCHEMA_VERSION;
+  }
+  throw new Error(`Unsupported Lynx event schema version: ${schemaVersion}`);
+}
+
 const EventPayloadSchema = z
   .record(z.string(), z.unknown())
   .refine(
@@ -34,7 +65,7 @@ export const SdkIngestEventSchema = z.object({
   workspaceId: z.string().max(255).optional(),
   agentId: z.string().max(255).optional(),
   sessionId: z.string().max(255).optional(),
-  schemaVersion: z.string().max(40).optional(),
+  schemaVersion: SdkEventSchemaVersionSchema.optional(),
 });
 
 export const SdkIngestEventBatchSchema = z

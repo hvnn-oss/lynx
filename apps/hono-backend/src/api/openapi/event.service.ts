@@ -1,4 +1,5 @@
 import type { IngestEvent } from "./event.schema.js";
+import { normalizeSdkEventSchemaVersion } from "@repo/dto";
 import {
   OpenAPIEventRepository,
   openAPIEventRepository,
@@ -52,6 +53,8 @@ export class OpenAPIEventService {
         }
         const trustedEvent = {
           ...event,
+          // 구버전 SDK의 "1"과 생략값을 현재 저장 버전으로 정규화합니다.
+          schemaVersion: normalizeSdkEventSchemaVersion(event.schemaVersion),
           payload: this.costs.enrichPayload(event.eventType, {
             ...event.payload,
             workspaceId,

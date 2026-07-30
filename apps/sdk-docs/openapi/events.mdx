@@ -7,21 +7,25 @@ Use `POST /openapi/v1/events/batch` to record one to 100 events. The complete re
 
 ## Event fields
 
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| `eventId` | string | Yes | Idempotency key. Keep it unchanged across retries. Maximum 160 characters. |
-| `clientId` | string | Yes | Stable identifier for your SDK installation or process family. Maximum 120 characters. |
-| `runId` | string | Yes | One agent execution. Maximum 255 characters. |
-| `sessionId` | string | No | Groups related runs, such as one conversation. |
-| `agentId` | string | No | Stable external agent identifier. |
-| `agentName` | string | Yes | Human-readable agent name. |
-| `eventType` | string | Yes | Event category. Maximum 50 characters. |
-| `label` | string | Yes | Short timeline label. Maximum 255 characters. |
-| `timestamp` | integer | Yes | Unix time in milliseconds. |
-| `payload` | object | No | Event-specific data. Defaults to `{}`. |
-| `schemaVersion` | string | No | Version of your event payload contract. |
+| Field           | Type    | Required | Description                                                                                       |
+| --------------- | ------- | -------- | ------------------------------------------------------------------------------------------------- |
+| `eventId`       | string  | Yes      | Idempotency key. Keep it unchanged across retries. Maximum 160 characters.                        |
+| `clientId`      | string  | Yes      | Stable identifier for your SDK installation or process family. Maximum 120 characters.            |
+| `runId`         | string  | Yes      | One agent execution. Maximum 255 characters.                                                      |
+| `sessionId`     | string  | No       | Groups related runs, such as one conversation.                                                    |
+| `agentId`       | string  | No       | Stable external agent identifier.                                                                 |
+| `agentName`     | string  | Yes      | Human-readable agent name.                                                                        |
+| `eventType`     | string  | Yes      | Event category. Maximum 50 characters.                                                            |
+| `label`         | string  | Yes      | Short timeline label. Maximum 255 characters.                                                     |
+| `timestamp`     | integer | Yes      | Unix time in milliseconds.                                                                        |
+| `payload`       | object  | No       | Event-specific data. Defaults to `{}`.                                                            |
+| `schemaVersion` | string  | No       | Event wire-contract version. Use `1.0`. The legacy value `1` is accepted and normalized to `1.0`. |
 
 `timestamp` can be at most 30 days old and up to five minutes in the future.
+
+If `schemaVersion` is omitted, the server stores the event as `1.0`. Unknown
+versions are rejected at request validation so an incompatible payload is not
+silently misread.
 
 The optional `workspaceId` field is only a consistency hint. If it differs from the workspace selected by the API key, the event is rejected.
 

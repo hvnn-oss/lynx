@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { LynxPolicyError, LynxTracer } from "../dist/index.js";
+import {
+  LYNX_EVENT_SCHEMA_VERSION,
+  LynxPolicyError,
+  LynxTracer,
+  SdkIngestEventSchema,
+} from "../dist/index.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -19,6 +24,42 @@ function createTracer(overrides = {}) {
     ...overrides,
   });
 }
+
+test("event contract accepts current and legacy schema versions only", () => {
+  const event = {
+    eventId: "event-contract-test",
+    clientId: "test-client",
+    runId: "run-contract-test",
+    agentName: "SupportAgent",
+    eventType: "USER_INPUT",
+    label: "input",
+    payload: {},
+    timestamp: Date.now(),
+  };
+
+  assert.equal(
+    SdkIngestEventSchema.safeParse({
+      ...event,
+      schemaVersion: "1.0",
+    }).success,
+    true,
+  );
+  assert.equal(
+    SdkIngestEventSchema.safeParse({
+      ...event,
+      schemaVersion: "1",
+    }).success,
+    true,
+  );
+  assert.equal(SdkIngestEventSchema.safeParse(event).success, true);
+  assert.equal(
+    SdkIngestEventSchema.safeParse({
+      ...event,
+      schemaVersion: "2.0",
+    }).success,
+    false,
+  );
+});
 
 test("flush sends queued events even when the batch size is not reached", async () => {
   const batches = [];
@@ -43,6 +84,11 @@ test("flush sends queued events even when the batch size is not reached", async 
   );
   assert.equal(batches[0][3].payload.status, "COMPLETED");
   assert.equal(batches[0][3].payload.automatic, true);
+  assert.equal(LYNX_EVENT_SCHEMA_VERSION, "1.0");
+  assert.deepEqual(
+    batches[0].map((event) => event.schemaVersion),
+    ["1.0", "1.0", "1.0", "1.0"],
+  );
 });
 
 test("uses the hosted Lynx API endpoint by default", async () => {
@@ -1003,16 +1049,12 @@ test("reports recovery after consecutive healthy policy observations", async () 
       recoverySuccessThreshold: 3,
     },
   });
-  const guarded = tracer.firewallTool(
-    "recoverable-tool",
-    async () => "ok",
-    {
-      beforeCall: () => ({
-        action: shouldBlock ? "BLOCK" : "ALLOW",
-        policyId: shouldBlock ? "recoverable-policy" : undefined,
-      }),
-    },
-  );
+  const guarded = tracer.firewallTool("recoverable-tool", async () => "ok", {
+    beforeCall: () => ({
+      action: shouldBlock ? "BLOCK" : "ALLOW",
+      policyId: shouldBlock ? "recoverable-policy" : undefined,
+    }),
+  });
 
   await assert.rejects(() =>
     tracer.run("RecoveryAgent", () => guarded({ stable: true })),

@@ -5,13 +5,18 @@ import {
   SdkIngestEventSchema,
 } from "@repo/sdk-types";
 
+export {
+  LYNX_EVENT_SCHEMA_VERSION,
+  LYNX_LEGACY_EVENT_SCHEMA_VERSIONS,
+  normalizeSdkEventSchemaVersion,
+} from "@repo/sdk-types";
+
 /** 직접 API 호출도 개별 Event payload 상한을 넘지 못하도록 검증합니다. */
 export const IngestEventSchema = SdkIngestEventSchema;
 
 export const IngestEventBatchSchema = SdkIngestEventBatchSchema;
 
-export const IngestEventBatchResponseSchema =
-  SdkIngestEventBatchResponseSchema;
+export const IngestEventBatchResponseSchema = SdkIngestEventBatchResponseSchema;
 
 export const RunListQuerySchema = z.object({
   cursor: z
