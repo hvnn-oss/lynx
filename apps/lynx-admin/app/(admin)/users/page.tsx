@@ -55,7 +55,6 @@ export default function UsersPage() {
 
   useEffect(() => {
     let isCurrent = true;
-    setError("");
     listUsers({
       search: appliedSearch || undefined,
       access: access || undefined,
@@ -63,7 +62,9 @@ export default function UsersPage() {
       limit: PAGE_SIZE,
     })
       .then((result) => {
-        if (isCurrent) setData(result);
+        if (!isCurrent) return;
+        setError("");
+        setData(result);
       })
       .catch((cause: unknown) => {
         if (!isCurrent) return;
