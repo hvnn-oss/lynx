@@ -12,8 +12,8 @@ export function createPromptLineDiff(
   oldContent: string,
   newContent: string,
 ): PromptLineChange[] {
-  const oldLines = oldContent.split("\n");
-  const newLines = newContent.split("\n");
+  const oldLines = splitPromptLines(oldContent);
+  const newLines = splitPromptLines(newContent);
   if (oldLines.length > MAX_DIFF_LINES || newLines.length > MAX_DIFF_LINES) {
     throw new Error("PROMPT_DIFF_TOO_LARGE");
   }
@@ -87,4 +87,9 @@ export function createPromptLineDiff(
     newIndex += 1;
   }
   return changes;
+}
+
+/** 운영체제별 줄바꿈 차이만으로 전체 본문이 변경 처리되지 않게 정규화합니다. */
+function splitPromptLines(content: string): string[] {
+  return content.replace(/\r\n?/g, "\n").split("\n");
 }

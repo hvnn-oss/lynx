@@ -673,8 +673,7 @@ export function PromptEditorScreen({ promptId }: { promptId?: string }) {
                         })}
                       </p>
                       <OperationsSplitDiff
-                        before={fromVersion.content}
-                        after={toVersion.content}
+                        changes={comparison.data.changes}
                         beforeLabel={fromVersion.version}
                         afterLabel={toVersion.version}
                       />

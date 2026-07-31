@@ -286,8 +286,7 @@ export function PromptCompareScreen() {
       </DashboardMetricGrid>
       <DashboardPanel>
         <OperationsSplitDiff
-          before={previous.content}
-          after={latest.content}
+          changes={comparison.data.changes}
           beforeLabel={previous.version}
           afterLabel={latest.version}
         />
