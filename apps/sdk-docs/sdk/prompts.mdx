@@ -1,0 +1,179 @@
+---
+title: "Use managed prompts"
+description: "Deploy an immutable prompt version in Lynx and load it in the TypeScript SDK with getPrompt()."
+---
+
+Managed prompts let you change model instructions without rebuilding your application. Lynx serves only deployed, immutable prompt versions. An editable draft is never returned to the SDK.
+
+## Before you start
+
+You need:
+
+- A workspace API key with both `config:read` and `policies:read`
+- A saved prompt draft promoted to an immutable version
+- An active deployment in the same environment as the API key
+- A tracer-level `agentId` when the deployment targets a specific Agent
+
+<Note>
+  The API key determines the workspace and deployment environment used by the
+  runtime configuration API. Set the SDK `environment` to the same value when
+  you enable strict target matching.
+</Note>
+
+## Deploy a prompt
+
+In the Lynx dashboard:
+
+1. Open **Prompts → Prompt library** and select **Add prompt**.
+2. Enter a stable prompt name, such as `support-system`, and save the draft.
+3. Open the **Versions** tab and select **Create version**.
+4. Open the **Deployment** tab.
+5. Select the immutable version, `Staging` or `Production`, and either **All agents** or one Agent.
+6. Select **Deploy**.
+
+Saving a draft does not change a running application. The SDK can receive the prompt only after an immutable version is deployed.
+
+## Configure the SDK
+
+```ts
+import { LynxTracer } from "@lynxops/sdk";
+
+const lynx = new LynxTracer({
+  clientId: "support-api",
+  apiKey: process.env.LYNX_API_KEY,
+  agentId: "support-agent",
+  environment: "production",
+  runtimeConfig: {
+    enabled: true,
+    refreshIntervalMs: 60_000,
+    cache: {
+      enabled: true,
+    },
+  },
+});
+```
+
+Use the Agent's client identifier for `agentId`. You can omit `agentId` when you use only **All agents** deployments.
+
+`runtimeConfig.enabled: true` loads prompts and firewall policies before the first `run()`. Persistent caching is optional. When enabled without a `path`, the SDK stores the last validated bundle in the operating system's user cache directory.
+
+## Load a prompt
+
+Use the stable prompt name with `getPrompt()`. Call it inside `run()` so Lynx pins the selected version for that run and attaches its `versionId` to related events.
+
+```ts
+async function answer(userId: string, message: string) {
+  return lynx.run(
+    {
+      agentName: "SupportAgent",
+      assignmentKey: userId,
+    },
+    async () => {
+      const prompt = await lynx.getPrompt("support-system");
+
+      return callModel({
+        instructions: prompt.content,
+        input: message,
+      });
+    },
+  );
+}
+```
+
+`getPrompt()` accepts either the stable prompt name or its UUID.
+
+| Field         | Description                                   |
+| ------------- | --------------------------------------------- |
+| `promptId`    | Stable UUID of the managed prompt             |
+| `name`        | Stable name accepted by `getPrompt()`         |
+| `versionId`   | UUID of the exact immutable version           |
+| `version`     | Human-readable version label, such as `v1.0`  |
+| `content`     | Prompt content to pass to the model or Agent  |
+| `contentHash` | SHA-256 digest verified by the SDK before use |
+
+## How Lynx selects a deployment
+
+| Dashboard deployment   | SDK configuration                                                 |
+| ---------------------- | ----------------------------------------------------------------- |
+| Production, all Agents | Use a Production API key. `agentId` is optional.                  |
+| Production, one Agent  | Use a Production API key and set the matching tracer `agentId`.   |
+| Staging, all Agents    | Use a Staging API key. `agentId` is optional.                     |
+| Staging, one Agent     | Use a Staging API key and set the matching tracer `agentId`.      |
+
+An Agent-specific deployment takes precedence over an **All agents** deployment for the same prompt and environment.
+
+The runtime configuration request uses the `agentId` passed to `new LynxTracer()`. Setting a different `agentId` only in `run()` does not change which prompt deployment is loaded. Create one tracer per Agent when one process runs multiple Agents with different prompt deployments.
+
+## Refresh and cache behavior
+
+The SDK:
+
+1. Restores a valid last-known-good cache when available.
+2. Loads the current runtime bundle on first use.
+3. Checks for changes every 60 seconds by default.
+4. Uses `ETag` revalidation instead of downloading an unchanged bundle.
+5. Verifies the prompt content hash before replacing the active bundle.
+6. Keeps the current version pinned until the active `run()` finishes.
+
+Set `refreshIntervalMs` to change the refresh period. The minimum interval is five seconds. Do not call the runtime configuration API before every model request.
+
+## A/B experiments
+
+When an active A/B experiment exists, Lynx selects a version locally using the run's `assignmentKey`.
+
+```ts
+await lynx.run(
+  {
+    agentName: "SupportAgent",
+    assignmentKey: "customer_123",
+  },
+  async () => {
+    const prompt = await lynx.getPrompt("support-system");
+    // The same assignment key stays in the same experiment bucket.
+  },
+);
+```
+
+Use a stable, non-sensitive user, tenant, or session identifier. If you omit `assignmentKey`, the SDK uses the run's `sessionId`.
+
+## Handle an unavailable prompt
+
+An automatic startup refresh fails open so a Lynx outage does not stop unrelated application work. An explicit `getPrompt()` call throws when no valid cached bundle exists or the prompt is not deployed.
+
+Keep a local fallback when your application must continue without Lynx:
+
+```ts
+const LOCAL_FALLBACK_PROMPT = "You are a helpful support agent.";
+
+async function resolveInstructions() {
+  try {
+    return (await lynx.getPrompt("support-system")).content;
+  } catch {
+    return LOCAL_FALLBACK_PROMPT;
+  }
+}
+```
+
+Inspect local state without making another network request:
+
+```ts
+const status = lynx.getStatus().runtimeConfig;
+
+console.log({
+  state: status.state,
+  isUsable: status.isUsable,
+  promptCount: status.promptCount,
+  lastError: status.lastError,
+  cacheState: status.cache.state,
+});
+```
+
+## Security note
+
+Prompt content can contain confidential instructions. Do not print `prompt.content`, API keys, or the contents of `.lynxconf` in application logs. Protect the persistent cache with the same access controls as application configuration.
+
+## Related pages
+
+- [Configure the SDK](/sdk/configuration)
+- [Track agent runs](/sdk/tracing)
+- [Load runtime configuration with OpenAPI](/openapi/runtime-config)

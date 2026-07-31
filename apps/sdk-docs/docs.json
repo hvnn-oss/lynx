@@ -39,6 +39,7 @@
             "group": "TypeScript SDK",
             "pages": [
               "sdk/configuration",
+              "sdk/prompts",
               "sdk/tracing",
               "sdk/instrumentation",
               "sdk/firewalls",
@@ -83,6 +84,7 @@
             "group": "TypeScript SDK",
             "pages": [
               "ko/sdk/configuration",
+              "ko/sdk/prompts",
               "ko/sdk/tracing",
               "ko/sdk/instrumentation",
               "ko/sdk/firewalls",

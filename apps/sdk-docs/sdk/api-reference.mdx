@@ -58,6 +58,29 @@ await lynx.run(
 );
 ```
 
+## Managed prompts
+
+### `getPrompt(id)`
+
+Returns the active immutable prompt by stable name or prompt UUID. Call it
+inside `run()` to pin the selected version and attach its `versionId` to related
+events.
+
+```ts
+await lynx.run("SupportAgent", async () => {
+  const prompt = await lynx.getPrompt("support-system");
+  await callModel({ instructions: prompt.content });
+});
+```
+
+The promise rejects when no valid runtime configuration is available or the
+prompt is not deployed for the API key environment and Agent scope.
+
+### `initialize()`
+
+Loads managed prompts and firewall policies immediately. Concurrent calls share
+one request. Most applications can use `runtimeConfig.enabled: true` instead.
+
 ## Semantic helpers
 
 | Method                                             | Purpose                                                                                                                    |
@@ -140,9 +163,13 @@ if (error instanceof LynxPolicyError) {
 | `captureOutput`                           | Whether output fields may be recorded.                          |
 | `captureMode`                             | `full`, `metadata-only`, or `smart`.                            |
 | `maxPayloadLength`                        | Maximum string length kept in `smart` mode.                     |
+| `runtimeConfig.enabled`                   | Loads managed prompts and policies before the first `run()`.    |
+| `runtimeConfig.refreshIntervalMs`         | Background refresh interval. Defaults to 60 seconds.            |
 | `runtimeConfig.maxStaleAgeMs`             | Maximum age of the last validated bundle. Defaults to 24 hours. |
 | `runtimeConfig.requireSignature`          | Rejects unsigned runtime bundles.                               |
 | `runtimeConfig.requireTargetMatch`        | Rejects an environment mismatch or unresolved Agent.            |
+| `runtimeConfig.cache.enabled`             | Persists the last validated bundle. Defaults to `false`.        |
+| `runtimeConfig.cache.path`                | Optional exact path for the `.lynxconf` cache.                   |
 | `issueReporting.enabled`                  | Sends issue candidates for detected failures when `true`.       |
 | `issueReporting.reportRunFailures`        | Reports root Run errors and explicit failed outcomes.            |
 | `issueReporting.reportLlmFailures`        | Reports errors from instrumented LLM calls.                      |
@@ -164,4 +191,5 @@ if (error instanceof LynxPolicyError) {
 
 - [Connect the SDK](/sdk/quickstart)
 - [Configure the SDK](/sdk/configuration)
+- [Use managed prompts](/sdk/prompts)
 - [Track agent runs](/sdk/tracing)

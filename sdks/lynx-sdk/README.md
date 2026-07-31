@@ -197,6 +197,59 @@ Useful identifiers:
 | `promptVersion` | Prompt version metadata attached to LLM and reasoning events.                   |
 | `policyVersion` | Firewall or policy version metadata.                                            |
 
+## Managed Prompts
+
+Create a prompt in the Lynx dashboard, save its draft, create an immutable
+version, and deploy that version to Staging or Production. A saved draft is not
+returned to the SDK until an immutable version is deployed.
+
+The workspace API key must have both `config:read` and `policies:read`. Its
+environment selects the matching deployment. Set a tracer-level `agentId` when
+the deployment targets one Agent.
+
+```ts
+const lynx = new LynxTracer({
+  clientId: "support-api",
+  apiKey: process.env.LYNX_API_KEY,
+  agentId: "support-agent",
+  environment: "production",
+  runtimeConfig: {
+    enabled: true,
+    refreshIntervalMs: 60_000,
+    cache: {
+      enabled: true,
+    },
+  },
+});
+
+await lynx.run(
+  {
+    agentName: "SupportAgent",
+    assignmentKey: "customer_123",
+  },
+  async () => {
+    const prompt = await lynx.getPrompt("support-system");
+
+    return callModel({
+      instructions: prompt.content,
+      input: "Help me reset my password",
+    });
+  },
+);
+```
+
+`getPrompt()` accepts a stable prompt name or UUID and returns `promptId`,
+`name`, `versionId`, `version`, `content`, and `contentHash`. Calling it inside
+`run()` pins that immutable version for the run and connects the version to
+related events.
+
+The SDK checks for new runtime configuration every 60 seconds by default, uses
+ETag revalidation, verifies prompt content hashes, and keeps the last known good
+bundle. Persistent `.lynxconf` caching is disabled by default. An explicit
+`getPrompt()` call throws if no valid bundle exists or the prompt is not
+deployed, so keep a local fallback when the application must continue without
+Lynx.
+
 ## Semantic Events
 
 Prefer semantic helpers over raw event logging. They make Lynx debugging views

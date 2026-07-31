@@ -58,6 +58,30 @@ await lynx.run(
 );
 ```
 
+## 관리형 프롬프트
+
+### `getPrompt(id)`
+
+프롬프트 이름 또는 UUID로 현재 활성 불변 버전을 반환합니다. `run()` 안에서
+호출하면 선택한 버전을 실행이 끝날 때까지 유지하고 관련 이벤트에
+`versionId`를 연결합니다.
+
+```ts
+await lynx.run("SupportAgent", async () => {
+  const prompt = await lynx.getPrompt("support-system");
+  await callModel({ instructions: prompt.content });
+});
+```
+
+유효한 실행 설정이 없거나 API key 환경과 Agent 범위에 프롬프트가 배포되지
+않았다면 오류를 냅니다.
+
+### `initialize()`
+
+관리형 프롬프트와 방화벽 정책을 바로 불러옵니다. 동시에 여러 번 호출해도
+하나의 요청을 공유합니다. 일반적으로는 `runtimeConfig.enabled: true`를
+사용하면 됩니다.
+
 ## Semantic helper
 
 | Method                                             | 목적                                                                                                      |
@@ -140,9 +164,13 @@ if (error instanceof LynxPolicyError) {
 | `captureOutput`                           | 출력 필드를 기록할 수 있는지 정합니다.                                  |
 | `captureMode`                             | `full`, `metadata-only`, `smart` 중 하나입니다.                         |
 | `maxPayloadLength`                        | `smart` 모드에서 보관할 문자열 최대 길이입니다.                         |
+| `runtimeConfig.enabled`                   | 첫 `run()` 전에 관리형 프롬프트와 정책을 불러옵니다.                    |
+| `runtimeConfig.refreshIntervalMs`         | 백그라운드 갱신 주기입니다. 기본값은 60초입니다.                        |
 | `runtimeConfig.maxStaleAgeMs`             | 마지막으로 검증된 설정을 사용할 최대 기간입니다. 기본값은 24시간입니다. |
 | `runtimeConfig.requireSignature`          | 서명되지 않은 실행 설정을 거절합니다.                                   |
 | `runtimeConfig.requireTargetMatch`        | 환경이 다르거나 Agent를 찾지 못한 설정을 거절합니다.                    |
+| `runtimeConfig.cache.enabled`             | 마지막으로 검증한 설정을 저장합니다. 기본값은 `false`입니다.            |
+| `runtimeConfig.cache.path`                | `.lynxconf` 파일의 정확한 경로입니다.                                   |
 | `issueReporting.enabled`                  | `true`이면 감지된 실패를 이슈 생성 검토 대상으로 보냅니다.              |
 | `issueReporting.reportRunFailures`        | 루트 Run 오류와 명시적으로 기록한 실패 결과를 보고합니다.               |
 | `issueReporting.reportLlmFailures`        | 연결한 LLM 호출에서 발생한 오류를 보고합니다.                            |
@@ -164,4 +192,5 @@ if (error instanceof LynxPolicyError) {
 
 - [SDK 연결하기](/ko/sdk/quickstart)
 - [설정하기](/ko/sdk/configuration)
+- [관리형 프롬프트 사용하기](/ko/sdk/prompts)
 - [에이전트 실행 추적하기](/ko/sdk/tracing)

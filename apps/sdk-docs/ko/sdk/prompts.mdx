@@ -1,0 +1,178 @@
+---
+title: "관리형 프롬프트 사용하기"
+description: "Lynx에서 불변 프롬프트 버전을 배포하고 TypeScript SDK의 getPrompt()로 불러옵니다."
+---
+
+관리형 프롬프트를 사용하면 애플리케이션을 다시 빌드하지 않고 모델 지침을 변경할 수 있습니다. Lynx는 배포된 불변 버전만 SDK에 전달합니다. 편집 중인 초안은 SDK에 전달하지 않습니다.
+
+## 시작하기 전에
+
+다음 항목이 필요합니다.
+
+- `config:read`와 `policies:read` 권한이 모두 있는 워크스페이스 API key
+- 불변 버전으로 확정한 프롬프트 초안
+- API key와 같은 환경에 있는 활성 배포
+- 특정 Agent에만 배포했다면 tracer에 설정한 `agentId`
+
+<Note>
+  API key가 실행 설정을 조회할 워크스페이스와 배포 환경을 결정합니다. 엄격한
+  대상 검증을 사용할 때는 SDK의 `environment`도 같은 값으로 설정하세요.
+</Note>
+
+## 프롬프트 배포하기
+
+Lynx 대시보드에서 다음 순서로 진행합니다.
+
+1. **프롬프트 → 프롬프트 목록**에서 **프롬프트 추가**를 선택합니다.
+2. `support-system`처럼 계속 사용할 프롬프트 이름과 내용을 입력하고 초안을 저장합니다.
+3. **버전** 탭에서 **버전 만들기**를 선택합니다.
+4. **배포** 탭을 엽니다.
+5. 불변 버전, `Staging` 또는 `Production`, **전체 Agent** 또는 특정 Agent를 선택합니다.
+6. **배포**를 선택합니다.
+
+초안만 저장해도 실행 중인 애플리케이션은 바뀌지 않습니다. 불변 버전을 배포해야 SDK가 프롬프트를 받을 수 있습니다.
+
+## SDK 설정하기
+
+```ts
+import { LynxTracer } from "@lynxops/sdk";
+
+const lynx = new LynxTracer({
+  clientId: "support-api",
+  apiKey: process.env.LYNX_API_KEY,
+  agentId: "support-agent",
+  environment: "production",
+  runtimeConfig: {
+    enabled: true,
+    refreshIntervalMs: 60_000,
+    cache: {
+      enabled: true,
+    },
+  },
+});
+```
+
+`agentId`에는 Agent의 클라이언트 식별자를 사용합니다. **전체 Agent** 배포만 사용한다면 `agentId`를 생략할 수 있습니다.
+
+`runtimeConfig.enabled: true`를 설정하면 첫 `run()` 전에 프롬프트와 방화벽 정책을 불러옵니다. 파일 캐시는 선택 사항입니다. `path` 없이 캐시를 켜면 운영체제의 사용자 캐시 디렉터리에 마지막으로 검증한 설정을 저장합니다.
+
+## 프롬프트 불러오기
+
+`getPrompt()`에 프롬프트 이름을 전달합니다. `run()` 안에서 호출하면 실행이 끝날 때까지 선택한 버전을 고정하고, 관련 이벤트에 `versionId`를 연결합니다.
+
+```ts
+async function answer(userId: string, message: string) {
+  return lynx.run(
+    {
+      agentName: "SupportAgent",
+      assignmentKey: userId,
+    },
+    async () => {
+      const prompt = await lynx.getPrompt("support-system");
+
+      return callModel({
+        instructions: prompt.content,
+        input: message,
+      });
+    },
+  );
+}
+```
+
+`getPrompt()`에는 프롬프트 이름 또는 UUID를 전달할 수 있습니다.
+
+| 필드          | 설명                                        |
+| ------------- | ------------------------------------------- |
+| `promptId`    | 관리형 프롬프트의 고정 UUID                 |
+| `name`        | `getPrompt()`에서 사용하는 고정 이름        |
+| `versionId`   | 실제 사용한 불변 버전의 UUID                |
+| `version`     | `v1.0`과 같은 사람이 읽을 수 있는 버전 이름 |
+| `content`     | 모델 또는 Agent에 전달할 프롬프트 내용      |
+| `contentHash` | SDK가 사용 전에 검증하는 SHA-256 값         |
+
+## 배포 대상 선택 방식
+
+| 대시보드 배포          | SDK 설정                                                      |
+| ---------------------- | ------------------------------------------------------------- |
+| Production, 전체 Agent | Production API key를 사용합니다. `agentId`는 선택 사항입니다. |
+| Production, 특정 Agent | Production API key와 일치하는 tracer `agentId`를 사용합니다.  |
+| Staging, 전체 Agent    | Staging API key를 사용합니다. `agentId`는 선택 사항입니다.    |
+| Staging, 특정 Agent    | Staging API key와 일치하는 tracer `agentId`를 사용합니다.     |
+
+같은 프롬프트와 환경에 전체 Agent 배포와 특정 Agent 배포가 모두 있으면 특정 Agent 배포를 우선합니다.
+
+실행 설정 요청은 `new LynxTracer()`에 전달한 `agentId`를 사용합니다. `run()`에만 다른 `agentId`를 전달해도 불러올 프롬프트 배포는 바뀌지 않습니다. 한 프로세스에서 프롬프트 배포가 서로 다른 Agent를 여러 개 실행한다면 Agent마다 tracer를 만드세요.
+
+## 갱신과 캐시 동작
+
+SDK는 다음 순서로 동작합니다.
+
+1. 이전에 검증한 캐시가 있으면 먼저 읽습니다.
+2. 처음 사용할 때 현재 실행 설정을 불러옵니다.
+3. 기본적으로 60초마다 변경 사항을 확인합니다.
+4. 설정이 바뀌지 않았으면 `ETag`로 확인하고 본문을 다시 받지 않습니다.
+5. 프롬프트 본문의 hash를 검증한 뒤 활성 설정을 교체합니다.
+6. 실행 중인 `run()`이 끝날 때까지 선택한 버전을 유지합니다.
+
+확인 주기는 `refreshIntervalMs`로 변경할 수 있으며 최소값은 5초입니다. 모델을 호출할 때마다 실행 설정 API를 직접 호출하지 마세요.
+
+## A/B 실험
+
+활성 A/B 실험이 있으면 SDK는 `run()`의 `assignmentKey`를 사용해 로컬에서 버전을 선택합니다.
+
+```ts
+await lynx.run(
+  {
+    agentName: "SupportAgent",
+    assignmentKey: "customer_123",
+  },
+  async () => {
+    const prompt = await lynx.getPrompt("support-system");
+    // 같은 assignmentKey는 같은 실험 그룹에 유지됩니다.
+  },
+);
+```
+
+민감정보가 아닌 고정된 사용자, tenant 또는 session 식별자를 사용하세요. `assignmentKey`를 생략하면 SDK는 `sessionId`를 사용합니다.
+
+## 프롬프트를 불러오지 못했을 때
+
+자동 시작 갱신은 Lynx 장애가 애플리케이션의 다른 작업을 막지 않도록 실패를 허용합니다. 하지만 유효한 캐시가 없거나 프롬프트가 배포되지 않았다면 명시적인 `getPrompt()` 호출은 오류를 냅니다.
+
+Lynx에 연결할 수 없어도 애플리케이션이 계속 동작해야 한다면 로컬 기본값을 준비하세요.
+
+```ts
+const LOCAL_FALLBACK_PROMPT = "당신은 친절한 고객 지원 Agent입니다.";
+
+async function resolveInstructions() {
+  try {
+    return (await lynx.getPrompt("support-system")).content;
+  } catch {
+    return LOCAL_FALLBACK_PROMPT;
+  }
+}
+```
+
+추가 네트워크 요청 없이 현재 상태를 확인할 수 있습니다.
+
+```ts
+const status = lynx.getStatus().runtimeConfig;
+
+console.log({
+  state: status.state,
+  isUsable: status.isUsable,
+  promptCount: status.promptCount,
+  lastError: status.lastError,
+  cacheState: status.cache.state,
+});
+```
+
+## 보안 메모
+
+프롬프트에는 외부에 공개하면 안 되는 지침이 포함될 수 있습니다. `prompt.content`, API key, `.lynxconf` 내용을 애플리케이션 로그에 남기지 마세요. 로컬 캐시는 애플리케이션 설정과 같은 수준으로 보호하세요.
+
+## 관련 문서
+
+- [SDK 설정하기](/ko/sdk/configuration)
+- [Agent 실행 추적하기](/ko/sdk/tracing)
+- [OpenAPI로 실행 설정 불러오기](/ko/openapi/runtime-config)
