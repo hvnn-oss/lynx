@@ -19,6 +19,14 @@ export interface LynxContext {
   /** Shared root-run state used to prevent duplicate automatic outcomes. */
   outcomeState?: {
     hasRecordedOutcome: boolean;
+    lastStatus?: LynxSessionStatus;
+    lastBusinessStatus?: LynxBusinessStatus;
+  };
+  /** Shared root-run state used to suppress duplicate issue candidates. */
+  issueState?: {
+    reportedErrorSignatures: string[];
+    specificFailureReported: boolean;
+    failedOutcomeReported: boolean;
   };
   /** Request-local counters used for repeated-call detection. */
   eventCounts?: Record<string, number>;
@@ -176,8 +184,20 @@ export interface LynxApprovalOptions {
 
 /** Controls the bounded background queue used to submit issue records. */
 export interface LynxIssueReportingOptions {
-  /** Enables automatic reporting of firewall and loop detections. */
+  /** Enables automatic reporting of supported SDK detections. */
   enabled?: boolean;
+  /** Reports an unhandled root-run exception or an explicit failed outcome. */
+  reportRunFailures?: boolean;
+  /** Reports errors raised by an instrumented LLM call. */
+  reportLlmFailures?: boolean;
+  /**
+   * LLM latency threshold in milliseconds. Defaults to 10 seconds.
+   *
+   * Set this to `0` to disable slow-response issue candidates globally.
+   */
+  slowLlmThresholdMs?: number;
+  /** Consecutive slow LLM calls required before reporting. Defaults to `2`. */
+  slowLlmConsecutiveOccurrences?: number;
   /** Deadline in milliseconds for one issue-record request. */
   timeoutMs?: number;
   /** Maximum number of issue records retained in memory. */
@@ -190,6 +210,10 @@ export interface LynxIssueReportingOptions {
 
 /** Local delivery health for automatic issue and recovery records. */
 export interface LynxIssueReportingStatus {
+  /** Whether issue reporting was explicitly enabled. */
+  enabled: boolean;
+  /** Whether the reporter has the API key required to deliver records. */
+  configured: boolean;
   /** Records currently waiting for their first or a retry attempt. */
   queueSize: number;
   /** Records evicted because the bounded queue reached capacity. */
@@ -421,6 +445,16 @@ export interface LynxToolMetadata {
   externalTarget?: string;
   idempotencyKey?: string;
   failureMode?: LynxFirewallFailureMode;
+  /**
+   * Maximum time to wait for an asynchronous tool result.
+   *
+   * A timeout rejects the wrapped call and reports a `TOOL_TIMEOUT` candidate,
+   * but it cannot cancel underlying work unless the tool implements its own
+   * cancellation.
+   */
+  timeoutMs?: number;
+  /** Disable automatic `TOOL_ERROR` and `TOOL_TIMEOUT` issue candidates. */
+  reportFailures?: boolean;
   [key: string]: any;
 }
 
@@ -480,6 +514,12 @@ export interface LynxLlmInstrumentationOptions {
     input?: false | LynxLlmFirewallBoundaryOptions;
     output?: false | LynxLlmFirewallBoundaryOptions;
   };
+  /** Disable automatic `LLM_ERROR` issue candidates for this wrapper. */
+  reportFailures?: boolean;
+  /** Disable slow-response issue candidates for this wrapper. */
+  reportSlowResponses?: boolean;
+  /** Override the global slow LLM threshold for this wrapper. */
+  slowResponseThresholdMs?: number;
 }
 
 /** @deprecated Use `LynxFirewallToolOptions`. */

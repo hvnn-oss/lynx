@@ -80,6 +80,26 @@ await lynx.run(
 | `instrumentTool(name, fn, metadata?)` | Wraps a tool function.                                                     |
 | `firewallTool(name, fn, options?)`    | Wraps a tool with local policy evaluation.                                 |
 
+### LLM options
+
+| Option                    | Description                                                                             |
+| ------------------------- | --------------------------------------------------------------------------------------- |
+| `modelLabel`              | Stable model or provider label used by events and issue grouping.                       |
+| `reportFailures`          | Reports instrumented LLM errors when issue reporting is enabled. Defaults to `true`.    |
+| `reportSlowResponses`     | Reports consecutive slow LLM calls when issue reporting is enabled. Defaults to `true`. |
+| `slowResponseThresholdMs` | Overrides the tracer-wide slow LLM threshold for this wrapper.                          |
+
+### Tool metadata
+
+| Option           | Description                                                                                        |
+| ---------------- | -------------------------------------------------------------------------------------------------- |
+| `toolVersion`    | Version label attached to tool events and issue evidence.                                          |
+| `sideEffect`     | Whether the tool can change external state.                                                        |
+| `riskLevel`      | `LOW`, `MEDIUM`, `HIGH`, or `CRITICAL`.                                                            |
+| `externalTarget` | Optional external system or target label.                                                          |
+| `timeoutMs`      | Optional async call timeout. It rejects the wrapper but does not cancel the underlying operation.  |
+| `reportFailures` | Reports thrown errors and configured timeouts when issue reporting is enabled. Defaults to `true`. |
+
 ## Delivery helpers
 
 | Method               | Purpose                                                                               |
@@ -123,6 +143,11 @@ if (error instanceof LynxPolicyError) {
 | `runtimeConfig.maxStaleAgeMs`             | Maximum age of the last validated bundle. Defaults to 24 hours. |
 | `runtimeConfig.requireSignature`          | Rejects unsigned runtime bundles.                               |
 | `runtimeConfig.requireTargetMatch`        | Rejects an environment mismatch or unresolved Agent.            |
+| `issueReporting.enabled`                  | Sends issue candidates for detected failures when `true`.       |
+| `issueReporting.reportRunFailures`        | Reports root Run errors and explicit failed outcomes.            |
+| `issueReporting.reportLlmFailures`        | Reports errors from instrumented LLM calls.                      |
+| `issueReporting.slowLlmThresholdMs`       | Slow LLM threshold. Defaults to 10 seconds; `0` disables it.     |
+| `issueReporting.slowLlmConsecutiveOccurrences` | Consecutive slow observations required. Defaults to `2`.   |
 | `issueReporting.recoverySuccessThreshold` | Healthy observations required before sending recovery.          |
 | `delivery.mode`                           | `BACKGROUND` or `BLOCKING`.                                     |
 | `delivery.timeoutMs`                      | Timeout for one delivery request.                               |

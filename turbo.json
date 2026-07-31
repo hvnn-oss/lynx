@@ -17,6 +17,9 @@
     "test": {
       "dependsOn": ["^build"]
     },
+    "acme-ai#test": {
+      "dependsOn": []
+    },
     "dev": {
       "dependsOn": ["^build"],
       "cache": false,

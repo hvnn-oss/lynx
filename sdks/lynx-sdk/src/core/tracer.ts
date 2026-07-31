@@ -35,9 +35,16 @@ import { IssueRecordReporter } from "../issue-reporting/issue-record-reporter.js
 import { ApprovalClient } from "../approval/approval-client.js";
 import { createStableHash } from "../utils/stable-hash.js";
 import { assertValidAgentId } from "../utils/agent-id.js";
+import {
+  normalizeErrorCode,
+  readErrorDetails,
+} from "../utils/error-details.js";
 
 export const DEFAULT_ENDPOINT = "https://api.lynxops.co";
 const MAX_ACTIVE_DETECTIONS = 1_000;
+const MAX_REPORTED_ERROR_SIGNATURES = 50;
+const DEFAULT_SLOW_LLM_THRESHOLD_MS = 10_000;
+const DEFAULT_SLOW_LLM_CONSECUTIVE_OCCURRENCES = 2;
 
 interface ActiveDetection {
   detectionType: string;
@@ -103,6 +110,7 @@ export class LynxTracer {
   private readonly issueReporter: IssueRecordReporter;
   private readonly approvalClient: ApprovalClient;
   private readonly activeDetections = new Map<string, ActiveDetection>();
+  private readonly slowLlmObservations = new Map<string, number>();
 
   /**
    * Creates a tracer with the provided Lynx telemetry configuration.
@@ -162,10 +170,7 @@ export class LynxTracer {
       },
       {
         ...this.config.issueReporting,
-        enabled:
-          this.config.issueReporting?.enabled ??
-          this.config.runtimeConfig?.enabled ??
-          false,
+        enabled: this.config.issueReporting?.enabled === true,
       },
     );
     this.approvalClient = new ApprovalClient(
@@ -239,7 +244,7 @@ export class LynxTracer {
    * @returns A promise that resolves after the current flush attempt completes.
    */
   async flush(): Promise<void> {
-    await this.delivery.flush();
+    await Promise.all([this.delivery.flush(), this.issueReporter.flush()]);
   }
 
   /**
@@ -402,6 +407,11 @@ export class LynxTracer {
       outcomeState: parentContext?.outcomeState ?? {
         hasRecordedOutcome: false,
       },
+      issueState: parentContext?.issueState ?? {
+        reportedErrorSignatures: [],
+        specificFailureReported: false,
+        failedOutcomeReported: false,
+      },
       eventCounts: parentContext?.eventCounts ?? {},
       firewallState: parentContext?.firewallState ?? {
         startedAt: Date.now(),
@@ -463,15 +473,25 @@ export class LynxTracer {
             currentContext,
           );
         }
+        if (!parentContext && !this.hasFailedOutcome(currentContext)) {
+          this.reportRunRecovery(currentContext);
+        }
 
         return result;
       } catch (err: any) {
         const latency = Date.now() - startTime;
+        const error = readErrorDetails(err, "RUN_ERROR");
         this.captureInternal(
           "ERROR",
           `run.error:${agentName}`,
           {
-            error: err.message,
+            error: error.errorMessage,
+            errorName: error.errorName,
+            errorCode: error.errorCode,
+            errorSignature: error.errorSignature,
+            runFailure: !parentContext,
+            suppressRunIssue: err instanceof LynxPolicyError,
+            agentName,
             phase: "error",
             spanId,
             parentSpanId,
@@ -492,8 +512,8 @@ export class LynxTracer {
             {
               status: "FAILED",
               businessStatus: "UNKNOWN",
-              reason: err.message,
-              error: err.message,
+              reason: error.errorMessage,
+              error: error.errorMessage,
               automatic: true,
               latency,
             },
@@ -503,8 +523,14 @@ export class LynxTracer {
         throw err;
       } finally {
         if (this.getFlushOnRunEnd()) {
-          if (this.isBackgroundOnly()) this.delivery.flushInBackground();
-          else await this.delivery.flush();
+          if (this.isBackgroundOnly()) {
+            this.delivery.flushInBackground();
+          } else {
+            await Promise.all([
+              this.delivery.flush(),
+              this.issueReporter.flush(),
+            ]);
+          }
         }
         if (!this.isBackgroundOnly()) await this.delivery.waitForIdle();
       }
@@ -670,13 +696,21 @@ export class LynxTracer {
 
     if (context.outcomeState) {
       context.outcomeState.hasRecordedOutcome = true;
+      context.outcomeState.lastStatus = options.status;
+      context.outcomeState.lastBusinessStatus = options.businessStatus;
     }
-    this.captureInternal(
+    const eventId = this.captureInternal(
       "SESSION_OUTCOME",
       "session.outcome",
       options,
       context,
     );
+    if (
+      options.status === "FAILED" ||
+      options.businessStatus === "FAILED"
+    ) {
+      this.reportFailedOutcome(eventId, options, context);
+    }
   }
 
   /**
@@ -729,7 +763,7 @@ export class LynxTracer {
     label: string,
     payload: any,
     context: LynxContext,
-  ): void {
+  ): string | undefined {
     const capturedCost = Number(payload?.cost);
     if (
       context.firewallState &&
@@ -742,6 +776,13 @@ export class LynxTracer {
     // Safety detection must run before telemetry sampling. Sampling controls
     // storage volume, while loop and policy signals remain operational.
     const loopPayload = this.detectLoop(eventType, label, payload, context);
+    const eventId = generateEventId();
+    if (eventType === "TOOL_RESULT" && payload?.toolFailureRecovery === true) {
+      this.reportToolRecovery(payload, context);
+    }
+    if (eventType === "LLM_CALL" && payload?.llmIssueObservation === true) {
+      this.reportLlmObservation(eventId, payload, context);
+    }
 
     // Tail-based/adaptive sampling fallback keeps error-related events even
     // when the current context is sampled out, so failures remain debuggable.
@@ -750,7 +791,7 @@ export class LynxTracer {
       (eventType === "SESSION_OUTCOME" && payload?.status === "FAILED") ||
       (payload && (payload.error || "error" in payload));
     if (context.sampled === false && !isError) {
-      return;
+      return eventId;
     }
 
     const processedPayload = processPayload(
@@ -785,9 +826,18 @@ export class LynxTracer {
       spanId: processedPayload.spanId || context.spanId,
       parentSpanId: processedPayload.parentSpanId || context.parentSpanId,
     };
+    if (eventType === "ERROR" && eventPayload.toolFailure === true) {
+      this.reportToolFailure(eventId, eventPayload, context);
+    }
+    if (eventType === "ERROR" && eventPayload.llmFailure === true) {
+      this.reportLlmFailure(eventId, eventPayload, context);
+    }
+    if (eventType === "ERROR" && eventPayload.runFailure === true) {
+      this.reportRunFailure(eventId, eventPayload, context);
+    }
 
     const eventDto: LynxEventDto = {
-      eventId: generateEventId(),
+      eventId,
       clientId: this.config.clientId,
       runId: context.runId,
       agentName: context.agentName,
@@ -803,7 +853,7 @@ export class LynxTracer {
 
     const queued = this.delivery.enqueue(eventDto);
     if (!queued) {
-      return;
+      return eventId;
     }
 
     // Emit a separate semantic event for dashboards and policies. The guard
@@ -820,6 +870,7 @@ export class LynxTracer {
         context,
       );
     }
+    return eventId;
   }
 
   /**
@@ -1058,6 +1109,13 @@ export class LynxTracer {
       payload,
       evidence,
     });
+    if (
+      decision.action !== "WARN" &&
+      this.isIssueReportingEnabled() &&
+      context.issueState
+    ) {
+      context.issueState.specificFailureReported = true;
+    }
     this.rememberDetection(
       this.createPolicyDetectionKey(agentId, phase, toolName, argsHash),
       {
@@ -1070,6 +1128,527 @@ export class LynxTracer {
         healthyObservations: 0,
       },
     );
+  }
+
+  /** Reports an unhandled root-run exception unless a more specific cause exists. */
+  private reportRunFailure(
+    eventId: string,
+    payload: Record<string, unknown>,
+    context: LynxContext,
+  ): void {
+    if (
+      !this.isIssueReportingEnabled() ||
+      this.config.issueReporting?.reportRunFailures === false ||
+      payload.suppressRunIssue === true ||
+      context.issueState?.specificFailureReported
+    ) {
+      return;
+    }
+    const errorSignature = this.readPayloadString(payload.errorSignature);
+    if (
+      errorSignature &&
+      this.hasReportedErrorSignature(errorSignature, context)
+    ) {
+      return;
+    }
+
+    const errorCode = normalizeErrorCode(payload.errorCode, "RUN_ERROR");
+    const promptVersionIds = this.getPinnedPromptVersionIds(context);
+    const promptVersionId =
+      promptVersionIds.length === 1 ? promptVersionIds[0] : undefined;
+    const agentId = context.agentId ?? context.agentName;
+    const issuePayload = {
+      agentName: context.agentName,
+      errorName: payload.errorName,
+      errorCode,
+      errorSignature,
+      errorMessage: payload.error,
+      latency: payload.latency,
+      riskSignals: ["RUN_ERROR"],
+    };
+    const evidence = {
+      spanId: payload.spanId,
+      parentSpanId: payload.parentSpanId,
+      promptVersionIds:
+        promptVersionIds.length > 0 ? promptVersionIds : undefined,
+    };
+
+    this.issueReporter.report({
+      sdkInstanceId: this.config.clientId,
+      clientRecordId: generateEventId(),
+      recordKind: "DETECTION",
+      detectionType: "RUN_ERROR",
+      runId: context.runId,
+      sessionId: context.sessionId,
+      eventId,
+      agentId,
+      promptVersionId,
+      detectedAt: Date.now(),
+      payload: issuePayload,
+      evidence,
+    });
+    if (errorSignature) {
+      this.rememberReportedErrorSignature(errorSignature, context);
+    }
+    this.rememberDetection(
+      `run-failure:${agentId}:RUN_ERROR:${errorSignature ?? errorCode}`,
+      {
+        detectionType: "RUN_ERROR",
+        agentId,
+        promptVersionId,
+        payload: issuePayload,
+        evidence,
+        healthyObservations: 0,
+      },
+    );
+  }
+
+  /** Reports a failed technical or business outcome that did not throw. */
+  private reportFailedOutcome(
+    eventId: string | undefined,
+    options: LynxOutcomeOptions,
+    context: LynxContext,
+  ): void {
+    if (
+      !this.isIssueReportingEnabled() ||
+      this.config.issueReporting?.reportRunFailures === false ||
+      context.issueState?.specificFailureReported ||
+      context.issueState?.failedOutcomeReported
+    ) {
+      return;
+    }
+
+    const metadataReasonCode =
+      typeof options.metadata?.reasonCode === "string"
+        ? options.metadata.reasonCode
+        : undefined;
+    const reasonCode = normalizeErrorCode(
+      metadataReasonCode,
+      options.status === "FAILED"
+        ? "TECHNICAL_FAILURE"
+        : "BUSINESS_FAILURE",
+    );
+    const promptVersionIds = this.getPinnedPromptVersionIds(context);
+    const promptVersionId =
+      promptVersionIds.length === 1 ? promptVersionIds[0] : undefined;
+    const agentId = context.agentId ?? context.agentName;
+    const issuePayload = {
+      agentName: context.agentName,
+      status: options.status,
+      businessStatus: options.businessStatus,
+      reasonCode,
+      reason: options.reason?.slice(0, 1_000),
+      userImpact: options.userImpact,
+      riskSignals: ["RUN_FAILED"],
+    };
+    const evidence = {
+      spanId: context.spanId,
+      parentSpanId: context.parentSpanId,
+      promptVersionIds:
+        promptVersionIds.length > 0 ? promptVersionIds : undefined,
+    };
+
+    this.issueReporter.report({
+      sdkInstanceId: this.config.clientId,
+      clientRecordId: generateEventId(),
+      recordKind: "DETECTION",
+      detectionType: "RUN_FAILED",
+      runId: context.runId,
+      sessionId: context.sessionId,
+      eventId,
+      agentId,
+      promptVersionId,
+      detectedAt: Date.now(),
+      payload: issuePayload,
+      evidence,
+    });
+    if (context.issueState) {
+      context.issueState.failedOutcomeReported = true;
+    }
+    this.rememberDetection(
+      `run-failure:${agentId}:RUN_FAILED:${reasonCode}`,
+      {
+        detectionType: "RUN_FAILED",
+        agentId,
+        promptVersionId,
+        payload: issuePayload,
+        evidence,
+        healthyObservations: 0,
+      },
+    );
+  }
+
+  /** Counts a successful root run toward recovery for active run failures. */
+  private reportRunRecovery(context: LynxContext): void {
+    if (!this.isIssueReportingEnabled()) return;
+    const agentId = context.agentId ?? context.agentName;
+    const prefix = `run-failure:${agentId}:`;
+    for (const key of [...this.activeDetections.keys()]) {
+      if (key.startsWith(prefix)) this.observeHealthyDetection(key, context);
+    }
+  }
+
+  /** Reports a provider error captured by an instrumented LLM wrapper. */
+  private reportLlmFailure(
+    eventId: string,
+    payload: Record<string, unknown>,
+    context: LynxContext,
+  ): void {
+    if (
+      !this.isIssueReportingEnabled() ||
+      this.config.issueReporting?.reportLlmFailures === false
+    ) {
+      return;
+    }
+    const errorSignature = this.readPayloadString(payload.errorSignature);
+    const errorCode = normalizeErrorCode(payload.errorCode, "LLM_ERROR");
+    const identity = this.createLlmIdentity(payload);
+    const promptVersionIds = this.getPinnedPromptVersionIds(context);
+    const promptVersionId =
+      promptVersionIds.length === 1 ? promptVersionIds[0] : undefined;
+    const agentId = context.agentId ?? context.agentName;
+    const issuePayload = {
+      modelLabel: payload.modelLabel,
+      provider: payload.provider,
+      model: payload.model,
+      path: payload.path,
+      errorName: payload.errorName,
+      errorCode,
+      errorSignature,
+      errorMessage: payload.error,
+      latency: payload.latency,
+      riskSignals: ["LLM_ERROR"],
+    };
+    const evidence = {
+      spanId: payload.spanId,
+      parentSpanId: payload.parentSpanId,
+      promptVersionIds:
+        promptVersionIds.length > 0 ? promptVersionIds : undefined,
+    };
+
+    this.issueReporter.report({
+      sdkInstanceId: this.config.clientId,
+      clientRecordId: generateEventId(),
+      recordKind: "DETECTION",
+      detectionType: "LLM_ERROR",
+      runId: context.runId,
+      sessionId: context.sessionId,
+      eventId,
+      agentId,
+      promptVersionId,
+      detectedAt: Date.now(),
+      payload: issuePayload,
+      evidence,
+    });
+    if (context.issueState) {
+      context.issueState.specificFailureReported = true;
+    }
+    if (errorSignature) {
+      this.rememberReportedErrorSignature(errorSignature, context);
+    }
+    this.rememberDetection(
+      `llm-error:${agentId}:${identity}:${errorSignature ?? errorCode}`,
+      {
+        detectionType: "LLM_ERROR",
+        agentId,
+        promptVersionId,
+        payload: issuePayload,
+        evidence,
+        healthyObservations: 0,
+      },
+    );
+  }
+
+  /** Evaluates one completed LLM call for recovery and abnormal latency. */
+  private reportLlmObservation(
+    eventId: string,
+    payload: Record<string, unknown>,
+    context: LynxContext,
+  ): void {
+    if (!this.isIssueReportingEnabled()) return;
+    const identity = this.createLlmIdentity(payload);
+    const agentId = context.agentId ?? context.agentName;
+    const errorPrefix = `llm-error:${agentId}:${identity}:`;
+    for (const key of [...this.activeDetections.keys()]) {
+      if (key.startsWith(errorPrefix)) {
+        this.observeHealthyDetection(key, context);
+      }
+    }
+
+    const slowKey = `llm-slow:${agentId}:${identity}`;
+    const thresholdMs = this.resolveSlowLlmThreshold(payload);
+    const latency = this.readPayloadNumber(payload.latency);
+    if (
+      payload.reportSlowResponse === false ||
+      thresholdMs <= 0 ||
+      latency === undefined
+    ) {
+      this.slowLlmObservations.delete(slowKey);
+      return;
+    }
+    if (latency < thresholdMs) {
+      this.slowLlmObservations.delete(slowKey);
+      this.observeHealthyDetection(slowKey, context);
+      return;
+    }
+
+    if (
+      !this.slowLlmObservations.has(slowKey) &&
+      this.slowLlmObservations.size >= MAX_ACTIVE_DETECTIONS
+    ) {
+      const oldestKey = this.slowLlmObservations.keys().next().value;
+      if (typeof oldestKey === "string") {
+        this.slowLlmObservations.delete(oldestKey);
+      }
+    }
+    const observationCount = (this.slowLlmObservations.get(slowKey) ?? 0) + 1;
+    this.slowLlmObservations.set(slowKey, observationCount);
+    const configuredOccurrences =
+      this.config.issueReporting?.slowLlmConsecutiveOccurrences;
+    const requiredOccurrences =
+      typeof configuredOccurrences === "number" &&
+      Number.isFinite(configuredOccurrences) &&
+      configuredOccurrences > 0
+        ? Math.floor(configuredOccurrences)
+        : DEFAULT_SLOW_LLM_CONSECUTIVE_OCCURRENCES;
+    if (observationCount < requiredOccurrences) return;
+
+    const promptVersionIds = this.getPinnedPromptVersionIds(context);
+    const promptVersionId =
+      promptVersionIds.length === 1 ? promptVersionIds[0] : undefined;
+    const issuePayload = {
+      modelLabel: payload.modelLabel,
+      provider: payload.provider,
+      model: payload.model,
+      path: payload.path,
+      latency,
+      thresholdMs,
+      consecutiveOccurrences: observationCount,
+      riskSignals: ["LLM_SLOW_RESPONSE"],
+    };
+    const evidence = {
+      spanId: payload.spanId,
+      parentSpanId: payload.parentSpanId,
+      promptVersionIds:
+        promptVersionIds.length > 0 ? promptVersionIds : undefined,
+    };
+
+    this.issueReporter.report({
+      sdkInstanceId: this.config.clientId,
+      clientRecordId: generateEventId(),
+      recordKind: "DETECTION",
+      detectionType: "LLM_SLOW_RESPONSE",
+      runId: context.runId,
+      sessionId: context.sessionId,
+      eventId,
+      agentId,
+      promptVersionId,
+      detectedAt: Date.now(),
+      payload: issuePayload,
+      evidence,
+    });
+    this.rememberDetection(slowKey, {
+      detectionType: "LLM_SLOW_RESPONSE",
+      agentId,
+      promptVersionId,
+      payload: issuePayload,
+      evidence,
+      healthyObservations: 0,
+    });
+  }
+
+  /** Reports one instrumented tool failure for asynchronous server review. */
+  private reportToolFailure(
+    eventId: string,
+    payload: Record<string, unknown>,
+    context: LynxContext,
+  ): void {
+    if (!this.isIssueReportingEnabled()) return;
+    const toolName =
+      typeof payload.toolName === "string" && payload.toolName
+        ? payload.toolName
+        : undefined;
+    if (!toolName) return;
+
+    const isTimeout = payload.toolTimedOut === true;
+    const detectionType = isTimeout ? "TOOL_TIMEOUT" : "TOOL_ERROR";
+    const errorCode = this.normalizeToolErrorCode(
+      payload.errorCode,
+      isTimeout ? "LYNX_TOOL_TIMEOUT" : "TOOL_ERROR",
+    );
+    const promptVersionIds = this.getPinnedPromptVersionIds(context);
+    const promptVersionId =
+      promptVersionIds.length === 1 ? promptVersionIds[0] : undefined;
+    const agentId = context.agentId ?? context.agentName;
+    const issuePayload = {
+      toolName,
+      toolVersion: payload.toolVersion,
+      errorName: payload.errorName,
+      errorCode,
+      errorSignature: payload.errorSignature,
+      errorMessage:
+        typeof payload.error === "string"
+          ? payload.error.slice(0, 1_000)
+          : undefined,
+      argsHash: payload.argsHash,
+      latency: payload.latency,
+      timeoutMs: payload.timeoutMs,
+      retryCount: payload.retryCount,
+      sideEffect: payload.sideEffect,
+      riskLevel: payload.riskLevel,
+      externalTarget: payload.externalTarget,
+      errorIsRethrown: true,
+      riskSignals: [detectionType],
+      tools: [toolName],
+    };
+    const evidence = {
+      spanId: payload.spanId,
+      parentSpanId: payload.parentSpanId,
+      promptVersionIds:
+        promptVersionIds.length > 0 ? promptVersionIds : undefined,
+    };
+
+    this.issueReporter.report({
+      sdkInstanceId: this.config.clientId,
+      clientRecordId: generateEventId(),
+      recordKind: "DETECTION",
+      detectionType,
+      runId: context.runId,
+      sessionId: context.sessionId,
+      eventId,
+      agentId,
+      promptVersionId,
+      detectedAt: Date.now(),
+      payload: issuePayload,
+      evidence,
+    });
+    if (context.issueState) {
+      context.issueState.specificFailureReported = true;
+    }
+    const errorSignature = this.readPayloadString(payload.errorSignature);
+    if (errorSignature) {
+      this.rememberReportedErrorSignature(errorSignature, context);
+    }
+    this.rememberDetection(
+      this.createToolFailureDetectionKey(
+        agentId,
+        toolName,
+        detectionType,
+        errorCode,
+      ),
+      {
+        detectionType,
+        agentId,
+        promptVersionId,
+        payload: issuePayload,
+        evidence,
+        healthyObservations: 0,
+      },
+    );
+  }
+
+  /** Counts a successful call toward recovery for all failures of one tool. */
+  private reportToolRecovery(
+    payload: Record<string, unknown>,
+    context: LynxContext,
+  ): void {
+    const toolName =
+      typeof payload.toolName === "string" && payload.toolName
+        ? payload.toolName
+        : undefined;
+    if (!toolName) return;
+    const agentId = context.agentId ?? context.agentName;
+    const prefix = `tool-failure:${agentId}:${toolName}:`;
+    for (const key of [...this.activeDetections.keys()]) {
+      if (key.startsWith(prefix)) this.observeHealthyDetection(key, context);
+    }
+  }
+
+  /** Creates a local correlation key without using variable error messages. */
+  private createToolFailureDetectionKey(
+    agentId: string,
+    toolName: string,
+    detectionType: string,
+    errorCode: string,
+  ): string {
+    return `tool-failure:${agentId}:${toolName}:${detectionType}:${errorCode}`;
+  }
+
+  /** Normalizes an error code before it enters issue grouping. */
+  private normalizeToolErrorCode(value: unknown, fallback: string): string {
+    return normalizeErrorCode(value, fallback);
+  }
+
+  /** Returns whether issue records can be created and delivered. */
+  private isIssueReportingEnabled(): boolean {
+    return (
+      this.config.issueReporting?.enabled === true &&
+      Boolean(this.config.apiKey)
+    );
+  }
+
+  /** Returns whether the explicit outcome already describes a failed run. */
+  private hasFailedOutcome(context: LynxContext): boolean {
+    return (
+      context.outcomeState?.lastStatus === "FAILED" ||
+      context.outcomeState?.lastBusinessStatus === "FAILED"
+    );
+  }
+
+  /** Creates a stable local identity for one model call configuration. */
+  private createLlmIdentity(payload: Record<string, unknown>): string {
+    return createStableHash({
+      modelLabel: this.readPayloadString(payload.modelLabel) ?? "llm.inference",
+      provider: this.readPayloadString(payload.provider) ?? "unknown",
+      model: this.readPayloadString(payload.model) ?? "unknown",
+    });
+  }
+
+  /** Resolves a per-wrapper latency threshold before the global default. */
+  private resolveSlowLlmThreshold(
+    payload: Record<string, unknown>,
+  ): number {
+    const override = this.readPayloadNumber(payload.slowResponseThresholdMs);
+    const configured =
+      override ??
+      this.config.issueReporting?.slowLlmThresholdMs ??
+      DEFAULT_SLOW_LLM_THRESHOLD_MS;
+    return Number.isFinite(configured) ? Math.max(0, configured) : 0;
+  }
+
+  /** Reads a non-empty string from an instrumentation payload. */
+  private readPayloadString(value: unknown): string | undefined {
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  }
+
+  /** Reads a finite number from an instrumentation payload. */
+  private readPayloadNumber(value: unknown): number | undefined {
+    return typeof value === "number" && Number.isFinite(value)
+      ? value
+      : undefined;
+  }
+
+  /** Returns whether a more specific detector already reported this error. */
+  private hasReportedErrorSignature(
+    signature: string,
+    context: LynxContext,
+  ): boolean {
+    return (
+      context.issueState?.reportedErrorSignatures.includes(signature) ?? false
+    );
+  }
+
+  /** Retains a bounded set of error signatures for root-run deduplication. */
+  private rememberReportedErrorSignature(
+    signature: string,
+    context: LynxContext,
+  ): void {
+    const signatures = context.issueState?.reportedErrorSignatures;
+    if (!signatures || signatures.includes(signature)) return;
+    signatures.push(signature);
+    if (signatures.length > MAX_REPORTED_ERROR_SIGNATURES) {
+      signatures.splice(0, signatures.length - MAX_REPORTED_ERROR_SIGNATURES);
+    }
   }
 
   /** Counts a healthy policy observation toward recovery. */

@@ -140,6 +140,232 @@ describe("IssueRecordService", () => {
     );
   });
 
+  it.each([
+    {
+      detectionType: "TOOL_ERROR",
+      payload: {
+        toolName: "orders.lookup",
+        errorCode: "ECONNRESET",
+        errorName: "Error",
+        riskLevel: "CRITICAL",
+        argsHash: "a".repeat(64),
+      },
+      reasonCode: "TOOL_ERROR_ECONNRESET",
+      messageKey: "issue.tool.error.title",
+      severity: "CRITICAL",
+    },
+    {
+      detectionType: "TOOL_TIMEOUT",
+      payload: {
+        toolName: "reports.generate",
+        errorCode: "LYNX_TOOL_TIMEOUT",
+        errorName: "LynxToolTimeoutError",
+        timeoutMs: 5_000,
+        riskLevel: "LOW",
+        argsHash: "b".repeat(64),
+      },
+      reasonCode: "TOOL_TIMEOUT",
+      messageKey: "issue.tool.timeout.title",
+      severity: "WARNING",
+    },
+  ])(
+    "evaluates $detectionType as a tool issue",
+    async ({ detectionType, payload, reasonCode, messageKey, severity }) => {
+      const record = {
+        id: "4acb9bfb-36c7-49bc-bd69-13a930cff154",
+        workspaceId: "70302e18-767c-42d3-9674-80c302475981",
+        sdkInstanceId: "sdk-instance-1",
+        recordKind: "DETECTION",
+        detectionType,
+        clientSessionId: "session-1",
+        clientEventId: "event-1",
+        clientAgentId: "agent-1",
+        reportedPolicyId: null,
+        reportedPromptVersionId: null,
+        environment: "production",
+        detectedAt: new Date("2026-07-24T00:00:00.000Z"),
+        payload,
+        evidence: { spanId: "span-1" },
+      };
+      const repository = {
+        claimNext: jest.fn().mockResolvedValue({
+          record,
+          processing: { attemptCount: 1 },
+        }),
+        resolveContext: jest.fn().mockResolvedValue({
+          session: { id: "7b65c0a0-2fe0-41fa-ab2b-f66ba51490ae" },
+          agent: { id: "0ea13b56-4257-49d8-86fd-6b812f920ddb" },
+          event: { id: "f5760cca-8e5a-49b2-ad20-2ea02339e14b" },
+        }),
+        createEvaluation: jest.fn().mockResolvedValue({
+          id: "5cc6c24f-8d91-40f3-8c2d-0dd2a50d5f4a",
+        }),
+        completeDecision: jest.fn().mockResolvedValue(undefined),
+      } as unknown as IssueRecordRepository;
+      const issues = {
+        record: jest.fn().mockResolvedValue({
+          issue: {
+            id: "2e83787a-f2db-4491-9000-94db05906403",
+            stableFingerprint: "a".repeat(64),
+            exactFingerprint: "b".repeat(64),
+          },
+        }),
+      } as unknown as IssueService;
+      const service = new IssueRecordService(repository, issues);
+
+      await expect(service.processNext()).resolves.toBe(true);
+
+      expect(repository.createEvaluation).toHaveBeenCalledWith(
+        record,
+        expect.objectContaining({ action: "CREATE", reasonCode }),
+      );
+      expect(issues.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          category: "TOOL_RISK",
+          severity,
+          message: expect.objectContaining({ titleKey: messageKey }),
+          fingerprint: expect.objectContaining({
+            failedTool: payload.toolName,
+            reasonCode,
+          }),
+        }),
+      );
+    },
+  );
+
+  it.each([
+    {
+      detectionType: "RUN_ERROR",
+      payload: {
+        agentName: "SupportAgent",
+        errorCode: "E_HANDLER",
+        errorName: "Error",
+        errorSignature: "c".repeat(64),
+        latency: 125,
+      },
+      reasonCode: `RUN_ERROR_E_HANDLER_${"C".repeat(12)}`,
+      messageKey: "issue.run.error.title",
+      category: "MODEL_ERROR",
+      severity: "CRITICAL",
+    },
+    {
+      detectionType: "RUN_FAILED",
+      payload: {
+        agentName: "SupportAgent",
+        status: "COMPLETED",
+        businessStatus: "FAILED",
+        reasonCode: "ANSWER_REJECTED",
+        userImpact: "HIGH",
+      },
+      reasonCode: "RUN_FAILED_ANSWER_REJECTED",
+      messageKey: "issue.run.failed.title",
+      category: "MODEL_ERROR",
+      severity: "CRITICAL",
+    },
+    {
+      detectionType: "LLM_ERROR",
+      payload: {
+        modelLabel: "openai.responses.create",
+        provider: "openai",
+        model: "gpt-test",
+        errorCode: "RATE_LIMIT",
+        errorName: "ProviderError",
+        errorSignature: "d".repeat(64),
+        latency: 500,
+      },
+      reasonCode: "LLM_ERROR_RATE_LIMIT",
+      messageKey: "issue.llm.error.title",
+      category: "MODEL_ERROR",
+      severity: "CRITICAL",
+    },
+    {
+      detectionType: "LLM_SLOW_RESPONSE",
+      payload: {
+        modelLabel: "openai.responses.create",
+        provider: "openai",
+        model: "gpt-test",
+        latency: 12_000,
+        thresholdMs: 10_000,
+        consecutiveOccurrences: 2,
+      },
+      reasonCode: "LLM_SLOW_RESPONSE",
+      messageKey: "issue.llm.slow.title",
+      category: "LATENCY",
+      severity: "WARNING",
+    },
+  ])(
+    "evaluates $detectionType as a run or LLM issue",
+    async ({
+      detectionType,
+      payload,
+      reasonCode,
+      messageKey,
+      category,
+      severity,
+    }) => {
+      const record = {
+        id: "4acb9bfb-36c7-49bc-bd69-13a930cff154",
+        workspaceId: "70302e18-767c-42d3-9674-80c302475981",
+        sdkInstanceId: "sdk-instance-1",
+        recordKind: "DETECTION",
+        detectionType,
+        clientSessionId: "session-1",
+        clientEventId: "event-1",
+        clientAgentId: "agent-1",
+        reportedPolicyId: null,
+        reportedPromptVersionId: null,
+        environment: "production",
+        detectedAt: new Date("2026-07-24T00:00:00.000Z"),
+        payload,
+        evidence: { spanId: "span-1" },
+      };
+      const repository = {
+        claimNext: jest.fn().mockResolvedValue({
+          record,
+          processing: { attemptCount: 1 },
+        }),
+        resolveContext: jest.fn().mockResolvedValue({
+          session: { id: "7b65c0a0-2fe0-41fa-ab2b-f66ba51490ae" },
+          agent: { id: "0ea13b56-4257-49d8-86fd-6b812f920ddb" },
+          event: { id: "f5760cca-8e5a-49b2-ad20-2ea02339e14b" },
+        }),
+        createEvaluation: jest.fn().mockResolvedValue({
+          id: "5cc6c24f-8d91-40f3-8c2d-0dd2a50d5f4a",
+        }),
+        completeDecision: jest.fn().mockResolvedValue(undefined),
+      } as unknown as IssueRecordRepository;
+      const issues = {
+        record: jest.fn().mockResolvedValue({
+          issue: {
+            id: "2e83787a-f2db-4491-9000-94db05906403",
+            stableFingerprint: "a".repeat(64),
+            exactFingerprint: "b".repeat(64),
+          },
+        }),
+      } as unknown as IssueService;
+      const service = new IssueRecordService(repository, issues);
+
+      await expect(service.processNext()).resolves.toBe(true);
+
+      expect(repository.createEvaluation).toHaveBeenCalledWith(
+        record,
+        expect.objectContaining({ action: "CREATE", reasonCode }),
+      );
+      expect(issues.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          category,
+          severity,
+          message: expect.objectContaining({ titleKey: messageKey }),
+          fingerprint: expect.objectContaining({
+            provider: payload.provider,
+            model: payload.model,
+            reasonCode,
+          }),
+        }),
+      );
+    },
+  );
+
   it("defers evaluation until the referenced session is available", async () => {
     const repository = {
       claimNext: jest.fn().mockResolvedValue({

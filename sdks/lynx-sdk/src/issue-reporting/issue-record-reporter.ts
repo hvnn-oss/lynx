@@ -69,6 +69,8 @@ export class IssueRecordReporter {
   /** Returns queue health without performing network work. */
   getStatus(): LynxIssueReportingStatus {
     return {
+      enabled: this.options.enabled === true,
+      configured: Boolean(this.connection.apiKey),
       queueSize: this.queue.length,
       droppedRecords: this.droppedRecords,
       permanentlyRejectedRecords: this.permanentlyRejectedRecords,
@@ -78,17 +80,25 @@ export class IssueRecordReporter {
     };
   }
 
-  /** Stops retry timers and makes a final bounded attempt for queued records. */
-  async shutdown(timeoutMs?: number): Promise<void> {
-    this.isShuttingDown = true;
-    if (this.retryTimer) clearTimeout(this.retryTimer);
-    this.retryTimer = undefined;
-    const work = this.startDrain(true);
+  /** Makes a bounded attempt to deliver every currently queued record. */
+  async flush(timeoutMs?: number): Promise<void> {
+    const work = (async () => {
+      if (this.activeDrain) await this.activeDrain;
+      await this.startDrain(true);
+    })();
     if (timeoutMs === undefined) {
       await work;
       return;
     }
     await this.waitWithin(work, timeoutMs);
+  }
+
+  /** Stops retry timers and makes a final bounded attempt for queued records. */
+  async shutdown(timeoutMs?: number): Promise<void> {
+    this.isShuttingDown = true;
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = undefined;
+    await this.flush(timeoutMs);
   }
 
   /** Returns whether automatic issue reporting has been explicitly enabled. */

@@ -165,6 +165,8 @@ export class IssueRecordService {
         evaluationId: evaluation.id,
         fingerprint: {
           detectorType: claimed.record.detectionType,
+          provider: this.readString(claimed.record.payload.provider),
+          model: this.readString(claimed.record.payload.model),
           policyId: claimed.record.reportedPolicyId ?? undefined,
           failedTool: this.readString(claimed.record.payload.toolName),
           reasonCode: decision.reasonCode,
@@ -262,6 +264,156 @@ export class IssueRecordService {
         isBlocked: false,
       };
     }
+    if (
+      record.detectionType === "TOOL_ERROR" ||
+      record.detectionType === "TOOL_TIMEOUT"
+    ) {
+      const isTimeout = record.detectionType === "TOOL_TIMEOUT";
+      const errorCode = this.normalizeReasonCode(
+        record.payload.errorCode,
+        isTimeout ? "TOOL_TIMEOUT" : "TOOL_ERROR",
+      );
+      return {
+        ...common,
+        action: "CREATE",
+        reasonCode: isTimeout ? "TOOL_TIMEOUT" : `TOOL_ERROR_${errorCode}`,
+        title: isTimeout
+          ? "Tool call timed out"
+          : "Tool call failed with an error",
+        summary: isTimeout
+          ? "An instrumented tool did not return before its configured deadline."
+          : "An instrumented tool threw an error before returning a result.",
+        message: {
+          titleKey: isTimeout
+            ? "issue.tool.timeout.title"
+            : "issue.tool.error.title",
+          summaryKey: isTimeout
+            ? "issue.tool.timeout.summary"
+            : "issue.tool.error.summary",
+          params: this.createMessageParams(record),
+        },
+        category: ISSUE_CATEGORY.TOOL_RISK,
+        severity: this.readToolFailureSeverity(record),
+        isBlocked: false,
+        evidence: {
+          ...common.evidence,
+          errorName: record.payload.errorName,
+          errorCode,
+          timeoutMs: record.payload.timeoutMs,
+          latency: record.payload.latency,
+          argsHash: record.payload.argsHash,
+          errorIsRethrown: record.payload.errorIsRethrown,
+        },
+      };
+    }
+    if (
+      record.detectionType === "RUN_ERROR" ||
+      record.detectionType === "RUN_FAILED"
+    ) {
+      const isUnhandledError = record.detectionType === "RUN_ERROR";
+      const errorCode = this.normalizeReasonCode(
+        isUnhandledError
+          ? record.payload.errorCode
+          : record.payload.reasonCode,
+        isUnhandledError ? "RUN_ERROR" : "RUN_FAILED",
+      );
+      const errorSignature = this.readString(record.payload.errorSignature);
+      const signatureSuffix = errorSignature?.slice(0, 12);
+      return {
+        ...common,
+        action: "CREATE",
+        reasonCode: this.normalizeReasonCode(
+          [
+            record.detectionType,
+            errorCode,
+            isUnhandledError ? signatureSuffix : undefined,
+          ]
+            .filter(Boolean)
+            .join("_"),
+          record.detectionType,
+        ),
+        title: isUnhandledError
+          ? "Agent run failed with an unhandled error"
+          : "Agent run reported a failed outcome",
+        summary: isUnhandledError
+          ? "The root agent run ended because an unhandled error was rethrown."
+          : "The application explicitly marked the technical or business outcome as failed.",
+        message: {
+          titleKey: isUnhandledError
+            ? "issue.run.error.title"
+            : "issue.run.failed.title",
+          summaryKey: isUnhandledError
+            ? "issue.run.error.summary"
+            : "issue.run.failed.summary",
+          params: this.createMessageParams(record),
+        },
+        category: ISSUE_CATEGORY.MODEL_ERROR,
+        severity: this.readRunFailureSeverity(record),
+        isBlocked: false,
+        evidence: {
+          ...common.evidence,
+          errorName: record.payload.errorName,
+          errorCode,
+          errorSignature,
+          latency: record.payload.latency,
+          status: record.payload.status,
+          businessStatus: record.payload.businessStatus,
+          userImpact: record.payload.userImpact,
+        },
+      };
+    }
+    if (
+      record.detectionType === "LLM_ERROR" ||
+      record.detectionType === "LLM_SLOW_RESPONSE"
+    ) {
+      const isSlow = record.detectionType === "LLM_SLOW_RESPONSE";
+      const errorCode = this.normalizeReasonCode(
+        record.payload.errorCode,
+        "LLM_ERROR",
+      );
+      return {
+        ...common,
+        action: "CREATE",
+        reasonCode: isSlow
+          ? "LLM_SLOW_RESPONSE"
+          : `LLM_ERROR_${errorCode}`,
+        title: isSlow
+          ? "LLM response latency exceeded the configured threshold"
+          : "LLM call failed with an error",
+        summary: isSlow
+          ? "Consecutive instrumented LLM calls exceeded the configured latency threshold."
+          : "An instrumented LLM call raised an error before returning a complete response.",
+        message: {
+          titleKey: isSlow
+            ? "issue.llm.slow.title"
+            : "issue.llm.error.title",
+          summaryKey: isSlow
+            ? "issue.llm.slow.summary"
+            : "issue.llm.error.summary",
+          params: this.createMessageParams(record),
+        },
+        category: isSlow
+          ? ISSUE_CATEGORY.LATENCY
+          : ISSUE_CATEGORY.MODEL_ERROR,
+        severity: isSlow
+          ? ISSUE_SEVERITY.WARNING
+          : ISSUE_SEVERITY.CRITICAL,
+        isBlocked: false,
+        evidence: {
+          ...common.evidence,
+          modelLabel: record.payload.modelLabel,
+          provider: record.payload.provider,
+          model: record.payload.model,
+          path: record.payload.path,
+          errorName: record.payload.errorName,
+          errorCode: isSlow ? undefined : errorCode,
+          errorSignature: record.payload.errorSignature,
+          latency: record.payload.latency,
+          thresholdMs: record.payload.thresholdMs,
+          consecutiveOccurrences: record.payload.consecutiveOccurrences,
+        },
+      };
+    }
     if (record.detectionType === "PROMPT_REGRESSION") {
       return {
         ...common,
@@ -331,8 +483,55 @@ export class IssueRecordService {
         label: this.readString(record.payload.label),
         eventType: this.readString(record.payload.eventType),
         loopCount: this.readNumber(record.payload.loopCount),
+        agentName: this.readString(record.payload.agentName),
+        modelLabel: this.readString(record.payload.modelLabel),
+        provider: this.readString(record.payload.provider),
+        model: this.readString(record.payload.model),
+        errorCode: this.readString(record.payload.errorCode),
+        timeoutMs: this.readNumber(record.payload.timeoutMs),
+        latency: this.readNumber(record.payload.latency),
+        thresholdMs: this.readNumber(record.payload.thresholdMs),
+        consecutiveOccurrences: this.readNumber(
+          record.payload.consecutiveOccurrences,
+        ),
+        status: this.readString(record.payload.status),
+        businessStatus: this.readString(record.payload.businessStatus),
       }).filter((entry) => entry[1] !== undefined),
     );
+  }
+
+  /** 사용자 영향도에 따라 실패한 Run의 운영 심각도를 선택합니다. */
+  private readRunFailureSeverity(
+    record: IssueRecordEntity,
+  ): (typeof ISSUE_SEVERITY)[keyof typeof ISSUE_SEVERITY] {
+    if (record.detectionType === "RUN_ERROR") {
+      return ISSUE_SEVERITY.CRITICAL;
+    }
+    const userImpact = this.readString(record.payload.userImpact);
+    return userImpact === "HIGH" || userImpact === "CRITICAL"
+      ? ISSUE_SEVERITY.CRITICAL
+      : ISSUE_SEVERITY.WARNING;
+  }
+
+  /** Tool 위험도에 따라 운영자가 확인할 이슈 심각도를 선택합니다. */
+  private readToolFailureSeverity(
+    record: IssueRecordEntity,
+  ): (typeof ISSUE_SEVERITY)[keyof typeof ISSUE_SEVERITY] {
+    const riskLevel = this.readString(record.payload.riskLevel);
+    return riskLevel === "HIGH" || riskLevel === "CRITICAL"
+      ? ISSUE_SEVERITY.CRITICAL
+      : ISSUE_SEVERITY.WARNING;
+  }
+
+  /** 오류 메시지를 제외한 안정적인 코드만 fingerprint 사유로 사용합니다. */
+  private normalizeReasonCode(value: unknown, fallback: string): string {
+    const raw = this.readString(value) ?? fallback;
+    const normalized = raw
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9_.-]+/g, "_")
+      .slice(0, 80);
+    return normalized || fallback;
   }
 
   /** 유한한 숫자 payload만 메시지 파라미터로 사용합니다. */

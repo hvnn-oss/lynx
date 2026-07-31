@@ -49,6 +49,18 @@ describe("createIssueFingerprint", () => {
     );
   });
 
+  it("separates failures from different model providers", () => {
+    expect(
+      createIssueFingerprint(
+        input({ provider: "openai", model: "gpt-4.1-mini" }),
+      ),
+    ).not.toBe(
+      createIssueFingerprint(
+        input({ provider: "anthropic", model: "claude-sonnet" }),
+      ),
+    );
+  });
+
   it("rejects an empty required identity field", () => {
     expect(() => createIssueFingerprint(input({ agentId: "  " }))).toThrow(
       "Issue fingerprint fields must not be empty",

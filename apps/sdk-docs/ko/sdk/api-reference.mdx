@@ -80,6 +80,26 @@ await lynx.run(
 | `instrumentTool(name, fn, metadata?)` | 도구 함수를 감쌉니다.                                            |
 | `firewallTool(name, fn, options?)`    | 도구 함수를 로컬 정책 평가와 함께 감쌉니다.                      |
 
+### LLM 옵션
+
+| 옵션                      | 설명                                                                              |
+| ------------------------- | --------------------------------------------------------------------------------- |
+| `modelLabel`              | 이벤트와 반복 이슈 묶기에 사용하는 고정된 모델 또는 공급자 이름입니다.          |
+| `reportFailures`          | 이슈 기록이 켜져 있을 때 LLM 오류를 보고합니다. 기본값은 `true`입니다.           |
+| `reportSlowResponses`     | 이슈 기록이 켜져 있을 때 연속 느린 LLM 호출을 보고합니다. 기본값은 `true`입니다. |
+| `slowResponseThresholdMs` | 이 wrapper에만 적용할 느린 LLM 호출 기준을 설정합니다.                           |
+
+### 도구 메타데이터
+
+| 옵션             | 설명                                                                                     |
+| ---------------- | ---------------------------------------------------------------------------------------- |
+| `toolVersion`    | 도구 이벤트와 이슈 근거에 붙이는 버전입니다.                                             |
+| `sideEffect`     | 도구가 외부 상태를 바꿀 수 있는지 나타냅니다.                                            |
+| `riskLevel`      | `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` 중 하나입니다.                                       |
+| `externalTarget` | 외부 시스템 또는 대상 이름입니다.                                                        |
+| `timeoutMs`      | 비동기 호출 timeout입니다. wrapper는 거절되지만 이미 실행 중인 작업은 취소되지 않습니다. |
+| `reportFailures` | 이슈 기록이 켜져 있을 때 오류와 timeout을 보고합니다. 기본값은 `true`입니다.             |
+
 ## 전송 helper
 
 | Method               | 목적                                                                |
@@ -123,6 +143,11 @@ if (error instanceof LynxPolicyError) {
 | `runtimeConfig.maxStaleAgeMs`             | 마지막으로 검증된 설정을 사용할 최대 기간입니다. 기본값은 24시간입니다. |
 | `runtimeConfig.requireSignature`          | 서명되지 않은 실행 설정을 거절합니다.                                   |
 | `runtimeConfig.requireTargetMatch`        | 환경이 다르거나 Agent를 찾지 못한 설정을 거절합니다.                    |
+| `issueReporting.enabled`                  | `true`이면 감지된 실패를 이슈 생성 검토 대상으로 보냅니다.              |
+| `issueReporting.reportRunFailures`        | 루트 Run 오류와 명시적으로 기록한 실패 결과를 보고합니다.               |
+| `issueReporting.reportLlmFailures`        | 연결한 LLM 호출에서 발생한 오류를 보고합니다.                            |
+| `issueReporting.slowLlmThresholdMs`       | 느린 LLM 기준입니다. 기본값은 10초이며 `0`이면 끕니다.                  |
+| `issueReporting.slowLlmConsecutiveOccurrences` | 필요한 연속 느린 호출 횟수입니다. 기본값은 2회입니다.           |
 | `issueReporting.recoverySuccessThreshold` | 정상화 기록을 보내기 전에 필요한 연속 정상 실행 횟수입니다.             |
 | `delivery.mode`                           | `BACKGROUND` 또는 `BLOCKING`입니다.                                     |
 | `delivery.timeoutMs`                      | 한 번의 전송 요청 timeout입니다.                                        |

@@ -68,6 +68,18 @@ export const lynx = new LynxTracer({
   },
   issueReporting: {
     enabled: parseBool(process.env.LYNX_ISSUE_REPORTING_ENABLED),
+    reportRunFailures: parseBool(
+      process.env.LYNX_ISSUE_REPORT_RUN_FAILURES,
+    ),
+    reportLlmFailures: parseBool(
+      process.env.LYNX_ISSUE_REPORT_LLM_FAILURES,
+    ),
+    slowLlmThresholdMs: parseNum(
+      process.env.LYNX_ISSUE_SLOW_LLM_THRESHOLD_MS,
+    ),
+    slowLlmConsecutiveOccurrences: parseNum(
+      process.env.LYNX_ISSUE_SLOW_LLM_CONSECUTIVE_OCCURRENCES,
+    ),
     timeoutMs: parseNum(process.env.LYNX_ISSUE_REPORTING_TIMEOUT_MS),
     maxQueueSize: parseNum(process.env.LYNX_ISSUE_REPORTING_MAX_QUEUE_SIZE),
     maxAttempts: parseNum(process.env.LYNX_ISSUE_REPORTING_MAX_ATTEMPTS),

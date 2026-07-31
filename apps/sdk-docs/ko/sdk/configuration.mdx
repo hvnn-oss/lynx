@@ -40,6 +40,36 @@ const lynx = new LynxTracer({
 });
 ```
 
+## 이슈 기록
+
+`issueReporting.enabled`를 명시적으로 `true`로 설정하기 전에는 이슈 기록이
+꺼져 있습니다. 실행 설정에서 프롬프트와 방화벽 정책을 받아오더라도 이슈
+기록이 자동으로 켜지지는 않습니다.
+
+```ts
+const lynx = new LynxTracer({
+  clientId: "support-api",
+  apiKey: process.env.LYNX_API_KEY,
+  issueReporting: {
+    enabled: true,
+    reportRunFailures: true,
+    reportLlmFailures: true,
+    slowLlmThresholdMs: 10_000,
+    slowLlmConsecutiveOccurrences: 2,
+    recoverySuccessThreshold: 3,
+  },
+});
+```
+
+| 옵션                                           | 기본값  | 설명                                                            |
+| ---------------------------------------------- | ------- | --------------------------------------------------------------- |
+| `enabled`                                      | `false` | 지원하는 탐지를 비동기 이슈 검토 대상으로 보냅니다.            |
+| `reportRunFailures`                            | `true`  | 처리되지 않은 루트 Run 오류와 명시적인 실패 결과를 보고합니다. |
+| `reportLlmFailures`                            | `true`  | 연결한 LLM 호출에서 발생한 오류를 보고합니다.                  |
+| `slowLlmThresholdMs`                           | `10000` | 이보다 오래 걸린 LLM 호출을 느린 호출로 봅니다. `0`이면 끕니다. |
+| `slowLlmConsecutiveOccurrences`                | `2`     | 이슈 후보 전송 전 필요한 연속 느린 호출 횟수입니다.            |
+| `recoverySuccessThreshold`                     | `3`     | Recovery 전 필요한 연속 정상 관찰 횟수입니다.                  |
+
 ## 수집 옵션
 
 | 옵션                            | 기본값    | 설명                                                                 |
@@ -118,6 +148,15 @@ import { lynx } from "@lynxops/sdk";
 | `LYNX_DEPLOYMENT_ID`                     | 배포 ID 메타데이터입니다.                                               |
 | `LYNX_ENVIRONMENT`                       | 실행 환경입니다. 없으면 `NODE_ENV`를 사용합니다.                        |
 | `LYNX_POLICY_VERSION`                    | 기본 정책 버전 메타데이터입니다.                                        |
+| `LYNX_ISSUE_REPORTING_ENABLED`           | `true`이면 이슈 후보와 Recovery 기록을 백그라운드로 보냅니다.           |
+| `LYNX_ISSUE_REPORTING_TIMEOUT_MS`        | 이슈 기록 요청 한 번의 제한시간입니다.                                  |
+| `LYNX_ISSUE_REPORTING_MAX_QUEUE_SIZE`    | 별도 메모리 큐에 보관할 이슈 기록 최대 개수입니다.                      |
+| `LYNX_ISSUE_REPORTING_MAX_ATTEMPTS`      | 이슈 기록 하나의 최대 전송 시도 횟수입니다.                             |
+| `LYNX_ISSUE_REPORT_RUN_FAILURES`         | `false`이면 자동 Run 실패 후보를 보내지 않습니다.                       |
+| `LYNX_ISSUE_REPORT_LLM_FAILURES`         | `false`이면 자동 LLM 오류 후보를 보내지 않습니다.                       |
+| `LYNX_ISSUE_SLOW_LLM_THRESHOLD_MS`       | 느린 LLM 호출 기준입니다. 기본값은 10000ms이며 `0`이면 끕니다.          |
+| `LYNX_ISSUE_SLOW_LLM_CONSECUTIVE_OCCURRENCES` | 필요한 연속 느린 LLM 호출 횟수입니다. 기본값은 2회입니다.       |
+| `LYNX_ISSUE_RECOVERY_SUCCESS_THRESHOLD`  | Recovery를 보내기 전 필요한 정상 호출 횟수입니다. 기본값은 3회입니다.   |
 | `LYNX_DELIVERY_MODE`                     | `BACKGROUND` 또는 `BLOCKING`입니다.                                     |
 | `LYNX_DELIVERY_TIMEOUT_MS`               | 전송 timeout입니다. 단위는 millisecond입니다.                           |
 | `LYNX_DELIVERY_FLUSH_ON_RUN_END`         | `true` 또는 `false`입니다.                                              |
@@ -153,7 +192,5 @@ import { lynx } from "@lynxops/sdk";
 - `LYNX_RUNTIME_CONFIG_CACHE_ENABLED`: 검증된 설정을 `.lynxconf`에
   저장합니다.
 - `LYNX_RUNTIME_CONFIG_CACHE_PATH`: `.lynxconf`를 저장할 정확한 경로입니다.
-- `LYNX_ISSUE_RECOVERY_SUCCESS_THRESHOLD`: 자동 정상화 기록을 보내기 전에
-  필요한 연속 정상 실행 횟수입니다. 기본값은 3회입니다.
 - `LYNX_APPROVAL_MAX_REQUEST_ATTEMPTS`: 일시적인 승인 API 실패 시 요청을
   시도할 최대 횟수입니다. 기본값은 3회입니다.

@@ -13,7 +13,9 @@ export function createStableIssueFingerprint(
     detectorType: normalizeRequired(input.detectorType),
     environment: normalizeRequired(input.environment),
     failedTool: normalizeOptional(input.failedTool),
+    model: normalizeOptional(input.model),
     policyId: normalizeOptional(input.policyId),
+    provider: normalizeOptional(input.provider),
     reasonCode: normalizeOptional(input.reasonCode),
     tools: normalizeTools(input.tools),
   });

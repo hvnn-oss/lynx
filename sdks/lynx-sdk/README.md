@@ -271,6 +271,7 @@ const postSlackMessage = lynx.instrumentTool(
     sideEffect: true,
     riskLevel: "MEDIUM",
     externalTarget: "slack",
+    timeoutMs: 5000,
   },
 );
 
@@ -279,6 +280,34 @@ await postSlackMessage({
   text: "Refund approved",
 });
 ```
+
+When `issueReporting.enabled` is `true`, a thrown tool error is reported as
+`TOOL_ERROR`, and an asynchronous call that exceeds `timeoutMs` is reported as
+`TOOL_TIMEOUT`. Lynx groups repeated failures without using the raw error
+message in the fingerprint. After three successful calls by default, the SDK
+sends a recovery record.
+
+Set `reportFailures: false` for a tool whose errors are expected and handled by
+your application. `timeoutMs` does not cancel the underlying operation; use the
+tool's own `AbortSignal` or cancellation API when a timed-out operation must
+stop.
+
+## Automatic Run and LLM Issues
+
+With `issueReporting.enabled: true`, Lynx also reports:
+
+- `RUN_ERROR` when the root `run()` callback rethrows an unhandled error.
+- `RUN_FAILED` when `outcome()` records a failed technical or business result.
+- `LLM_ERROR` when an `instrumentLLM()` or `guardLLM()` call fails.
+- `LLM_SLOW_RESPONSE` after two consecutive LLM calls exceed 10 seconds by
+  default.
+
+Specific Tool, LLM, and firewall detections suppress a duplicate root Run issue.
+Raw error messages are retained only as bounded evidence and are not used in
+the stable fingerprint. Configure `slowLlmThresholdMs` and
+`slowLlmConsecutiveOccurrences` for the latency profile of your models. Set a
+wrapper's `reportFailures` or `reportSlowResponses` to `false` when that call is
+expected to fail or run slowly.
 
 ## Local Firewalls
 
@@ -460,42 +489,48 @@ const lynx = new LynxTracer({
 });
 ```
 
-| Option                             | Description                                                            |
-| ---------------------------------- | ---------------------------------------------------------------------- |
-| `clientId`                         | Required service or client identifier.                                 |
-| `endpoint`                         | Lynx API endpoint. Defaults to `https://api.lynxops.co`.               |
-| `workspaceId`                      | Default workspace id attached to events.                               |
-| `agentId`                          | Default agent id attached to events.                                   |
-| `apiKey`                           | Workspace API key sent only through `X-API-Key`.                       |
-| `appVersion`                       | Application version metadata.                                          |
-| `deploymentId`                     | Deployment id metadata.                                                |
-| `environment`                      | Runtime environment metadata.                                          |
-| `policyVersion`                    | Default policy version metadata.                                       |
-| `sampleRate`                       | Trace sampling ratio from `0` to `1`.                                  |
-| `captureInput`                     | Whether input payloads can be captured.                                |
-| `captureOutput`                    | Whether output payloads can be captured.                               |
-| `captureMode`                      | `full`, `metadata-only`, or `smart`.                                   |
-| `maxPayloadLength`                 | Backward-compatible per-string truncation limit.                       |
-| `maxPayloadBytes`                  | Maximum UTF-8 JSON size retained for one event payload.                |
-| `smartDetailLatencyThresholdMs`    | Latency threshold for preserving masked detail in `smart` mode.        |
-| `runtimeConfig.enabled`            | Loads managed prompts and firewall policies before the first run.      |
-| `runtimeConfig.refreshIntervalMs`  | Background runtime configuration refresh interval.                     |
-| `runtimeConfig.maxStaleAgeMs`      | Maximum age of a validated bundle. Defaults to 24 hours.               |
-| `runtimeConfig.requireSignature`   | Rejects runtime bundles without a valid Ed25519 signature.             |
-| `runtimeConfig.requireTargetMatch` | Rejects another environment or an unresolved Agent scope.              |
-| `runtimeConfig.cache.enabled`      | Persists the last validated bundle. Defaults to `false`.               |
-| `runtimeConfig.cache.path`         | Exact `.lynxconf` path. Uses the OS user cache directory when omitted. |
-| `runtimeConfig.cache.storage`      | Custom byte storage for environments without a writable filesystem.    |
-| `delivery.mode`                    | `BACKGROUND` or `BLOCKING`.                                            |
-| `delivery.timeoutMs`               | Timeout for one event delivery request.                                |
-| `delivery.flushOnRunEnd`           | Whether `run()` tries to flush after the wrapped work finishes.        |
-| `delivery.flushIntervalMs`         | Background flush interval.                                             |
-| `delivery.batchSize`               | Batch size for delivery.                                               |
-| `delivery.maxQueueSize`            | Maximum queued events in memory.                                       |
-| `delivery.overflowStrategy`        | `DROP_OLDEST` or `DROP_NEWEST`.                                        |
-| `circuitBreaker.enabled`           | Enables delivery circuit breaker protection.                           |
-| `circuitBreaker.failureThreshold`  | Consecutive delivery failures before opening the breaker.              |
-| `circuitBreaker.cooldownMs`        | Cooldown before retrying after the breaker opens.                      |
+| Option                                    | Description                                                            |
+| ----------------------------------------- | ---------------------------------------------------------------------- |
+| `clientId`                                | Required service or client identifier.                                 |
+| `endpoint`                                | Lynx API endpoint. Defaults to `https://api.lynxops.co`.               |
+| `workspaceId`                             | Default workspace id attached to events.                               |
+| `agentId`                                 | Default agent id attached to events.                                   |
+| `apiKey`                                  | Workspace API key sent only through `X-API-Key`.                       |
+| `appVersion`                              | Application version metadata.                                          |
+| `deploymentId`                            | Deployment id metadata.                                                |
+| `environment`                             | Runtime environment metadata.                                          |
+| `policyVersion`                           | Default policy version metadata.                                       |
+| `sampleRate`                              | Trace sampling ratio from `0` to `1`.                                  |
+| `captureInput`                            | Whether input payloads can be captured.                                |
+| `captureOutput`                           | Whether output payloads can be captured.                               |
+| `captureMode`                             | `full`, `metadata-only`, or `smart`.                                   |
+| `maxPayloadLength`                        | Backward-compatible per-string truncation limit.                       |
+| `maxPayloadBytes`                         | Maximum UTF-8 JSON size retained for one event payload.                |
+| `smartDetailLatencyThresholdMs`           | Latency threshold for preserving masked detail in `smart` mode.        |
+| `runtimeConfig.enabled`                   | Loads managed prompts and firewall policies before the first run.      |
+| `runtimeConfig.refreshIntervalMs`         | Background runtime configuration refresh interval.                     |
+| `runtimeConfig.maxStaleAgeMs`             | Maximum age of a validated bundle. Defaults to 24 hours.               |
+| `runtimeConfig.requireSignature`          | Rejects runtime bundles without a valid Ed25519 signature.             |
+| `runtimeConfig.requireTargetMatch`        | Rejects another environment or an unresolved Agent scope.              |
+| `runtimeConfig.cache.enabled`             | Persists the last validated bundle. Defaults to `false`.               |
+| `runtimeConfig.cache.path`                | Exact `.lynxconf` path. Uses the OS user cache directory when omitted. |
+| `runtimeConfig.cache.storage`             | Custom byte storage for environments without a writable filesystem.    |
+| `issueReporting.enabled`                  | Sends detected issue and recovery records in the background.           |
+| `issueReporting.reportRunFailures`        | Reports root Run exceptions and explicit failed outcomes.              |
+| `issueReporting.reportLlmFailures`        | Reports errors from instrumented LLM calls.                            |
+| `issueReporting.slowLlmThresholdMs`       | Slow LLM threshold. Defaults to `10000`; `0` disables it.              |
+| `issueReporting.slowLlmConsecutiveOccurrences` | Consecutive slow calls required. Defaults to `2`.                |
+| `issueReporting.recoverySuccessThreshold` | Consecutive healthy observations required before recovery.             |
+| `delivery.mode`                           | `BACKGROUND` or `BLOCKING`.                                            |
+| `delivery.timeoutMs`                      | Timeout for one event delivery request.                                |
+| `delivery.flushOnRunEnd`                  | Whether `run()` tries to flush after the wrapped work finishes.        |
+| `delivery.flushIntervalMs`                | Background flush interval.                                             |
+| `delivery.batchSize`                      | Batch size for delivery.                                               |
+| `delivery.maxQueueSize`                   | Maximum queued events in memory.                                       |
+| `delivery.overflowStrategy`               | `DROP_OLDEST` or `DROP_NEWEST`.                                        |
+| `circuitBreaker.enabled`                  | Enables delivery circuit breaker protection.                           |
+| `circuitBreaker.failureThreshold`         | Consecutive delivery failures before opening the breaker.              |
+| `circuitBreaker.cooldownMs`               | Cooldown before retrying after the breaker opens.                      |
 
 ## Environment Variables
 
@@ -520,6 +555,15 @@ The default `lynx` export reads these variables:
 | `LYNX_DEPLOYMENT_ID`                     | Deployment id metadata.                                    |
 | `LYNX_ENVIRONMENT`                       | Runtime environment metadata. Falls back to `NODE_ENV`.    |
 | `LYNX_POLICY_VERSION`                    | Default policy version metadata.                           |
+| `LYNX_ISSUE_REPORTING_ENABLED`           | Enables background issue-candidate and recovery records.   |
+| `LYNX_ISSUE_REPORT_RUN_FAILURES`         | Enables root Run and failed-outcome issue candidates.       |
+| `LYNX_ISSUE_REPORT_LLM_FAILURES`         | Enables instrumented LLM error issue candidates.            |
+| `LYNX_ISSUE_SLOW_LLM_THRESHOLD_MS`       | Slow LLM threshold; `0` disables latency candidates.        |
+| `LYNX_ISSUE_SLOW_LLM_CONSECUTIVE_OCCURRENCES` | Consecutive slow calls required before reporting.      |
+| `LYNX_ISSUE_REPORTING_TIMEOUT_MS`        | Timeout for one issue-record request.                      |
+| `LYNX_ISSUE_REPORTING_MAX_QUEUE_SIZE`    | Maximum queued issue-record count.                         |
+| `LYNX_ISSUE_REPORTING_MAX_ATTEMPTS`      | Maximum delivery attempts for one issue record.            |
+| `LYNX_ISSUE_RECOVERY_SUCCESS_THRESHOLD`  | Healthy calls required before recovery. Defaults to `3`.   |
 | `LYNX_DELIVERY_MODE`                     | `BACKGROUND` or `BLOCKING`.                                |
 | `LYNX_DELIVERY_TIMEOUT_MS`               | Delivery timeout in milliseconds.                          |
 | `LYNX_DELIVERY_FLUSH_ON_RUN_END`         | `true` or `false`.                                         |

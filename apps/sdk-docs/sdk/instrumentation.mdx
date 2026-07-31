@@ -44,6 +44,12 @@ await lynx.run("SupportAgent", async () => {
 
 Lynx records model metadata, input and output according to your capture settings, latency, token usage when available, span IDs, and errors.
 
+When issue reporting is enabled, an instrumented LLM error produces
+`LLM_ERROR`. Calls that cross the configured latency threshold produce
+`LLM_SLOW_RESPONSE` after two consecutive slow observations by default. Use
+`reportFailures: false`, `reportSlowResponses: false`, or a wrapper-specific
+`slowResponseThresholdMs` when a client has different expected behavior.
+
 For async iterable streaming APIs such as `streamText`, Lynx keeps the original
 iterator behavior and records the end of the LLM call only when iteration
 reaches completion. An error raised while consuming the stream is recorded on
@@ -90,6 +96,7 @@ const searchOrders = lynx.instrumentTool(
     toolVersion: "2026-06-01",
     sideEffect: false,
     riskLevel: "LOW",
+    timeoutMs: 5000,
   },
 );
 
@@ -98,6 +105,44 @@ await lynx.run("SupportAgent", async () => {
   lynx.context("orders", orders);
 });
 ```
+
+Enable issue reporting on the tracer to turn supported failures into issue
+candidates.
+
+```ts
+const lynx = new LynxTracer({
+  clientId: "support-api",
+  apiKey: process.env.LYNX_API_KEY,
+  issueReporting: {
+    enabled: true,
+    recoverySuccessThreshold: 3,
+  },
+});
+```
+
+The same setting also reports:
+
+- `RUN_ERROR` when the root `run()` callback throws and the failure is not
+  already represented by a more specific Tool, LLM, or firewall detection
+- `RUN_FAILED` when `outcome()` explicitly records a failed technical or
+  business result
+- `LLM_ERROR` for an instrumented LLM failure
+- `LLM_SLOW_RESPONSE` after the configured number of consecutive slow calls
+
+A thrown tool error produces a `TOOL_ERROR` record. An asynchronous call that
+exceeds its configured `timeoutMs` produces `TOOL_TIMEOUT`. The server groups
+repeated records by stable tool and error metadata, without putting the raw
+error message in the fingerprint. Later successful calls produce a recovery
+record after the configured threshold.
+
+These records request asynchronous server review. They do not synchronously
+create or close a final Issue, and issue-record delivery does not replace normal
+application error handling.
+
+Use `reportFailures: false` when a tool's errors are expected and fully handled
+by your application. A wrapper timeout cannot cancel the underlying operation,
+so use the tool's own `AbortSignal` or cancellation API when side effects must
+stop after a timeout. Synchronous work cannot be interrupted by `timeoutMs`.
 
 Use `firewallTool()` instead when the tool needs a policy check before it runs.
 

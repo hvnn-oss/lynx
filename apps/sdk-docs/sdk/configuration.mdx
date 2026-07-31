@@ -40,6 +40,36 @@ const lynx = new LynxTracer({
 });
 ```
 
+## Issue reporting
+
+Issue reporting is disabled until `issueReporting.enabled` is explicitly set to
+`true`. Runtime configuration can provide prompts and firewall policies, but it
+does not enable issue reporting by itself.
+
+```ts
+const lynx = new LynxTracer({
+  clientId: "support-api",
+  apiKey: process.env.LYNX_API_KEY,
+  issueReporting: {
+    enabled: true,
+    reportRunFailures: true,
+    reportLlmFailures: true,
+    slowLlmThresholdMs: 10_000,
+    slowLlmConsecutiveOccurrences: 2,
+    recoverySuccessThreshold: 3,
+  },
+});
+```
+
+| Option                                         | Default | Description                                                               |
+| ---------------------------------------------- | ------- | ------------------------------------------------------------------------- |
+| `enabled`                                      | `false` | Sends supported detections to the asynchronous issue review pipeline.     |
+| `reportRunFailures`                            | `true`  | Reports unhandled root Run errors and explicit failed outcomes.           |
+| `reportLlmFailures`                            | `true`  | Reports errors raised by instrumented LLM calls.                          |
+| `slowLlmThresholdMs`                           | `10000` | Marks an instrumented LLM call as slow. Set `0` to disable slow detection. |
+| `slowLlmConsecutiveOccurrences`                | `2`     | Consecutive slow calls required before sending one issue candidate.       |
+| `recoverySuccessThreshold`                     | `3`     | Healthy observations required before sending a recovery record.           |
+
 ## Capture options
 
 | Option                          | Default   | Description                                             |
@@ -114,6 +144,14 @@ import { lynx } from "@lynxops/sdk";
 | `LYNX_RUNTIME_CONFIG_REQUIRE_TARGET_MATCH` | Reject a bundle for another environment or an unresolved Agent.                     |
 | `LYNX_RUNTIME_CONFIG_CACHE_ENABLED`        | Persist validated runtime settings in `.lynxconf`.                                  |
 | `LYNX_RUNTIME_CONFIG_CACHE_PATH`           | Optional exact `.lynxconf` path.                                                    |
+| `LYNX_ISSUE_REPORTING_ENABLED`             | Send detected issue candidates and recovery records when `true`.                    |
+| `LYNX_ISSUE_REPORTING_TIMEOUT_MS`          | Deadline for one issue-record request.                                              |
+| `LYNX_ISSUE_REPORTING_MAX_QUEUE_SIZE`      | Maximum issue records kept in the isolated memory queue.                            |
+| `LYNX_ISSUE_REPORTING_MAX_ATTEMPTS`        | Maximum delivery attempts for one issue record.                                     |
+| `LYNX_ISSUE_REPORT_RUN_FAILURES`           | Set `false` to disable automatic Run failure candidates.                            |
+| `LYNX_ISSUE_REPORT_LLM_FAILURES`           | Set `false` to disable automatic LLM error candidates.                              |
+| `LYNX_ISSUE_SLOW_LLM_THRESHOLD_MS`         | Slow LLM threshold in milliseconds. Defaults to `10000`; `0` disables it.           |
+| `LYNX_ISSUE_SLOW_LLM_CONSECUTIVE_OCCURRENCES` | Consecutive slow LLM calls required. Defaults to `2`.                            |
 | `LYNX_ISSUE_RECOVERY_SUCCESS_THRESHOLD`    | Healthy observations required before an automatic recovery record. Defaults to `3`. |
 | `LYNX_APPROVAL_MAX_REQUEST_ATTEMPTS`       | Attempts for transient approval API failures. Defaults to `3`.                      |
 | `LYNX_CAPTURE_INPUT`                       | `true` or `false`.                                                                  |

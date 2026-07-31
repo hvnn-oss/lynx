@@ -72,6 +72,9 @@ const tracer = new LynxTracer({
     enabled: Boolean(lynxApiKey),
     refreshIntervalMs: 60_000,
   },
+  issueReporting: {
+    enabled: Boolean(lynxApiKey),
+  },
   delivery: {
     mode: "BACKGROUND",
     timeoutMs: 1000,

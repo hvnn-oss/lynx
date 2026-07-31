@@ -22,6 +22,8 @@ export interface IssueFingerprintInput {
   agentId: string;
   agentVersion?: string;
   detectorType: string;
+  provider?: string;
+  model?: string;
   tools?: string[];
   failedTool?: string;
   reasonCode?: string;

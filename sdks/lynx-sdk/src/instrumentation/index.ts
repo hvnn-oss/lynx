@@ -5,8 +5,24 @@ import {
 } from "../core/types.js";
 import { generateSpanId } from "../utils/id.js";
 import { extractTokenUsage } from "../utils/usage.js";
-import { LynxTracer } from "../core/tracer.js";
+import { LynxPolicyError, LynxTracer } from "../core/tracer.js";
 import { createStableHash } from "../utils/stable-hash.js";
+import { readErrorDetails } from "../utils/error-details.js";
+
+const MAX_TOOL_TIMEOUT_MS = 2_147_483_647;
+
+/** Error raised when an instrumented asynchronous tool exceeds its deadline. */
+export class LynxToolTimeoutError extends Error {
+  readonly code = "LYNX_TOOL_TIMEOUT";
+
+  constructor(
+    readonly toolName: string,
+    readonly timeoutMs: number,
+  ) {
+    super(`Tool "${toolName}" did not finish within ${timeoutMs}ms`);
+    this.name = "LynxToolTimeoutError";
+  }
+}
 
 function getProvider(path: string[], model?: string): string {
   const pathStr = path.join(".");
@@ -83,6 +99,38 @@ function isPromiseLike<T = unknown>(value: unknown): value is PromiseLike<T> {
     (typeof value === "object" || typeof value === "function") &&
     typeof (value as PromiseLike<T>).then === "function"
   );
+}
+
+/** Returns one safe timer duration or undefined when timeout is disabled. */
+function resolveToolTimeoutMs(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return undefined;
+  }
+  return Math.min(MAX_TOOL_TIMEOUT_MS, Math.floor(value));
+}
+
+/** Rejects the wrapper deadline without claiming to cancel underlying work. */
+function waitForToolWithin<T>(
+  work: Promise<T>,
+  toolName: string,
+  timeoutMs: number,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = setTimeout(
+      () => reject(new LynxToolTimeoutError(toolName, timeoutMs)),
+      timeoutMs,
+    );
+    work.then(
+      (value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
 }
 
 function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
@@ -177,6 +225,8 @@ export function instrumentLLM<T extends object>(
   const modelLabel = options.modelLabel ?? "llm.inference";
   const customRule = options.customRule;
   const firewall = options.firewall;
+  const shouldReportFailures = options.reportFailures !== false;
+  const shouldReportSlowResponses = options.reportSlowResponses !== false;
 
   const isTargetLLMMethod = (path: string[]): boolean => {
     if (customRule?.isTargetMethod) {
@@ -294,6 +344,11 @@ export function instrumentLLM<T extends object>(
             usage,
             cost,
             costSource: cost === undefined ? undefined : "CLIENT_ESTIMATED",
+            llmIssueObservation: true,
+            reportSlowResponse: shouldReportSlowResponses,
+            slowResponseThresholdMs: options.slowResponseThresholdMs,
+            modelLabel,
+            path: callPath.join("."),
             ...llmMetadata,
           },
           childContext ?? context,
@@ -301,16 +356,24 @@ export function instrumentLLM<T extends object>(
       };
       const captureStreamError = (err: unknown) => {
         if (!context) return;
-        const error = err as Error;
+        const error = readErrorDetails(err, "LLM_ERROR");
         tracer.captureInternal(
           "ERROR",
           modelLabel,
           {
-            error: error.message,
+            error: error.errorMessage,
+            errorName: error.errorName,
+            errorCode: error.errorCode,
+            errorSignature: error.errorSignature,
+            llmFailure:
+              shouldReportFailures && !(err instanceof LynxPolicyError),
+            modelLabel,
+            path: callPath.join("."),
             phase: "error",
             spanId,
             parentSpanId,
             latency: Date.now() - startTime,
+            ...llmMetadata,
           },
           childContext ?? context,
         );
@@ -378,18 +441,26 @@ export function instrumentLLM<T extends object>(
       captureEnd(resolvedResult);
       return resolvedResult;
     } catch (err: unknown) {
-      const error = err as Error;
+      const error = readErrorDetails(err, "LLM_ERROR");
       const latency = Date.now() - startTime;
       if (context) {
         tracer.captureInternal(
           "ERROR",
           modelLabel,
           {
-            error: error.message,
+            error: error.errorMessage,
+            errorName: error.errorName,
+            errorCode: error.errorCode,
+            errorSignature: error.errorSignature,
+            llmFailure:
+              shouldReportFailures && !(err instanceof LynxPolicyError),
+            modelLabel,
+            path: callPath.join("."),
             phase: "error",
             spanId,
             parentSpanId,
             latency,
+            ...llmMetadata,
           },
           childContext ?? context,
         );
@@ -555,6 +626,9 @@ export function instrumentTool<T extends (...args: any[]) => any>(
     const parentSpanId = context?.spanId;
     const childContext = createChildContext(context, spanId);
     const startTime = Date.now();
+    const argsHash = createStableHash(args[0]);
+    const timeoutMs = resolveToolTimeoutMs(metadata.timeoutMs);
+    const shouldReportFailures = metadata.reportFailures !== false;
 
     if (context) {
       tracer.captureInternal(
@@ -568,7 +642,7 @@ export function instrumentTool<T extends (...args: any[]) => any>(
           externalTarget: metadata.externalTarget,
           idempotencyKey: metadata.idempotencyKey,
           args: args[0],
-          argsHash: createStableHash(args[0]),
+          argsHash,
           input: args[0],
           phase: "start",
           spanId,
@@ -595,6 +669,7 @@ export function instrumentTool<T extends (...args: any[]) => any>(
             spanId,
             parentSpanId,
             latency,
+            toolFailureRecovery: shouldReportFailures,
           },
           childContext ?? context,
         );
@@ -603,14 +678,28 @@ export function instrumentTool<T extends (...args: any[]) => any>(
     };
 
     const captureError = (err: unknown): never => {
-      const error = err as Error;
+      const error = readErrorDetails(err, "TOOL_ERROR");
       const latency = Date.now() - startTime;
+      const isTimeout = err instanceof LynxToolTimeoutError;
       if (context) {
         tracer.captureInternal(
           "ERROR",
           toolName,
           {
-            error: error.message,
+            error: error.errorMessage,
+            errorName: error.errorName,
+            errorCode: error.errorCode,
+            errorSignature: error.errorSignature,
+            toolName,
+            toolVersion: metadata.toolVersion,
+            argsHash,
+            sideEffect: metadata.sideEffect,
+            riskLevel: metadata.riskLevel,
+            externalTarget: metadata.externalTarget,
+            retryCount: metadata.retryCount,
+            toolFailure: shouldReportFailures,
+            toolTimedOut: isTimeout,
+            timeoutMs: isTimeout ? timeoutMs : undefined,
             phase: "error",
             spanId,
             parentSpanId,
@@ -633,7 +722,12 @@ export function instrumentTool<T extends (...args: any[]) => any>(
         : Reflect.apply(fn, this, args);
 
       if (isPromiseLike<Awaited<ReturnType<T>>>(result)) {
-        return Promise.resolve(result).then(captureSuccess, captureError);
+        const work = Promise.resolve(result);
+        const boundedWork =
+          timeoutMs === undefined
+            ? work
+            : waitForToolWithin(work, toolName, timeoutMs);
+        return boundedWork.then(captureSuccess, captureError);
       }
       return captureSuccess(result as Awaited<ReturnType<T>>);
     } catch (err: unknown) {

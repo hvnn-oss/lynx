@@ -54,6 +54,98 @@ function renderKnownMessage(
   const toolName = readText(message.params.toolName) ?? "agent action";
   const condition = createConditionDescriptor(message.params, locale);
 
+  if (message.titleKey === "issue.run.error.title") {
+    const agentName =
+      readText(message.params.agentName) ??
+      (locale === "ko" ? "에이전트" : "Agent");
+    const errorCode =
+      readText(message.params.errorCode) ??
+      (locale === "ko" ? "알 수 없는 오류" : "unknown error");
+    return {
+      title: truncate(
+        locale === "ko"
+          ? `${agentName} 실행 오류 — ${errorCode}`
+          : `${agentName} run failed — ${errorCode}`,
+        MAX_TITLE_LENGTH,
+      ),
+      summary:
+        locale === "ko"
+          ? `${agentName} 실행이 처리되지 않은 ${errorCode} 오류로 종료되었습니다.`
+          : `${agentName} ended because the unhandled ${errorCode} error was rethrown.`,
+    };
+  }
+
+  if (message.titleKey === "issue.run.failed.title") {
+    const agentName =
+      readText(message.params.agentName) ??
+      (locale === "ko" ? "에이전트" : "Agent");
+    const businessStatus = readText(message.params.businessStatus);
+    return {
+      title: truncate(
+        locale === "ko"
+          ? `${agentName} 실패 결과 보고`
+          : `${agentName} reported a failed outcome`,
+        MAX_TITLE_LENGTH,
+      ),
+      summary:
+        locale === "ko"
+          ? `${agentName} 실행의 기술 또는 업무 결과가 실패로 기록되었습니다${businessStatus ? ` (${businessStatus})` : ""}.`
+          : `${agentName} explicitly recorded a failed technical or business outcome${businessStatus ? ` (${businessStatus})` : ""}.`,
+    };
+  }
+
+  if (message.titleKey === "issue.llm.error.title") {
+    const model =
+      readText(message.params.model) ??
+      readText(message.params.modelLabel) ??
+      "LLM";
+    const errorCode =
+      readText(message.params.errorCode) ??
+      (locale === "ko" ? "알 수 없는 오류" : "unknown error");
+    return {
+      title: truncate(
+        locale === "ko"
+          ? `${model} 호출 오류 — ${errorCode}`
+          : `${model} call failed — ${errorCode}`,
+        MAX_TITLE_LENGTH,
+      ),
+      summary:
+        locale === "ko"
+          ? `${model} 호출이 응답을 완료하기 전에 ${errorCode} 오류를 발생시켰습니다.`
+          : `${model} raised ${errorCode} before completing its response.`,
+    };
+  }
+
+  if (message.titleKey === "issue.llm.slow.title") {
+    const model =
+      readText(message.params.model) ??
+      readText(message.params.modelLabel) ??
+      "LLM";
+    const latency = readNumber(message.params.latency);
+    const thresholdMs = readNumber(message.params.thresholdMs);
+    const occurrences = readNumber(message.params.consecutiveOccurrences);
+    const thresholdLabel =
+      locale === "ko"
+        ? thresholdMs
+          ? `${thresholdMs}ms`
+          : "설정된 지연 시간"
+        : thresholdMs
+          ? `${thresholdMs}ms`
+          : "configured latency";
+    return {
+      title: truncate(
+        locale === "ko"
+          ? `${model} 응답 지연${latency ? ` — ${latency}ms` : ""}`
+          : `${model} response was slow${latency ? ` — ${latency}ms` : ""}`,
+        MAX_TITLE_LENGTH,
+      ),
+      summary:
+        locale === "ko"
+          ? `${model} 호출이 ${thresholdLabel} 기준을${occurrences ? ` ${occurrences}회 연속` : ""} 초과했습니다.`
+          : `${model} exceeded the ${thresholdLabel} threshold${occurrences ? ` for ${occurrences} consecutive calls` : ""}.`,
+    };
+  }
+
   if (message.titleKey === "issue.firewall.block.title") {
     return {
       title: truncate(
@@ -81,6 +173,44 @@ function renderKnownMessage(
         locale === "ko"
           ? `SDK 방화벽이 ${condition} 조건에 해당하는 ${toolName} 호출을 감지했습니다.`
           : `The SDK firewall detected that ${toolName} matched ${condition}.`,
+    };
+  }
+
+  if (message.titleKey === "issue.tool.error.title") {
+    const errorCode =
+      readText(message.params.errorCode) ??
+      (locale === "ko" ? "알 수 없는 오류" : "unknown error");
+    return {
+      title: truncate(
+        locale === "ko"
+          ? `${toolName} 도구 오류 — ${errorCode}`
+          : `${toolName} failed — ${errorCode}`,
+        MAX_TITLE_LENGTH,
+      ),
+      summary:
+        locale === "ko"
+          ? `${toolName} 도구가 결과를 반환하기 전에 ${errorCode} 오류를 발생시켰습니다.`
+          : `${toolName} raised ${errorCode} before returning a result.`,
+    };
+  }
+
+  if (message.titleKey === "issue.tool.timeout.title") {
+    const timeoutMs = readNumber(message.params.timeoutMs);
+    return {
+      title: truncate(
+        locale === "ko"
+          ? `${toolName} 응답 시간 초과`
+          : `${toolName} timed out`,
+        MAX_TITLE_LENGTH,
+      ),
+      summary:
+        locale === "ko"
+          ? timeoutMs
+            ? `${toolName} 도구가 ${timeoutMs}ms 안에 결과를 반환하지 않았습니다.`
+            : `${toolName} 도구가 설정된 제한시간 안에 결과를 반환하지 않았습니다.`
+          : timeoutMs
+            ? `${toolName} did not return a result within ${timeoutMs}ms.`
+            : `${toolName} did not return a result before its configured deadline.`,
     };
   }
 
@@ -151,7 +281,8 @@ function createConditionDescriptor(
       MAX_DESCRIPTOR_LENGTH,
     );
   }
-  if (conditionSummary) return truncate(conditionSummary, MAX_DESCRIPTOR_LENGTH);
+  if (conditionSummary)
+    return truncate(conditionSummary, MAX_DESCRIPTOR_LENGTH);
 
   const reason = readText(params.reason);
   if (reason) return truncate(reason, MAX_DESCRIPTOR_LENGTH);
@@ -174,10 +305,7 @@ function summarizeCondition(condition: string, locale: IssueLocale): string {
   for (const [field, [ko, en]] of Object.entries(labels)) {
     result = result.replaceAll(field, locale === "ko" ? ko : en);
   }
-  return result
-    .replaceAll("==", "=")
-    .replace(/\s+/g, " ")
-    .trim();
+  return result.replaceAll("==", "=").replace(/\s+/g, " ").trim();
 }
 
 function renderUnknownMessage(
@@ -185,8 +313,7 @@ function renderUnknownMessage(
   locale: IssueLocale,
 ): RenderedIssueMessage {
   return {
-    title:
-      locale === "ko" ? "에이전트 이슈 감지" : "Agent issue detected",
+    title: locale === "ko" ? "에이전트 이슈 감지" : "Agent issue detected",
     summary:
       locale === "ko"
         ? `${message.summaryKey} 유형의 문제가 감지되었습니다.`
@@ -195,9 +322,7 @@ function renderUnknownMessage(
 }
 
 function readText(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim()
-    ? value.trim()
-    : undefined;
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 function readNumber(value: unknown): number | undefined {

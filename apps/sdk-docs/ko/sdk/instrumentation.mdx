@@ -44,6 +44,12 @@ await lynx.run("SupportAgent", async () => {
 
 Lynx는 설정에 따라 입력과 출력, 모델 정보, 지연 시간, 가능한 경우 토큰 사용량, 실행 단계 ID, 오류를 기록합니다.
 
+이슈 기록을 켜면 연결한 LLM에서 발생한 오류는 `LLM_ERROR` 후보가 됩니다.
+설정한 지연 시간 기준을 연속으로 넘으면 기본 2회째에
+`LLM_SLOW_RESPONSE` 후보를 보냅니다. 오류나 느린 응답이 예상되는
+클라이언트에는 `reportFailures: false`, `reportSlowResponses: false`를
+설정하거나 `slowResponseThresholdMs`로 해당 wrapper의 기준을 바꾸세요.
+
 `streamText`처럼 비동기 반복자를 반환하는 스트리밍 API는 기존 반복자 동작을 유지합니다. 스트림 소비가 끝났을 때 LLM 호출 종료를 기록하고, 소비 중 발생한 오류는 같은 실행 단계에 연결합니다. 생성한 스트림을 소비하지 않으면 시작 이벤트만 남습니다.
 
 ## 도구 연결하기
@@ -60,6 +66,7 @@ const searchOrders = lynx.instrumentTool(
     toolVersion: "2026-06-01",
     sideEffect: false,
     riskLevel: "LOW",
+    timeoutMs: 5000,
   },
 );
 
@@ -68,6 +75,42 @@ await lynx.run("SupportAgent", async () => {
   lynx.context("orders", orders);
 });
 ```
+
+도구 실패를 이슈 생성 검토 대상으로 보내려면 SDK에서 이슈 기록을 켭니다.
+
+```ts
+const lynx = new LynxTracer({
+  clientId: "support-api",
+  apiKey: process.env.LYNX_API_KEY,
+  issueReporting: {
+    enabled: true,
+    recoverySuccessThreshold: 3,
+  },
+});
+```
+
+같은 설정으로 다음 후보도 전송합니다.
+
+- 루트 `run()` callback이 오류를 던지고 더 구체적인 도구·LLM·방화벽 탐지가
+  없으면 `RUN_ERROR`
+- `outcome()`이 기술 또는 비즈니스 결과를 실패로 기록하면 `RUN_FAILED`
+- 연결한 LLM 호출이 실패하면 `LLM_ERROR`
+- 설정한 횟수만큼 LLM 호출이 연속으로 느리면 `LLM_SLOW_RESPONSE`
+
+도구가 오류를 던지면 `TOOL_ERROR`, 비동기 호출이 설정한 `timeoutMs`를
+넘기면 `TOOL_TIMEOUT` 기록을 보냅니다. 서버는 오류 메시지 원문을
+Fingerprint에 넣지 않고 안정적인 도구·오류 정보를 기준으로 반복 발생을
+묶습니다. 이후 정상 호출이 설정한 횟수만큼 이어지면 SDK가 Recovery 기록을
+보냅니다.
+
+이 기록은 서버의 비동기 검토를 요청합니다. 최종 이슈를 즉시 만들거나 닫는
+응답이 아니며, 애플리케이션의 오류 처리를 대신하지 않습니다.
+
+오류가 정상적으로 예상되고 애플리케이션에서 처리되는 도구에는
+`reportFailures: false`를 설정하세요. SDK wrapper의 timeout은 이미 실행 중인
+작업을 취소하지 못합니다. 시간 초과 뒤 부작용까지 멈춰야 한다면 해당 도구의
+`AbortSignal` 또는 취소 API를 함께 사용해야 합니다. 동기 작업은
+`timeoutMs`로 중단할 수 없습니다.
 
 도구가 실행되기 전에 정책 검사가 필요하다면 `firewallTool()`을 사용하세요.
 

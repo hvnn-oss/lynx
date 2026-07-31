@@ -1,6 +1,6 @@
 ---
 title: "Report issue candidates"
-description: "Submit firewall, loop, and recovery signals for asynchronous server review."
+description: "Submit firewall, loop, Run, LLM, tool-failure, and recovery signals for asynchronous server review."
 ---
 
 Use `POST /openapi/v1/issue-records` when your local runtime detects behavior that may deserve an Issue. Recording a candidate does not mean an Issue is immediately created.
@@ -18,7 +18,7 @@ curl --request POST \
     "sdkInstanceId": "python-worker-01",
     "clientRecordId": "record_01JZQ4A8C2",
     "recordKind": "DETECTION",
-    "detectionType": "TOOL_BLOCKED",
+    "detectionType": "FIREWALL_BLOCK",
     "runId": "run_01JZQ3VY4K",
     "sessionId": "session_customer_42",
     "eventId": "evt_tool_04",
@@ -39,23 +39,43 @@ curl --request POST \
 
 ## Fields
 
-| Field | Required | Description |
-| --- | --- | --- |
-| `sdkInstanceId` | Yes | Stable client identifier. It should match the event `clientId`. |
-| `clientRecordId` | Yes | Idempotency key for this record. Reuse it when retrying. |
-| `recordKind` | Yes | `DETECTION` or `RECOVERY`. |
-| `detectionType` | Yes | Stable detector category, such as `TOOL_BLOCKED` or `LOOP_DETECTED`. |
-| `runId` | No | Related external Run ID. |
-| `sessionId` | No | Related external Session ID. |
-| `eventId` | No | Related event idempotency key. |
-| `agentId` | Yes | Stable external Agent ID. |
-| `policyId` | No | Policy that produced the decision. |
-| `promptVersionId` | No | Lynx prompt version UUID used by the run. |
-| `detectedAt` | Yes | Unix time in milliseconds. |
-| `payload` | No | Structured detector context. |
-| `evidence` | No | Evidence supporting the candidate. |
+| Field             | Required | Description                                                         |
+| ----------------- | -------- | ------------------------------------------------------------------- |
+| `sdkInstanceId`   | Yes      | Stable client identifier. It should match the event `clientId`.     |
+| `clientRecordId`  | Yes      | Idempotency key for this record. Reuse it when retrying.            |
+| `recordKind`      | Yes      | `DETECTION` or `RECOVERY`.                                          |
+| `detectionType`   | Yes      | Stable detector category, such as `FIREWALL_BLOCK` or `RUN_ERROR`.  |
+| `runId`           | No       | Related external Run ID.                                            |
+| `sessionId`       | No       | Related external Session ID.                                        |
+| `eventId`         | No       | Related event idempotency key.                                      |
+| `agentId`         | Yes      | Stable external Agent ID.                                           |
+| `policyId`        | No       | Policy that produced the decision.                                  |
+| `promptVersionId` | No       | Lynx prompt version UUID used by the run.                           |
+| `detectedAt`      | Yes      | Unix time in milliseconds.                                          |
+| `payload`         | No       | Structured detector context.                                        |
+| `evidence`        | No       | Evidence supporting the candidate.                                  |
 
 The request body limit is 256 KiB.
+
+## Supported detections
+
+| Detection type      | When to send it                                             | Recommended payload                                                  |
+| ------------------- | ----------------------------------------------------------- | -------------------------------------------------------------------- |
+| `FIREWALL_BLOCK`    | A local policy blocked an action.                           | `toolName`, `tools`, `riskSignals`, policy evidence                  |
+| `FIREWALL_WARN`     | A local policy allowed but flagged an action.               | `toolName`, `tools`, `riskSignals`, policy evidence                  |
+| `LOOP_DETECTED`     | Repeated behavior crossed the local loop threshold.         | `label`, `loopCount`, `argsHash`                                     |
+| `RUN_ERROR`         | The root Run ended with an unhandled error.                  | Stable `errorCode`, `errorName`, and `errorSignature`                |
+| `RUN_FAILED`        | An explicit technical or business outcome was failed.       | `status`, `businessStatus`, and a stable reason code                 |
+| `LLM_ERROR`         | An instrumented LLM call failed.                            | `modelLabel`, `provider`, `model`, stable error metadata             |
+| `LLM_SLOW_RESPONSE` | Instrumented LLM calls repeatedly crossed a latency limit.  | Model identity, `latencyMs`, `thresholdMs`, and consecutive count    |
+| `TOOL_ERROR`        | An instrumented tool threw before returning a result.       | `toolName`, `errorName`, stable `errorCode`, `argsHash`, `riskLevel` |
+| `TOOL_TIMEOUT`      | An asynchronous tool exceeded its configured deadline.      | `toolName`, `timeoutMs`, `argsHash`, `riskLevel`                     |
+| `PROMPT_REGRESSION` | A server-side prompt metric crossed a regression threshold. | Prompt version and metric evidence                                   |
+
+For Run, LLM, and tool failures, use a stable provider or application error code
+when one is available. A raw error message may be included as masked evidence,
+but the server does not use it for grouping because messages often contain
+variable or sensitive values.
 
 ## Accepted response
 
@@ -79,7 +99,7 @@ Do not generate a random fingerprint per occurrence. Keep detector names and too
 
 ## Recovery records
 
-Send a new record with `recordKind: "RECOVERY"` when your runtime has evidence that the detected condition ended. Give the recovery its own `clientRecordId` and link the same Run or Session where possible.
+Send a new record with `recordKind: "RECOVERY"` when your runtime has evidence that the detected condition ended. Give the recovery its own `clientRecordId`, reuse the original `detectionType`, and include the same `toolName` or policy reference where applicable. Link the current Run or Session where possible.
 
 Recovery handling is asynchronous. A recovery record is evidence for server evaluation; it does not directly close an Issue.
 

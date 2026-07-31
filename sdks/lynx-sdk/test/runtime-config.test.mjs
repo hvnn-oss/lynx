@@ -189,7 +189,10 @@ test("firewallTool blocks a call that matches a cached managed policy", async ()
     telemetry.push(...JSON.parse(init.body));
     return new Response(JSON.stringify({ success: true }), { status: 200 });
   };
-  const tracer = createTracer({ runtimeConfig: { enabled: true } });
+  const tracer = createTracer({
+    runtimeConfig: { enabled: true },
+    issueReporting: { enabled: true },
+  });
   let executed = false;
   const destructiveTool = tracer.firewallTool(
     "delete-account",

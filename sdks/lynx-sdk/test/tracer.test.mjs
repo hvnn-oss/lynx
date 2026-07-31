@@ -3,6 +3,7 @@ import { afterEach, test } from "node:test";
 import {
   LYNX_EVENT_SCHEMA_VERSION,
   LynxPolicyError,
+  LynxToolTimeoutError,
   LynxTracer,
   SdkIngestEventSchema,
 } from "../dist/index.js";
@@ -886,6 +887,166 @@ test("instrumentLLM closes streaming spans after iteration completes", async () 
   assert.equal(llmEvents[1].payload.latency >= 5, true);
 });
 
+test("run reports an unhandled root error", async () => {
+  const issueRecords = [];
+  globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith("/openapi/v1/issue-records")) {
+      issueRecords.push(JSON.parse(init.body));
+      return new Response(
+        JSON.stringify({
+          recordId: "c6e17408-7dfe-47df-b915-7d8ae95f1e0a",
+          status: "RECEIVED",
+          isNew: true,
+        }),
+        { status: 202 },
+      );
+    }
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+  const tracer = createTracer({
+    issueReporting: { enabled: true },
+  });
+
+  await assert.rejects(
+    tracer.run("SupportAgent", () => {
+      throw Object.assign(new Error("request handler failed"), {
+        code: "E_HANDLER",
+      });
+    }),
+    /request handler failed/,
+  );
+  await tracer.shutdown({ timeoutMs: 100 });
+
+  assert.equal(issueRecords.length, 1);
+  assert.equal(issueRecords[0].detectionType, "RUN_ERROR");
+  assert.equal(issueRecords[0].payload.errorCode, "E_HANDLER");
+  assert.match(issueRecords[0].payload.errorSignature, /^[0-9a-f]{64}$/);
+});
+
+test("outcome reports an explicit technical or business failure", async () => {
+  const issueRecords = [];
+  globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith("/openapi/v1/issue-records")) {
+      issueRecords.push(JSON.parse(init.body));
+      return new Response(
+        JSON.stringify({
+          recordId: "7a095434-b9cf-4673-946c-847c9628b622",
+          status: "RECEIVED",
+          isNew: true,
+        }),
+        { status: 202 },
+      );
+    }
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+  const tracer = createTracer({
+    issueReporting: { enabled: true },
+  });
+
+  await tracer.run("SupportAgent", () => {
+    tracer.outcome({
+      status: "COMPLETED",
+      businessStatus: "FAILED",
+      reason: "The answer did not satisfy the requested task.",
+      userImpact: "HIGH",
+      metadata: { reasonCode: "ANSWER_REJECTED" },
+    });
+  });
+  await tracer.shutdown({ timeoutMs: 100 });
+
+  assert.equal(issueRecords.length, 1);
+  assert.equal(issueRecords[0].detectionType, "RUN_FAILED");
+  assert.equal(issueRecords[0].payload.reasonCode, "ANSWER_REJECTED");
+  assert.equal(issueRecords[0].payload.userImpact, "HIGH");
+});
+
+test("instrumentLLM reports provider errors without duplicating RUN_ERROR", async () => {
+  const issueRecords = [];
+  globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith("/openapi/v1/issue-records")) {
+      issueRecords.push(JSON.parse(init.body));
+      return new Response(
+        JSON.stringify({
+          recordId: "93a44d07-3794-42e6-8723-1a9b4c09c730",
+          status: "RECEIVED",
+          isNew: true,
+        }),
+        { status: 202 },
+      );
+    }
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+  const tracer = createTracer({
+    issueReporting: { enabled: true },
+  });
+  const callProvider = tracer.instrumentLLM(
+    async () => {
+      throw Object.assign(new Error("provider unavailable"), {
+        code: "PROVIDER_UNAVAILABLE",
+      });
+    },
+    { modelLabel: "openai.responses.create" },
+  );
+
+  await assert.rejects(
+    tracer.run("SupportAgent", () =>
+      callProvider({ provider: "openai", model: "gpt-test" }),
+    ),
+    /provider unavailable/,
+  );
+  await tracer.shutdown({ timeoutMs: 100 });
+
+  assert.deepEqual(
+    issueRecords.map((record) => record.detectionType),
+    ["LLM_ERROR"],
+  );
+  assert.equal(issueRecords[0].payload.errorCode, "PROVIDER_UNAVAILABLE");
+  assert.equal(issueRecords[0].payload.model, "gpt-test");
+});
+
+test("instrumentLLM reports consecutive slow responses", async () => {
+  const issueRecords = [];
+  globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith("/openapi/v1/issue-records")) {
+      issueRecords.push(JSON.parse(init.body));
+      return new Response(
+        JSON.stringify({
+          recordId: "227af173-bda3-4ead-a772-19696239a812",
+          status: "RECEIVED",
+          isNew: true,
+        }),
+        { status: 202 },
+      );
+    }
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+  const tracer = createTracer({
+    issueReporting: {
+      enabled: true,
+      slowLlmThresholdMs: 1,
+      slowLlmConsecutiveOccurrences: 2,
+    },
+  });
+  const callProvider = tracer.instrumentLLM(
+    async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return { text: "ok" };
+    },
+    { modelLabel: "openai.responses.create" },
+  );
+
+  await tracer.run("SupportAgent", async () => {
+    await callProvider({ provider: "openai", model: "gpt-test" });
+    await callProvider({ provider: "openai", model: "gpt-test" });
+  });
+  await tracer.shutdown({ timeoutMs: 100 });
+
+  assert.equal(issueRecords.length, 1);
+  assert.equal(issueRecords[0].detectionType, "LLM_SLOW_RESPONSE");
+  assert.equal(issueRecords[0].payload.thresholdMs, 1);
+  assert.equal(issueRecords[0].payload.consecutiveOccurrences, 2);
+});
+
 test("instrumentTool captures tool call metadata and result summary", async () => {
   const batches = [];
   globalThis.fetch = async (_url, init) => {
@@ -920,6 +1081,138 @@ test("instrumentTool captures tool call metadata and result summary", async () =
   assert.equal(call.payload.toolVersion, "2026-06-29");
   assert.equal(result.payload.toolName, "orders.lookup");
   assert.match(result.payload.resultSummary, /order_123/);
+});
+
+test("instrumentTool reports tool errors and recovery after healthy calls", async () => {
+  const issueRecords = [];
+  globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith("/openapi/v1/issue-records")) {
+      issueRecords.push(JSON.parse(init.body));
+      return new Response(
+        JSON.stringify({
+          recordId: "c6e17408-7dfe-47df-b915-7d8ae95f1e0a",
+          status: "RECEIVED",
+          isNew: true,
+        }),
+        { status: 202 },
+      );
+    }
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+
+  const tracer = createTracer({
+    issueReporting: {
+      enabled: true,
+      recoverySuccessThreshold: 2,
+    },
+  });
+  let callCount = 0;
+  const lookupOrder = tracer.instrumentTool(
+    "orders.lookup",
+    async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        throw Object.assign(new Error("upstream connection reset"), {
+          code: "ECONNRESET",
+        });
+      }
+      return { id: "order-1" };
+    },
+    { riskLevel: "MEDIUM" },
+  );
+
+  await tracer.run("SupportAgent", async () => {
+    await assert.rejects(lookupOrder(), /upstream connection reset/);
+    await lookupOrder();
+    await lookupOrder();
+  });
+  await tracer.shutdown({ timeoutMs: 100 });
+
+  assert.deepEqual(
+    issueRecords.map((record) => record.recordKind),
+    ["DETECTION", "RECOVERY"],
+  );
+  assert.equal(issueRecords[0].detectionType, "TOOL_ERROR");
+  assert.equal(issueRecords[0].payload.toolName, "orders.lookup");
+  assert.equal(issueRecords[0].payload.errorCode, "ECONNRESET");
+  assert.equal(issueRecords[1].detectionType, "TOOL_ERROR");
+  assert.equal(issueRecords[1].payload.healthyObservationCount, 2);
+});
+
+test("instrumentTool reports configured asynchronous tool timeouts", async () => {
+  const issueRecords = [];
+  globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith("/openapi/v1/issue-records")) {
+      issueRecords.push(JSON.parse(init.body));
+      return new Response(
+        JSON.stringify({
+          recordId: "81ccdb52-8600-4a76-aad7-4d107e5b02a2",
+          status: "RECEIVED",
+          isNew: true,
+        }),
+        { status: 202 },
+      );
+    }
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+
+  const tracer = createTracer({
+    issueReporting: { enabled: true },
+  });
+  const stalledTool = tracer.instrumentTool(
+    "reports.generate",
+    async () => new Promise(() => {}),
+    { timeoutMs: 10 },
+  );
+
+  await assert.rejects(
+    tracer.run("SupportAgent", () => stalledTool()),
+    (error) =>
+      error instanceof LynxToolTimeoutError &&
+      error.code === "LYNX_TOOL_TIMEOUT",
+  );
+  await tracer.shutdown({ timeoutMs: 100 });
+
+  assert.equal(issueRecords.length, 1);
+  assert.equal(issueRecords[0].detectionType, "TOOL_TIMEOUT");
+  assert.equal(issueRecords[0].payload.toolName, "reports.generate");
+  assert.equal(issueRecords[0].payload.timeoutMs, 10);
+});
+
+test("instrumentTool can suppress expected tool-failure issue candidates", async () => {
+  const issueRecords = [];
+  globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith("/openapi/v1/issue-records")) {
+      issueRecords.push(JSON.parse(init.body));
+      return new Response(
+        JSON.stringify({
+          recordId: "81ccdb52-8600-4a76-aad7-4d107e5b02a2",
+          status: "RECEIVED",
+          isNew: true,
+        }),
+        { status: 202 },
+      );
+    }
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
+
+  const tracer = createTracer({
+    issueReporting: { enabled: true },
+  });
+  const optionalLookup = tracer.instrumentTool(
+    "cache.lookup",
+    async () => {
+      throw new Error("cache miss");
+    },
+    { reportFailures: false },
+  );
+
+  await tracer.run("SupportAgent", async () => {
+    await assert.rejects(optionalLookup(), /cache miss/);
+  });
+  await tracer.shutdown({ timeoutMs: 100 });
+
+  assert.equal(issueRecords.length, 0);
 });
 
 test("firewallTool records policy events and blocks unsafe calls", async () => {
