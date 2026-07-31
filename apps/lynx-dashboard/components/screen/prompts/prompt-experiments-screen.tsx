@@ -228,14 +228,28 @@ export function PromptExperimentsScreen() {
                       >
                         <div className="flex justify-between gap-2 text-sm">
                           <span className="font-medium">{variant.version}</span>
-                          <span>{variant.weight}%</span>
+                          <span className="text-muted-foreground">
+                            {t("experiments.variantAllocation", {
+                              target: `${variant.weight}%`,
+                              actual: formatRate(variant.metrics.actualWeight),
+                            })}
+                          </span>
                         </div>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          {t("experiments.variantResult", {
-                            runs: variant.metrics.runCount,
+                          {t("experiments.variantVolume", {
+                            assigned: variant.metrics.runCount,
+                            resolved: variant.metrics.resolvedRunCount,
+                            pending: variant.metrics.pendingRunCount,
+                          })}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {t("experiments.variantPerformance", {
                             success: formatRate(variant.metrics.successRate),
                             errors: formatRate(variant.metrics.errorRate),
                             cost: formatCost(variant.metrics.averageCost),
+                            latency: formatLatency(
+                              variant.metrics.averageLatencyMs,
+                            ),
                           })}
                         </p>
                       </div>
@@ -277,4 +291,8 @@ function formatCost(value: number) {
     currency: "USD",
     maximumFractionDigits: 4,
   }).format(value);
+}
+
+function formatLatency(value: number) {
+  return `${Math.round(value).toLocaleString()}ms`;
 }

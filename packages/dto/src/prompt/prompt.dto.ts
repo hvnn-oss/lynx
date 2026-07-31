@@ -282,6 +282,14 @@ export const PromptExperimentOperationsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
 });
 
+const PromptExperimentMetricsResponseSchema =
+  PromptVersionMetricsResponseSchema.omit({ versionId: true }).extend({
+    resolvedRunCount: z.number().int().nonnegative(),
+    pendingRunCount: z.number().int().nonnegative(),
+    actualWeight: z.number().min(0).max(1),
+    averageLatencyMs: z.number().nonnegative(),
+  });
+
 export const PromptExperimentOperationsResponseSchema = z.object({
   items: z.array(
     PromptExperimentResponseSchema.omit({ variants: true }).extend({
@@ -290,9 +298,7 @@ export const PromptExperimentOperationsResponseSchema = z.object({
       variants: z.array(
         PromptExperimentVariantSchema.extend({
           version: z.string(),
-          metrics: PromptVersionMetricsResponseSchema.omit({
-            versionId: true,
-          }),
+          metrics: PromptExperimentMetricsResponseSchema,
           changeImpactIssueCount: z.number().int().nonnegative(),
         }),
       ),

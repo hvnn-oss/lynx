@@ -613,36 +613,39 @@ test("rejects an unresolved Agent when strict target matching is enabled", async
     },
   });
 
-  await assert.rejects(
-    () => tracer.initialize(),
-    /target does not match/,
-  );
+  await assert.rejects(() => tracer.initialize(), /target does not match/);
   await tracer.shutdown();
 });
 
 test("selects prompt experiment variants per run assignment key", async () => {
   const baseline = prompt("v1", "Baseline");
   const variant = prompt("v2", "Variant");
-  globalThis.fetch = async () =>
-    new Response(
-      JSON.stringify({
-        revision: "experiment-revision",
-        prompts: [baseline],
-        policies: [],
-        experiments: [
-          {
-            experimentId: "experiment-1",
-            promptId: baseline.promptId,
-            assignmentSalt: "stable-salt",
-            variants: [
-              { weight: 50, prompt: baseline },
-              { weight: 50, prompt: variant },
-            ],
-          },
-        ],
-      }),
-      { status: 200 },
-    );
+  const telemetry = [];
+  globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith("/runtime-config")) {
+      return new Response(
+        JSON.stringify({
+          revision: "experiment-revision",
+          prompts: [baseline],
+          policies: [],
+          experiments: [
+            {
+              experimentId: "a247c152-3277-4c91-9b22-95cb7a459d1e",
+              promptId: baseline.promptId,
+              assignmentSalt: "stable-salt",
+              variants: [
+                { weight: 50, prompt: baseline },
+                { weight: 50, prompt: variant },
+              ],
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    }
+    telemetry.push(...JSON.parse(init.body));
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  };
   const tracer = createTracer();
   const assignments = new Map();
 
@@ -663,6 +666,38 @@ test("selects prompt experiment variants per run assignment key", async () => {
   }
 
   assert.deepEqual([...assignments.keys()].sort(), ["v1", "v2"]);
+  const stickyVersions = [];
+  for (const sessionId of ["sticky-session-1", "sticky-session-2"]) {
+    await tracer.run(
+      {
+        agentName: "ExperimentAgent",
+        sessionId,
+        assignmentKey: "stable-user",
+      },
+      async () => {
+        const first = await tracer.getPrompt("support-agent");
+        const pinned = await tracer.getPrompt("support-agent");
+        assert.strictEqual(first, pinned);
+        stickyVersions.push(first.version);
+      },
+    );
+  }
+  await tracer.flush();
+
+  assert.equal(stickyVersions[0], stickyVersions[1]);
+  const stickyExposures = telemetry.filter(
+    (event) =>
+      event.eventType === "PROMPT_EXPOSURE" &&
+      event.payload.promptExposures?.[0]?.runtimeConfigRevision ===
+        "experiment-revision" &&
+      event.sessionId?.startsWith("sticky-session"),
+  );
+  assert.equal(stickyExposures.length, 2);
+  assert.equal(stickyExposures[0].payload.promptExposures.length, 1);
+  assert.equal(
+    stickyExposures[0].payload.promptExposures[0].experimentId,
+    "a247c152-3277-4c91-9b22-95cb7a459d1e",
+  );
   await tracer.shutdown();
 });
 
@@ -788,10 +823,7 @@ test("cancels approval polling through the run AbortSignal", async () => {
       );
     }
     if (path.endsWith("/firewall-approvals") && init.method === "POST") {
-      setTimeout(
-        () => controller.abort(new Error("request cancelled")),
-        5,
-      );
+      setTimeout(() => controller.abort(new Error("request cancelled")), 5);
       return new Response(
         JSON.stringify({
           id: "a8e14d12-44e6-4b22-b8ef-eb558d2edbae",

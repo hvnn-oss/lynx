@@ -3,6 +3,8 @@ import {
   EventEntity,
   FirewallPolicyEntity,
   FirewallViolationEntity,
+  PromptExperimentEntity,
+  PromptExperimentExposureEntity,
   RunEntity,
   SessionEntity,
 } from "@repo/database";
@@ -157,5 +159,104 @@ describe("OpenAPIEventRepository", () => {
     expect(
       firewallNotificationService.enqueueConfigured,
     ).not.toHaveBeenCalled();
+  });
+
+  it("stores a verified prompt experiment exposure once per run", async () => {
+    const workspaceId = "00000000-0000-4000-8000-000000000001";
+    const experimentId = "a247c152-3277-4c91-9b22-95cb7a459d1e";
+    const promptId = "72adbb57-96ad-4d3d-a2dc-8faf071673e5";
+    const promptVersionId = "c1821bc3-bf1e-46ef-b210-b9376a41cd0c";
+    const eventRepository = {
+      create: jest.fn((value) => value),
+      save: jest.fn().mockResolvedValue({ id: "event-db-id" }),
+    };
+    const experimentRepository = {
+      findOneBy: jest.fn().mockResolvedValue({
+        id: experimentId,
+        workspaceId,
+        promptId,
+        environment: "production",
+        agentId: null,
+        variants: [{ versionId: promptVersionId, weight: 50 }],
+      }),
+    };
+    const insertBuilder = {
+      insert: jest.fn().mockReturnThis(),
+      into: jest.fn().mockReturnThis(),
+      values: jest.fn().mockReturnThis(),
+      orIgnore: jest.fn().mockReturnThis(),
+      execute: jest.fn().mockResolvedValue(undefined),
+    };
+    const exposureRepository = {
+      createQueryBuilder: jest.fn().mockReturnValue(insertBuilder),
+    };
+    const updateBuilder = {
+      update: jest.fn().mockReturnThis(),
+      set: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      execute: jest.fn().mockResolvedValue(undefined),
+    };
+    const manager = {
+      getRepository: jest.fn((entity) => {
+        if (entity === EventEntity) return eventRepository;
+        if (entity === PromptExperimentEntity) return experimentRepository;
+        if (entity === PromptExperimentExposureEntity)
+          return exposureRepository;
+        if (entity === RunEntity) {
+          return { createQueryBuilder: () => updateBuilder };
+        }
+        return {} as Repository<never>;
+      }),
+    } as unknown as EntityManager;
+    jest
+      .spyOn(AppDataSource, "transaction")
+      .mockImplementation(async (callback) => callback(manager));
+
+    await new OpenAPIEventRepository().saveEvent(
+      workspaceId,
+      { id: "00000000-0000-4000-8000-000000000002" } as AgentEntity,
+      {
+        id: "00000000-0000-4000-8000-000000000003",
+        name: "session",
+      } as SessionEntity,
+      { id: "00000000-0000-4000-8000-000000000004" } as RunEntity,
+      {
+        eventId: "prompt-exposure-event",
+        clientId: "sdk-instance",
+        runId: "run",
+        agentName: "agent",
+        eventType: "PROMPT_EXPOSURE",
+        label: "prompt.exposure:support-agent",
+        timestamp: Date.parse("2026-07-31T00:00:00.000Z"),
+        payload: {
+          environment: "production",
+          promptExposures: [
+            {
+              experimentId,
+              promptId,
+              promptVersionId,
+              bucket: 42,
+              runtimeConfigRevision: "revision-1",
+            },
+          ],
+        },
+      },
+    );
+
+    expect(experimentRepository.findOneBy).toHaveBeenCalledWith({
+      id: experimentId,
+      workspaceId,
+      promptId,
+    });
+    expect(insertBuilder.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        experimentId,
+        promptId,
+        promptVersionId,
+        bucket: 42,
+        runtimeConfigRevision: "revision-1",
+      }),
+    );
+    expect(insertBuilder.orIgnore).toHaveBeenCalled();
   });
 });

@@ -136,6 +136,10 @@ await lynx.run(
 
 Use a stable, non-sensitive user, tenant, or session identifier. If you omit `assignmentKey`, the SDK uses the run's `sessionId`.
 
+The first `getPrompt()` call for an experiment records one minimal prompt exposure for the run. Lynx sends the experiment ID, selected prompt version, allocation bucket, and runtime configuration revision so the dashboard can calculate experiment-only results. The raw `assignmentKey` is never sent to Lynx.
+
+`prompt.experiment` contains the local assignment metadata when the returned prompt belongs to an active experiment. Applications normally do not need to read this field.
+
 ## Handle an unavailable prompt
 
 An automatic startup refresh fails open so a Lynx outage does not stop unrelated application work. An explicit `getPrompt()` call throws when no valid cached bundle exists or the prompt is not deployed.

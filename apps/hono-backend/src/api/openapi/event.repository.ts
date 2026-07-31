@@ -3,6 +3,8 @@ import {
   EventEntity,
   FirewallPolicyEntity,
   FirewallViolationEntity,
+  PromptExperimentEntity,
+  PromptExperimentExposureEntity,
   RunEntity,
   SessionEntity,
 } from "@repo/database";
@@ -183,6 +185,14 @@ export class OpenAPIEventRepository {
         saved,
         event,
       );
+      await this.savePromptExperimentExposures(
+        manager,
+        workspaceId,
+        agent,
+        session,
+        run,
+        event,
+      );
       const policyAction = String(event.payload.action ?? "");
       if (event.eventType === "POLICY_EVALUATION" && policyAction === "BLOCK") {
         await firewallNotificationService.enqueueConfigured(manager, {
@@ -230,6 +240,116 @@ export class OpenAPIEventRepository {
         .execute();
       return saved;
     });
+  }
+
+  /**
+   * Stores verified experiment assignments once per Run and prompt.
+   *
+   * The API key determines the workspace and environment. Client-provided
+   * assignments are accepted only when they match an experiment and variant
+   * that belong to that authenticated scope.
+   */
+  private async savePromptExperimentExposures(
+    manager: EntityManager,
+    workspaceId: string,
+    agent: AgentEntity,
+    session: SessionEntity,
+    run: RunEntity,
+    event: IngestEvent,
+  ): Promise<void> {
+    const exposures = this.readPromptExperimentExposures(
+      event.payload.promptExposures,
+    );
+    if (exposures.length === 0) return;
+
+    const environment =
+      typeof event.payload.environment === "string"
+        ? event.payload.environment
+        : null;
+    if (!environment) return;
+
+    const experiments = manager.getRepository(PromptExperimentEntity);
+    const exposureRepository = manager.getRepository(
+      PromptExperimentExposureEntity,
+    );
+    for (const exposure of exposures) {
+      const experiment = await experiments.findOneBy({
+        id: exposure.experimentId,
+        workspaceId,
+        promptId: exposure.promptId,
+      });
+      if (
+        !experiment ||
+        experiment.environment !== environment ||
+        (experiment.agentId !== null && experiment.agentId !== agent.id) ||
+        !experiment.variants.some(
+          (variant) => variant.versionId === exposure.promptVersionId,
+        )
+      ) {
+        continue;
+      }
+
+      await exposureRepository
+        .createQueryBuilder()
+        .insert()
+        .into(PromptExperimentExposureEntity)
+        .values({
+          workspaceId,
+          experimentId: experiment.id,
+          promptId: exposure.promptId,
+          promptVersionId: exposure.promptVersionId,
+          runId: run.id,
+          sessionId: session.id,
+          agentId: agent.id,
+          environment,
+          bucket: exposure.bucket,
+          runtimeConfigRevision: exposure.runtimeConfigRevision,
+          exposedAt: new Date(event.timestamp),
+        })
+        .orIgnore()
+        .execute();
+    }
+  }
+
+  /** Parses bounded, non-sensitive experiment metadata from an SDK payload. */
+  private readPromptExperimentExposures(value: unknown): Array<{
+    experimentId: string;
+    promptId: string;
+    promptVersionId: string;
+    bucket: number;
+    runtimeConfigRevision: string;
+  }> {
+    if (!Array.isArray(value)) return [];
+    const result = [];
+    for (const item of value.slice(0, 20)) {
+      if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+      const exposure = item as Record<string, unknown>;
+      const bucket = Number(exposure.bucket);
+      if (
+        typeof exposure.experimentId !== "string" ||
+        !UUID_PATTERN.test(exposure.experimentId) ||
+        typeof exposure.promptId !== "string" ||
+        !UUID_PATTERN.test(exposure.promptId) ||
+        typeof exposure.promptVersionId !== "string" ||
+        !UUID_PATTERN.test(exposure.promptVersionId) ||
+        !Number.isInteger(bucket) ||
+        bucket < 0 ||
+        bucket > 99 ||
+        typeof exposure.runtimeConfigRevision !== "string" ||
+        exposure.runtimeConfigRevision.length < 1 ||
+        exposure.runtimeConfigRevision.length > 255
+      ) {
+        continue;
+      }
+      result.push({
+        experimentId: exposure.experimentId,
+        promptId: exposure.promptId,
+        promptVersionId: exposure.promptVersionId,
+        bucket,
+        runtimeConfigRevision: exposure.runtimeConfigRevision,
+      });
+    }
+    return result;
   }
 
   /** 비허용 정책 평가 이벤트를 중복 없이 방화벽 위반 레코드로 남깁니다. */

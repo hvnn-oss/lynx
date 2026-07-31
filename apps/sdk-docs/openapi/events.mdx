@@ -90,11 +90,30 @@ AGENT_STEP
 LLM_CALL
 TOOL_CALL
 POLICY_DECISION
+PROMPT_EXPOSURE
 ERROR
 SESSION_OUTCOME
 ```
 
 `SESSION_OUTCOME` closes the Run. Put `COMPLETED`, `FAILED`, or `CANCELLED` in `payload.status`.
+
+Emit `PROMPT_EXPOSURE` once when a Run first uses a variant from an active prompt experiment. Also attach the same `promptExposures` array to `SESSION_OUTCOME` as a delivery fallback:
+
+```json
+{
+  "promptExposures": [
+    {
+      "experimentId": "a247c152-3277-4c91-9b22-95cb7a459d1e",
+      "promptId": "72adbb57-96ad-4d3d-a2dc-8faf071673e5",
+      "promptVersionId": "c1821bc3-bf1e-46ef-b210-b9376a41cd0c",
+      "bucket": 42,
+      "runtimeConfigRevision": "revision-1"
+    }
+  ]
+}
+```
+
+Do not send the raw assignment key. The server verifies the experiment, variant, environment, and Agent scope before storing the exposure.
 
 Lynx accepts other event type strings, but a stable shared vocabulary makes dashboards and debugging more useful.
 

@@ -122,11 +122,13 @@
       "active": "Active experiments",
       "activeHint": "Currently allocating traffic",
       "runs": "Runs in view",
-      "runsHint": "Variant total for the current result",
+      "runsHint": "Runs explicitly assigned to experiments",
       "issues": "Change impact issues",
       "issuesHint": "Linked to versions in view"
     },
-    "variantResult": "{runs} runs · {success} success · {errors} errors · {cost} average",
+    "variantAllocation": "{target} target · {actual} actual",
+    "variantVolume": "{assigned} assigned · {resolved} resolved · {pending} pending",
+    "variantPerformance": "{success} success · {errors} errors · {cost} average · {latency}",
     "status": {
       "DRAFT": "Draft",
       "ACTIVE": "Active",
@@ -227,7 +229,9 @@
     "start": "Start",
     "pause": "Pause",
     "complete": "Complete",
-    "result": "{runs} runs · {success} success · {errors} errors · {cost} average"
+    "allocation": "{target} target · {actual} actual",
+    "volume": "{assigned} assigned · {resolved} resolved · {pending} pending",
+    "performance": "{success} success · {errors} errors · {cost} average · {latency}"
   },
   "common": {
     "loadFailed": "Could not load prompt data.",

@@ -67,6 +67,7 @@ export * from "./entities/prompt/prompt-version.entity.js";
 export * from "./entities/prompt/prompt.entity.js";
 export * from "./entities/prompt/prompt-deployment.entity.js";
 export * from "./entities/prompt/prompt-experiment.entity.js";
+export * from "./entities/prompt/prompt-experiment-exposure.entity.js";
 
 // session
 export * from "./entities/session/session.entity.js";

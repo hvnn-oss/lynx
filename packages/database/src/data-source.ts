@@ -35,6 +35,7 @@ import { PromptVersionEntity } from "./entities/prompt/prompt-version.entity";
 import { PromptEntity } from "./entities/prompt/prompt.entity";
 import { PromptDeploymentEntity } from "./entities/prompt/prompt-deployment.entity";
 import { PromptExperimentEntity } from "./entities/prompt/prompt-experiment.entity";
+import { PromptExperimentExposureEntity } from "./entities/prompt/prompt-experiment-exposure.entity";
 import { SessionEntity } from "./entities/session/session.entity";
 import { RunEntity } from "./entities/run/run.entity";
 import { WorkspaceApiKeyEntity } from "./entities/workspace/workspace-api-key.entity";
@@ -43,6 +44,7 @@ import { OpenApiApiKeyUsageHourlyEntity } from "./entities/workspace/openapi-api
 import { InitialSchema1785054963677 } from "./migrations/1785054963677-initial-schema";
 import { AddOpenApiApiKeyUsage1785312000000 } from "./migrations/1785312000000-add-openapi-api-key-usage";
 import { AddAccessInvitationOrganizationPlan1785398400000 } from "./migrations/1785398400000-add-access-invitation-organization-plan";
+import { AddPromptExperimentExposure1785484800000 } from "./migrations/1785484800000-add-prompt-experiment-exposure";
 import { loadDatabaseEnv } from "./load-env";
 import { normalizeCertificateBundle } from "./certificate";
 
@@ -65,8 +67,7 @@ const shouldRejectUnauthorizedDatabaseCertificate = parseBooleanEnv(
     process.env.DB_SSL_REJECT_UNAUTHORIZED,
   true,
 );
-const databaseSslCa =
-  process.env.DATABASE_SSL_CA ?? process.env.DB_SSL_CA;
+const databaseSslCa = process.env.DATABASE_SSL_CA ?? process.env.DB_SSL_CA;
 
 /**
  * 환경 변수의 boolean 값을 일관된 규칙으로 변환합니다.
@@ -186,6 +187,7 @@ export const AppDataSource = new DataSource({
     PromptEntity,
     PromptDeploymentEntity,
     PromptExperimentEntity,
+    PromptExperimentExposureEntity,
     SessionEntity,
     RunEntity,
     FilterPolicyEntity,
@@ -194,6 +196,7 @@ export const AppDataSource = new DataSource({
     InitialSchema1785054963677,
     AddOpenApiApiKeyUsage1785312000000,
     AddAccessInvitationOrganizationPlan1785398400000,
+    AddPromptExperimentExposure1785484800000,
   ],
   subscribers: [],
 });

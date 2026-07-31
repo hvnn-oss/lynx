@@ -90,11 +90,30 @@ AGENT_STEP
 LLM_CALL
 TOOL_CALL
 POLICY_DECISION
+PROMPT_EXPOSURE
 ERROR
 SESSION_OUTCOME
 ```
 
 `SESSION_OUTCOME`은 Run을 종료합니다. `payload.status`에는 `COMPLETED`, `FAILED`, `CANCELLED` 중 하나를 넣습니다.
+
+Run에서 활성 프롬프트 실험의 변형을 처음 사용할 때 `PROMPT_EXPOSURE`를 한 번 전송합니다. 전송 유실에 대비해 `SESSION_OUTCOME`에도 같은 `promptExposures` 배열을 포함합니다.
+
+```json
+{
+  "promptExposures": [
+    {
+      "experimentId": "a247c152-3277-4c91-9b22-95cb7a459d1e",
+      "promptId": "72adbb57-96ad-4d3d-a2dc-8faf071673e5",
+      "promptVersionId": "c1821bc3-bf1e-46ef-b210-b9376a41cd0c",
+      "bucket": 42,
+      "runtimeConfigRevision": "revision-1"
+    }
+  ]
+}
+```
+
+`assignmentKey` 원문은 전송하지 않습니다. 서버는 실험, 변형, 환경, Agent 범위가 인증된 API Key와 일치하는지 확인한 뒤 노출 기록을 저장합니다.
 
 서버는 다른 이벤트 문자열도 받을 수 있지만, 공통된 이름을 사용해야 대시보드와 실행 디버깅이 더 유용해집니다.
 

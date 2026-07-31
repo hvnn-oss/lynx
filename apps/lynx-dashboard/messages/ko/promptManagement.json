@@ -122,11 +122,13 @@
       "active": "진행 중 실험",
       "activeHint": "현재 트래픽을 분배함",
       "runs": "표시된 실험 Run",
-      "runsHint": "현재 조회 결과의 변형별 합계",
+      "runsHint": "실험에 실제 배정된 Run 합계",
       "issues": "변경 영향 이슈",
       "issuesHint": "표시된 실험 버전에 연결됨"
     },
-    "variantResult": "Run {runs} · 성공 {success} · 오류 {errors} · 평균 {cost}",
+    "variantAllocation": "목표 {target} · 실제 {actual}",
+    "variantVolume": "배정 {assigned} · 결과 {resolved} · 대기 {pending}",
+    "variantPerformance": "성공 {success} · 오류 {errors} · 평균 {cost} · {latency}",
     "status": {
       "DRAFT": "초안",
       "ACTIVE": "실행 중",
@@ -227,7 +229,9 @@
     "start": "시작",
     "pause": "일시 정지",
     "complete": "종료",
-    "result": "Run {runs} · 성공 {success} · 오류 {errors} · 평균 {cost}"
+    "allocation": "목표 {target} · 실제 {actual}",
+    "volume": "배정 {assigned} · 결과 {resolved} · 대기 {pending}",
+    "performance": "성공 {success} · 오류 {errors} · 평균 {cost} · {latency}"
   },
   "common": {
     "loadFailed": "프롬프트 데이터를 불러오지 못했습니다.",

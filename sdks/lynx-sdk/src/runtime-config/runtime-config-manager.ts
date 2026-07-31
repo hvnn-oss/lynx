@@ -286,7 +286,16 @@ export class RuntimeConfigManager {
     let upperBound = 0;
     for (const variant of experiment.variants) {
       upperBound += variant.weight;
-      if (bucket < upperBound) return variant.prompt;
+      if (bucket < upperBound) {
+        return {
+          ...variant.prompt,
+          experiment: {
+            experimentId: experiment.experimentId,
+            bucket,
+            runtimeConfigRevision: this.bundle?.revision ?? "unknown",
+          },
+        };
+      }
     }
     return deployedPrompt;
   }

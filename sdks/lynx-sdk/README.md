@@ -239,9 +239,12 @@ await lynx.run(
 ```
 
 `getPrompt()` accepts a stable prompt name or UUID and returns `promptId`,
-`name`, `versionId`, `version`, `content`, and `contentHash`. Calling it inside
-`run()` pins that immutable version for the run and connects the version to
-related events.
+`name`, `versionId`, `version`, `content`, and `contentHash`. A prompt selected
+by an active experiment also includes optional `experiment` assignment
+metadata. Calling it inside `run()` pins that immutable version for the run and
+records one experiment exposure. Lynx sends the experiment ID, selected
+version, bucket, and runtime configuration revision, but never sends the raw
+`assignmentKey`.
 
 The SDK checks for new runtime configuration every 60 seconds by default, uses
 ETag revalidation, verifies prompt content hashes, and keeps the last known good

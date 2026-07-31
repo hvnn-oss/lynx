@@ -229,4 +229,85 @@ describe("PromptService", () => {
       }),
     ).rejects.toBeInstanceOf(BadRequestErrorException);
   });
+
+  it("reports only metrics attributed to each experiment exposure", async () => {
+    const experimentId = "a247c152-3277-4c91-9b22-95cb7a459d1e";
+    const versionId = "f78f96b3-a1bd-45ce-8b7f-0db424ddaa56";
+    const experiment = {
+      id: experimentId,
+      workspaceId,
+      promptId,
+      name: "support test",
+      environment: "production",
+      agentId: null,
+      variants: [{ versionId, weight: 100 }],
+      status: "ACTIVE",
+      assignmentSalt: "salt",
+      createdByUserId: userId,
+      createdAt: new Date("2026-07-03T00:00:00.000Z"),
+      startedAt: new Date("2026-07-03T00:00:00.000Z"),
+      endedAt: null,
+      prompt: createPrompt(),
+      agent: null,
+    };
+    const { service } = createService({
+      listExperimentOperations: jest.fn().mockResolvedValue([experiment]),
+      listVersionsByIds: jest
+        .fn()
+        .mockResolvedValue([{ id: versionId, version: "v3" }]),
+      getExperimentMetricsBatch: jest.fn().mockResolvedValue([
+        {
+          experimentId,
+          versionId,
+          runCount: "10",
+          resolvedRunCount: "8",
+          pendingRunCount: "2",
+          successCount: "6",
+          errorRunCount: "2",
+          totalCost: "4",
+          totalLatencyMs: "8000",
+        },
+      ]),
+      countChangeImpactIssuesByVersion: jest.fn().mockResolvedValue([]),
+    });
+
+    const result = await service.listExperimentOperations(userId, workspaceId, {
+      limit: 25,
+    });
+
+    expect(result.items[0]?.variants[0]?.metrics).toEqual({
+      runCount: 10,
+      resolvedRunCount: 8,
+      pendingRunCount: 2,
+      actualWeight: 1,
+      successRate: 0.75,
+      errorRate: 0.25,
+      totalCost: 4,
+      averageCost: 0.4,
+      averageLatencyMs: 1000,
+    });
+  });
+
+  it("does not reactivate a completed experiment", async () => {
+    const { service } = createService({
+      findExperiment: jest.fn().mockResolvedValue({
+        id: "a247c152-3277-4c91-9b22-95cb7a459d1e",
+        workspaceId,
+        promptId,
+        status: "COMPLETED",
+        environment: "production",
+        agentId: null,
+      }),
+    });
+
+    await expect(
+      service.updateExperimentStatus(
+        userId,
+        workspaceId,
+        promptId,
+        "a247c152-3277-4c91-9b22-95cb7a459d1e",
+        "ACTIVE",
+      ),
+    ).rejects.toBeInstanceOf(BadRequestErrorException);
+  });
 });

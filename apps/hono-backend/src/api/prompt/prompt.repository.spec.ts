@@ -38,6 +38,19 @@ describe("PromptRepository", () => {
     expect(query.mock.calls[0]?.[0]).toContain("jsonb_array_elements_text");
   });
 
+  it("scopes experiment metrics through explicit exposure records", async () => {
+    const query = jest.spyOn(AppDataSource, "query").mockResolvedValue([]);
+    const repository = new PromptRepository();
+    const experimentId = "a247c152-3277-4c91-9b22-95cb7a459d1e";
+
+    await repository.getExperimentMetricsBatch("workspace-1", [experimentId]);
+
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(query.mock.calls[0]?.[0]).toContain('"prompt_experiment_exposure"');
+    expect(query.mock.calls[0]?.[0]).toContain('matched_runs."experimentId"');
+    expect(query.mock.calls[0]?.[1]).toEqual(["workspace-1", [experimentId]]);
+  });
+
   it("uses entity property paths when paginating joined deployment rows", async () => {
     const builder = {
       innerJoinAndSelect: jest.fn(),

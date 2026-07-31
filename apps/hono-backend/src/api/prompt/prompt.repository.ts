@@ -538,7 +538,7 @@ export class PromptRepository {
           experiment.agentId,
           experiment.id,
         );
-        experiment.startedAt = new Date();
+        experiment.startedAt ??= new Date();
         experiment.endedAt = null;
       } else {
         experiment.endedAt = new Date();
@@ -655,6 +655,99 @@ export class PromptRepository {
     );
   }
 
+  /** Aggregates only Runs explicitly exposed to the requested experiments. */
+  async getExperimentMetricsBatch(
+    workspaceId: string,
+    experimentIds: string[],
+  ) {
+    if (experimentIds.length === 0) return [];
+    return AppDataSource.query<
+      Array<{
+        experimentId: string;
+        versionId: string;
+        runCount: string;
+        resolvedRunCount: string;
+        pendingRunCount: string;
+        successCount: string;
+        errorRunCount: string;
+        totalCost: string;
+        totalLatencyMs: string;
+      }>
+    >(
+      `
+        WITH matched_runs AS (
+          SELECT
+            exposure."experimentId",
+            exposure."promptVersionId" AS "versionId",
+            run.id,
+            run.status,
+            run."totalCost",
+            run."startedAt",
+            run."endedAt"
+          FROM "prompt_experiment_exposure" exposure
+          INNER JOIN "run" run ON run.id = exposure."runId"
+          WHERE exposure."workspaceId" = $1
+            AND exposure."experimentId" = ANY($2::uuid[])
+        ),
+        error_runs AS (
+          SELECT DISTINCT
+            exposure."experimentId",
+            exposure."promptVersionId" AS "versionId",
+            event."runId"
+          FROM "prompt_experiment_exposure" exposure
+          INNER JOIN "event" event ON event."runId" = exposure."runId"
+          WHERE exposure."workspaceId" = $1
+            AND exposure."experimentId" = ANY($2::uuid[])
+            AND event."eventType" = 'ERROR'
+        )
+        SELECT
+          matched_runs."experimentId",
+          matched_runs."versionId",
+          COUNT(*)::text AS "runCount",
+          COUNT(*) FILTER (
+            WHERE matched_runs.status IN ('COMPLETED', 'FAILED', 'CANCELLED')
+          )::text AS "resolvedRunCount",
+          COUNT(*) FILTER (
+            WHERE matched_runs.status = 'RUNNING'
+          )::text AS "pendingRunCount",
+          COUNT(*) FILTER (
+            WHERE matched_runs.status = 'COMPLETED'
+          )::text AS "successCount",
+          COUNT(*) FILTER (
+            WHERE matched_runs.status IN ('COMPLETED', 'FAILED', 'CANCELLED')
+              AND (
+                matched_runs.status = 'FAILED'
+                OR EXISTS (
+                  SELECT 1
+                  FROM error_runs
+                  WHERE error_runs."experimentId" = matched_runs."experimentId"
+                    AND error_runs."versionId" = matched_runs."versionId"
+                    AND error_runs."runId" = matched_runs.id
+                )
+              )
+          )::text AS "errorRunCount",
+          COALESCE(SUM(matched_runs."totalCost"), 0)::text AS "totalCost",
+          COALESCE(
+            SUM(
+              CASE
+                WHEN matched_runs."endedAt" IS NOT NULL
+                THEN EXTRACT(
+                  EPOCH FROM (
+                    matched_runs."endedAt" - matched_runs."startedAt"
+                  )
+                ) * 1000
+                ELSE 0
+              END
+            ),
+            0
+          )::text AS "totalLatencyMs"
+        FROM matched_runs
+        GROUP BY matched_runs."experimentId", matched_runs."versionId"
+      `,
+      [workspaceId, experimentIds],
+    );
+  }
+
   /** 버전별 변경 영향 이슈 개수를 한 번에 집계합니다. */
   async countChangeImpactIssuesByVersion(
     workspaceId: string,
@@ -765,7 +858,7 @@ export class PromptRepository {
     const query = repository
       .createQueryBuilder()
       .update()
-      .set({ status: "PAUSED" })
+      .set({ status: "PAUSED", endedAt: () => "CURRENT_TIMESTAMP" })
       .where('"workspaceId" = :workspaceId', { workspaceId })
       .andWhere('"promptId" = :promptId', { promptId })
       .andWhere("environment = :environment", { environment })

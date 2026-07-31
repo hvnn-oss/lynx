@@ -14,6 +14,7 @@ import {
   LynxShutdownOptions,
   LynxStatus,
   LynxPromptSnapshot,
+  LynxPromptExposure,
   LynxLlmInstrumentationOptions,
 } from "./types.js";
 import { LYNX_EVENT_SCHEMA_VERSION } from "@repo/sdk-types";
@@ -277,6 +278,20 @@ export class LynxTracer {
       context.promptVersions[id] = prompt;
       context.promptVersions[prompt.promptId] = prompt;
       context.promptVersions[prompt.name] = prompt;
+      if (prompt.experiment) {
+        this.captureInternal(
+          "PROMPT_EXPOSURE",
+          `prompt.exposure:${prompt.name}`,
+          {
+            promptId: prompt.promptId,
+            promptVersionId: prompt.versionId,
+            experimentId: prompt.experiment.experimentId,
+            bucket: prompt.experiment.bucket,
+            runtimeConfigRevision: prompt.experiment.runtimeConfigRevision,
+          },
+          context,
+        );
+      }
     }
     return prompt;
   }
@@ -790,10 +805,13 @@ export class LynxTracer {
       eventType === "ERROR" ||
       (eventType === "SESSION_OUTCOME" && payload?.status === "FAILED") ||
       (payload && (payload.error || "error" in payload));
-    if (context.sampled === false && !isError) {
+    const isOperationalMetadata =
+      eventType === "PROMPT_EXPOSURE" || eventType === "SESSION_OUTCOME";
+    if (context.sampled === false && !isError && !isOperationalMetadata) {
       return eventId;
     }
 
+    const promptExposures = this.getPromptExposures(context);
     const processedPayload = processPayload(
       {
         ...context.attributes,
@@ -814,6 +832,8 @@ export class LynxTracer {
               ),
             ]
           : undefined,
+        promptExposures:
+          promptExposures.length > 0 ? promptExposures : undefined,
       },
       this.config,
       { eventType },
@@ -1734,6 +1754,23 @@ export class LynxTracer {
         ),
       ),
     ].sort();
+  }
+
+  /** Returns one non-sensitive experiment exposure per prompt in the run. */
+  private getPromptExposures(context: LynxContext): LynxPromptExposure[] {
+    const exposures = new Map<string, LynxPromptExposure>();
+    for (const prompt of Object.values(context.promptVersions ?? {})) {
+      if (!prompt.experiment) continue;
+      const exposure: LynxPromptExposure = {
+        experimentId: prompt.experiment.experimentId,
+        promptId: prompt.promptId,
+        promptVersionId: prompt.versionId,
+        bucket: prompt.experiment.bucket,
+        runtimeConfigRevision: prompt.experiment.runtimeConfigRevision,
+      };
+      exposures.set(`${exposure.experimentId}:${exposure.promptId}`, exposure);
+    }
+    return [...exposures.values()];
   }
 
   /**

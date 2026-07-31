@@ -449,16 +449,20 @@ export class PromptService {
         ),
       ),
     ];
+    const experimentIds = experiments.map((experiment) => experiment.id);
     const [versions, metricRows, issueRows] = await Promise.all([
       this.repository.listVersionsByIds(workspaceId, versionIds),
-      this.repository.getVersionMetricsBatch(workspaceId, versionIds),
+      this.repository.getExperimentMetricsBatch(workspaceId, experimentIds),
       this.repository.countChangeImpactIssuesByVersion(workspaceId, versionIds),
     ]);
     const versionById = new Map(
       versions.map((version) => [version.id, version]),
     );
-    const metricsByVersionId = new Map(
-      metricRows.map((metrics) => [metrics.versionId, metrics]),
+    const metricsByExperimentVersion = new Map(
+      metricRows.map((metrics) => [
+        `${metrics.experimentId}:${metrics.versionId}`,
+        metrics,
+      ]),
     );
     const issueCountByVersionId = new Map(
       issueRows.map((row) => [row.versionId, Number(row.issueCount)]),
@@ -470,20 +474,43 @@ export class PromptService {
         agentName: experiment.agent?.name ?? null,
         variants: experiment.variants.map((variant) => {
           const version = versionById.get(variant.versionId);
-          const metrics = metricsByVersionId.get(variant.versionId);
+          const metrics = metricsByExperimentVersion.get(
+            `${experiment.id}:${variant.versionId}`,
+          );
           const runCount = Number(metrics?.runCount ?? 0);
+          const resolvedRunCount = Number(metrics?.resolvedRunCount ?? 0);
+          const pendingRunCount = Number(metrics?.pendingRunCount ?? 0);
           const successCount = Number(metrics?.successCount ?? 0);
           const errorRunCount = Number(metrics?.errorRunCount ?? 0);
           const totalCost = Number(metrics?.totalCost ?? 0);
+          const totalLatencyMs = Number(metrics?.totalLatencyMs ?? 0);
+          const totalExperimentRuns = experiment.variants.reduce(
+            (sum, candidate) =>
+              sum +
+              Number(
+                metricsByExperimentVersion.get(
+                  `${experiment.id}:${candidate.versionId}`,
+                )?.runCount ?? 0,
+              ),
+            0,
+          );
           return {
             ...variant,
             version: version?.version ?? "unknown",
             metrics: {
               runCount,
-              successRate: runCount > 0 ? successCount / runCount : 0,
-              errorRate: runCount > 0 ? errorRunCount / runCount : 0,
+              resolvedRunCount,
+              pendingRunCount,
+              actualWeight:
+                totalExperimentRuns > 0 ? runCount / totalExperimentRuns : 0,
+              successRate:
+                resolvedRunCount > 0 ? successCount / resolvedRunCount : 0,
+              errorRate:
+                resolvedRunCount > 0 ? errorRunCount / resolvedRunCount : 0,
               totalCost,
               averageCost: runCount > 0 ? totalCost / runCount : 0,
+              averageLatencyMs:
+                resolvedRunCount > 0 ? totalLatencyMs / resolvedRunCount : 0,
             },
             changeImpactIssueCount:
               issueCountByVersionId.get(variant.versionId) ?? 0,
@@ -557,6 +584,14 @@ export class PromptService {
     );
     if (!current) {
       throw new NotFoundErrorException("PROMPT_EXPERIMENT_NOT_FOUND");
+    }
+    if (current.status === status) {
+      return this.toExperiment(current);
+    }
+    if (current.status === "COMPLETED") {
+      throw new BadRequestErrorException(
+        "PROMPT_EXPERIMENT_COMPLETED_IS_TERMINAL",
+      );
     }
     if (
       status === "ACTIVE" &&

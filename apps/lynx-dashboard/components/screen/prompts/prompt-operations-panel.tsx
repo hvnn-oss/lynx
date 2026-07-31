@@ -96,8 +96,7 @@ export function PromptDeploymentPanel({
     });
   };
 
-  const hasError =
-    deployments.isError || agents.isError || summary.isError;
+  const hasError = deployments.isError || agents.isError || summary.isError;
 
   return (
     <div className="space-y-6">
@@ -209,11 +208,7 @@ function OperationFeedback({
       {hasError ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
           <span>{t("operations.loadFailed")}</span>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => void onRetry()}
-          >
+          <Button size="sm" variant="outline" onClick={() => void onRetry()}>
             <RefreshCcw />
             {t("common.retry")}
           </Button>
@@ -845,14 +840,28 @@ function ExperimentSection({
                     >
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-sm font-medium">{variant.version}</p>
-                        <p className="text-sm">{variant.weight}%</p>
+                        <p className="text-sm text-muted-foreground">
+                          {t("experiment.allocation", {
+                            target: `${variant.weight}%`,
+                            actual: formatRate(variant.metrics.actualWeight),
+                          })}
+                        </p>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {t("experiment.result", {
-                          runs: variant.metrics.runCount,
+                        {t("experiment.volume", {
+                          assigned: variant.metrics.runCount,
+                          resolved: variant.metrics.resolvedRunCount,
+                          pending: variant.metrics.pendingRunCount,
+                        })}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {t("experiment.performance", {
                           success: formatRate(variant.metrics.successRate),
                           errors: formatRate(variant.metrics.errorRate),
                           cost: formatCost(variant.metrics.averageCost),
+                          latency: formatLatency(
+                            variant.metrics.averageLatencyMs,
+                          ),
                         })}
                       </p>
                     </div>
@@ -932,4 +941,8 @@ function formatCost(value: number) {
     currency: "USD",
     maximumFractionDigits: 4,
   }).format(value);
+}
+
+function formatLatency(value: number) {
+  return `${Math.round(value).toLocaleString()}ms`;
 }

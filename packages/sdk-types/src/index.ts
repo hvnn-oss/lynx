@@ -305,6 +305,27 @@ export interface LynxPromptSnapshot {
   content: string;
   /** Lowercase SHA-256 digest used to verify prompt content integrity. */
   contentHash: string;
+  /** A/B experiment assignment applied locally for the active run. */
+  experiment?: LynxPromptExperimentAssignment;
+}
+
+/** Non-sensitive metadata describing one locally selected experiment variant. */
+export interface LynxPromptExperimentAssignment {
+  /** Stable server-side experiment identifier. */
+  experimentId: string;
+  /** Deterministic allocation bucket from 0 through 99. */
+  bucket: number;
+  /** Runtime configuration revision that contained the experiment. */
+  runtimeConfigRevision: string;
+}
+
+/** Experiment exposure metadata attached to SDK events and stored per run. */
+export interface LynxPromptExposure {
+  experimentId: string;
+  promptId: string;
+  promptVersionId: string;
+  bucket: number;
+  runtimeConfigRevision: string;
 }
 
 /** One weighted immutable version in a prompt experiment. */
@@ -594,6 +615,7 @@ export type LynxEventType =
   | "CONTEXT_RETRIEVAL"
   | "POLICY_EVALUATION"
   | "POLICY_VIOLATION"
+  | "PROMPT_EXPOSURE"
   | "FIREWALL_ACTIVATED"
   | "SESSION_OUTCOME"
   | "LOOP_DETECTED"
@@ -638,6 +660,8 @@ export interface LynxEventPayloadDto {
   deploymentId?: string;
   environment?: string;
   policyVersion?: string;
+  /** A/B variants selected in this run. Raw assignment keys are never included. */
+  promptExposures?: LynxPromptExposure[];
 
   // Tool execution metadata
   toolName?: string;
